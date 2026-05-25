@@ -1,6 +1,5 @@
 一、字體路徑：
 https://jimmywu-commits.github.io/shopee/fonts/<br>
-
 在coding時將上述的字體路徑提供給GPT, 裡面包含了三種粗細，分別是：<br>
 ShopeeNotoSans(content)-Bold.ttf<br>
 ShopeeNotoSans(content)-Medium.ttf<br>
