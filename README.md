@@ -9,6 +9,8 @@ ShopeeNotoSans(content)-Regular.ttf<br>
 https://jimmywu-commits.github.io/shopee/js/<br>
 editor-plugin.js  橡皮擦、裁切、自動去背、加影子 (適用商品編輯)<br>
 banwords-engine-hbn.js   裁切 (適用logo編輯)<br>
+manual-plugin.js   右下角的說明書icon (按了會跳出說明書圖片)<br>
+product-zoom-plugin.js   提示滑鼠滾輪可放大縮小的動態icon<br>
 
 三、開發同仁名單：<br>
 鄭澤謙	tse.cheng@shopee.com<br>
