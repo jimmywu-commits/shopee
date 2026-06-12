@@ -1,0 +1,17 @@
+/* ══════════════════════════════════════
+   js/index.js
+   ★ 排版清單，BN編輯器從這裡讀取版位
+   ★ 新增版位：在陣列加入 html 檔名即可
+══════════════════════════════════════ */
+var BN_LAYOUTS = [
+  "SCBN_APP.html",
+  "IG方logo排版.html",
+  "IG橫logo排版.html",
+  "HBN_橫式LOGO.html",
+  "HBN_方式LOGO.html",
+  "ddcard方logo.html",
+  "ddcard橫logo.html"
+];
+
+/* ★ 這行不要刪 */
+if (typeof window._bn_scan_cb === 'function') window._bn_scan_cb(BN_LAYOUTS);

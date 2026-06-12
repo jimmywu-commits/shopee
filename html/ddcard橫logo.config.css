@@ -1,0 +1,41 @@
+/* ================================================
+   ddcard方logo.config.css
+   ★ 系統設定檔，不要貼 PS 的 CSS 進來
+   ================================================ */
+:root {
+  --canvas-w:  531px;
+  --canvas-h:  792px;
+  --canvas-bg: #6ec6e8;
+  --bg-img:    ;
+
+  /* 圖層清單：依 z-index 由低到高 */
+  --layers: "商品範圍|,logo範圍|,cta底|,放心買_安心退|放心買 安心退,cta三角標|,主標|主標$1023起,副標|副標$1023起,日期|5/18 12:00 - 5/25 11:59 期間限定";
+}
+
+/* ── transform-origin 全域修正 ── */
+* { transform-origin: 0 0; }
+
+/* ── 商品範圍、logo範圍：避免 opacity 影響子元素 ── */
+.商品範圍 { background-color: rgba(235, 104, 119, 0.4); opacity: 1; }
+.logo範圍 { background-color: rgba(235, 104, 119, 0.4); opacity: 1; z-index: 200; }
+
+/* ── 文字置中：left:0 + width 等於版位寬，text-align:center 才生效 ── */
+/* ── 同時修正 top（PS 變形面板 Y）和 transform-origin ── */
+.主標 { left: 0; width: 531px; top: 162.54px;  transform-origin: center top; line-height: 1; }
+.副標 { left: 0; width: 531px; top: 206.77px; transform-origin: center top; line-height: 1; }
+.日期 { left: 0; width: 531px; top: 271.7px;  transform-origin: center top; line-height: 1; }
+
+/* ── CTA ── */
+.cta三角標 {
+  position: absolute;
+  box-sizing: content-box;
+  background: transparent;
+  width: 0; height: 0;
+  border-top:    9px solid transparent;
+  border-bottom: 9px solid transparent;
+  border-left:   13px solid rgb(201, 230, 36);
+  left: 359px;
+  top: 688px;
+  z-index: 292;
+}
+.放心買_安心退 { left: 161.62px; top: 682.82px; letter-spacing: 0.05em; line-height: 1; white-space: nowrap; }

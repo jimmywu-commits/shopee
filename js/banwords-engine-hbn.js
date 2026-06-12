@@ -227,134 +227,126 @@
       label = String.fromCharCode(65 + (n % 26)) + label;
       n = Math.floor(n / 26) - 1;
     } while (n >= 0);
-    return '__' + prefix + '_' + label + '__';
+    return '\x00' + prefix + '_' + label + '\x00';
   }
 
   function sanitizeAllowedCharacters(text, role){
     let out = String(text || '');
 
     if (role === 'date') {
-      out = out.replace(/[^\p{Script=Han}\p{L}\p{N}\s,$%\/-]/gu, '');
+      out = out.replace(/[^\p{Script=Han}\p{L}\p{N}\s,$%\/\-:]/gu, '');
     } else {
       out = out.replace(/[^\p{Script=Han}\p{L}\p{N}\s,$%]/gu, '');
     }
 
     out = out.replace(/\u00A0/g, ' ');
-    out = out.replace(/\s{2,}/g, ' ');
 
     return out;
   }
 
-  function applyStandardNumericRules(text){
+  function applyStandardNumericRules(text, options){
     let out = String(text || '');
 
+    // 斜線日期保護：MM/DD 及 MM/DD - MM/DD
     const slashDateMap = [];
     out = out.replace(/\b0*\d{1,2}\/0*\d{1,2}(?:\s*-\s*0*\d{1,2}\/0*\d{1,2})?\b/g, function(match){
-      const normalized = match.replace(/\s*-\s*/g, ' - ');
+      const normalized = match.replace(/[ \t]*-[ \t]*/g, ' - ');
       const key = makeAlphaToken('SLASHDATE', slashDateMap.length);
-      slashDateMap.push({
-        token: key,
-        value: normalized
-      });
+      slashDateMap.push({ token: key, value: normalized });
       return key;
     });
 
+    // 冒號時間保護：HH:MM 前後最多2位數不加 $
+    out = out.replace(/(\d{1,2}):(\d{1,2})/g, function(match){
+      const key = makeAlphaToken('SLASHDATE', slashDateMap.length);
+      slashDateMap.push({ token: key, value: match });
+      return key;
+    });
+
+    // 百分比保護
     const percentMap = [];
     out = out.replace(/\b(\d{1,2})%/g, function(match){
       const key = makeAlphaToken('PERCENT', percentMap.length);
-      percentMap.push({
-        token: key,
-        value: match
-      });
+      percentMap.push({ token: key, value: match });
       return key;
     });
 
     const protectedMap = [];
 
-    // 保護「數字+折」「數字+件」：個位數或雙位數後接「折」或「件」，不強加 $ 符號
-    out = out.replace(/(^|[^\d$,])(\d{1,2})(?=[折件])/g, function(match, prefix, digits){
+    // 優先保護「已有 $ 前綴的數字」，同時補千分位
+    out = out.replace(/\$([\d,]+)/g, function(match, digits){
+      const clean = digits.replace(/,/g, '');
+      if (!/^\d+$/.test(clean)) return match;
+      const formatted = '$' + (clean.length >= 4 ? addThousandsSeparator(clean) : clean);
       const key = makeAlphaToken('SPECIALNUM', protectedMap.length);
-      protectedMap.push({
-        token: key,
-        value: prefix + digits
-      });
+      protectedMap.push({ token: key, value: formatted });
       return key;
     });
 
-    // 保護「數字+加+數字」：如 1加1、2加1，不強加 $ 符號
-    out = out.replace(/(^|[^\d$,])(\d+)(加)(\d+)/g, function(match, prefix, left, mid, right){
-      const key = makeAlphaToken('SPECIALNUM', protectedMap.length);
-      protectedMap.push({
-        token: key,
-        value: prefix + left + mid + right
+    // 保護 dollarExempt 清單中的數字
+    const exemptList = (options && options.dollarExempt) || [];
+    if (exemptList.length > 0) {
+      const exemptPattern = new RegExp(
+        '(?<![\\d$])(' + exemptList.map(function(n){ return n.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&'); }).join('|') + ')(?!\\d)',
+        'g'
+      );
+      out = out.replace(exemptPattern, function(match){
+        const key = makeAlphaToken('SPECIALNUM', protectedMap.length);
+        protectedMap.push({ token: key, value: match });
+        return key;
       });
+    }
+
+    // 保護「數字+折/件/組/個...」
+    out = out.replace(/(^|[^\d$,\x00])(\d{1,2})(?=[折件組個入盒包罐台支雙])/g, function(match, prefix, digits){
+      const key = makeAlphaToken('SPECIALNUM', protectedMap.length);
+      protectedMap.push({ token: key, value: prefix + digits });
       return key;
     });
 
-    // 保護「買數字送數字」：如 買1送1、買2送1，不強加 $ 符號
+    // 保護「數字+加+數字」
+    out = out.replace(/(^|[^\d$,\x00])(\d+)(加)(\d+)/g, function(match, prefix, left, mid, right){
+      const key = makeAlphaToken('SPECIALNUM', protectedMap.length);
+      protectedMap.push({ token: key, value: prefix + left + mid + right });
+      return key;
+    });
+
+    // 保護「買數字送數字」
     out = out.replace(/(買)(\d+)(送)(\d+)/g, function(match, buy, left, give, right){
       const key = makeAlphaToken('SPECIALNUM', protectedMap.length);
-      protectedMap.push({
-        token: key,
-        value: buy + left + give + right
-      });
+      protectedMap.push({ token: key, value: buy + left + give + right });
       return key;
     });
 
-    // 保護「第數字代」：如 第1代、第2代，不強加 $ 符號
-    out = out.replace(/(第)(\d+)(代)/g, function(match, prefix, num, suffix){
-      const key = makeAlphaToken('SPECIALNUM', protectedMap.length);
-      protectedMap.push({
-        token: key,
-        value: prefix + num + suffix
-      });
-      return key;
-    });
-
+    // 蝦幣
     out = out.replace(/(蝦幣回饋|蝦幣)\s*(\d{1,})(?![\d,])/g, function(match, keyword, digits){
       const formatted = keyword + formatNumericToken(digits, false);
       const key = makeAlphaToken('SPECIALNUM', protectedMap.length);
-      protectedMap.push({
-        token: key,
-        value: formatted
-      });
+      protectedMap.push({ token: key, value: formatted });
       return key;
     });
-
-    out = out.replace(/(^|[^\d,])(\d{1,})\s*(蝦幣回饋|蝦幣)/g, function(match, prefix, digits, keyword){
+    out = out.replace(/(^|[^\d,\x00])(\d{1,})\s*(蝦幣回饋|蝦幣)/g, function(match, prefix, digits, keyword){
       const formatted = prefix + formatNumericToken(digits, false) + keyword;
       const key = makeAlphaToken('SPECIALNUM', protectedMap.length);
-      protectedMap.push({
-        token: key,
-        value: formatted
-      });
+      protectedMap.push({ token: key, value: formatted });
       return key;
     });
 
-    out = out.replace(/\$(\d[\d,]*)\b/g, function(match, digits){
-      return '$' + formatNumericToken(digits, false);
-    });
-
-    out = out.replace(/(^|[^\d$,])(\d[\d,]*)(?=$|[^\d,])/g, function(match, prefix, digits){
+    // 加 $ 和千分位到所有裸數字
+    out = out.replace(/(^|[^\d$,\x00])(\d[\d,]*)(?=$|[^\d,])/g, function(match, prefix, digits){
       const clean = String(digits || '').replace(/,/g, '');
       if (!/^\d+$/.test(clean)) return match;
       return prefix + formatNumericToken(clean, true);
     });
 
-    protectedMap.forEach(function(item){
-      out = out.replace(item.token, item.value);
-    });
-
-    percentMap.forEach(function(item){
-      out = out.replace(item.token, item.value);
-    });
-
-    slashDateMap.forEach(function(item){
-      out = out.replace(item.token, item.value);
-    });
+    // 還原所有保護的 token
+    protectedMap.forEach(function(item){ out = out.split(item.token).join(item.value); });
+    percentMap.forEach(function(item){   out = out.split(item.token).join(item.value); });
+    slashDateMap.forEach(function(item){ out = out.split(item.token).join(item.value); });
 
     return out;
   }
+
 
   function normalizeSlashDateString(text){
     return String(text || '').replace(
@@ -444,7 +436,7 @@
     return datePart;
   }
 
-  function applyNumericRules(text, role){
+  function applyNumericRules(text, role, options){
     let out = String(text || '');
 
     if (role === 'date') {
@@ -453,7 +445,7 @@
       const match = out.match(/^(0*\d{1,2}\/0*\d{1,2}(?:\s*-\s*0*\d{1,2}\/0*\d{1,2})?)(\s*)([\s\S]*)$/);
 
       if (!match) {
-        return applyStandardNumericRules(out);
+        return applyStandardNumericRules(out, options);
       }
 
       const datePart = match[1];
@@ -462,10 +454,10 @@
 
       if (!rest) return datePart;
 
-      return datePart + spacer + applyStandardNumericRules(rest);
+      return datePart + spacer + applyStandardNumericRules(rest, options);
     }
 
-    return applyStandardNumericRules(out);
+    return applyStandardNumericRules(out, options);
   }
 
   function makeToken(prefix, index){
@@ -534,7 +526,7 @@
     return out;
   }
 
-  function transformText(text, role){
+  function transformText(text, role, options){
     const original = String(text || '');
     let out = original;
     const messages = [];
@@ -581,7 +573,7 @@
       out = restoreExcludedSegments(workingText, protectedMap);
     });
 
-    const adjusted = applyNumericRules(out, role);
+    const adjusted = applyNumericRules(out, role, options);
     if (adjusted !== out) {
       out = adjusted;
       changed = true;
@@ -592,6 +584,9 @@
       out = sanitizedAfterRules;
       changed = true;
     }
+
+    // - 左右補空格：清掉 - 周圍任意空白後補成 ' - '（不含字串開頭的負號）
+    out = out.replace(/(?<=.)[ \t]*-[ \t]*(?=\S)/g, ' - ');
 
     out = out.replace(/\s{2,}/g, ' ').trim();
 
@@ -608,10 +603,37 @@
 
   function applyToElement(el, options){
     options = options || {};
+
+    // Blur-only safety guard:
+    // Do not format while the user is actively typing.
+    // Blur callers must pass { force: true }.
+    if (
+      el &&
+      el.isContentEditable &&
+      global.document &&
+      document.activeElement === el &&
+      !options.force
+    ) {
+      const currentText = (options.getText || getTextFromElement)(el);
+      return {
+        text: currentText,
+        changed: false,
+        blocked: false,
+        message: '',
+        messages: [],
+        duration: 0,
+        skipped: 'active-editing'
+      };
+    }
+
     const role = options.role || (el && el.dataset ? el.dataset.role : '');
     const getText = options.getText || getTextFromElement;
     const before = getText(el);
-    const result = transformText(before, role);
+    let dollarExempt = [];
+    if (el && el.dataset && el.dataset.dollarExempt) {
+      try { dollarExempt = JSON.parse(el.dataset.dollarExempt); } catch(_) {}
+    }
+    const result = transformText(before, role, { dollarExempt: dollarExempt });
 
     if (el && result.text !== before) {
       const counter = el.querySelector('.counter');
@@ -668,22 +690,29 @@
         }
       });
 
-      el.addEventListener('input', function(){
+      function normalizeLiveEditable(){
+        if (global.document && document.activeElement === el) return;
+
         const raw = getEditablePlainText(el);
-        let next = sanitizeAllowedCharacters(raw, role);
-
-        if (next !== raw) {
-          setEditableText(el, next);
+        let dollarExempt = [];
+        if (el.dataset && el.dataset.dollarExempt) {
+          try { dollarExempt = JSON.parse(el.dataset.dollarExempt); } catch(_) {}
         }
-      });
+        const result = transformText(raw, role, { dollarExempt: dollarExempt });
 
-      el.addEventListener('compositionend', function(){
-        const raw = getEditablePlainText(el);
-        let next = sanitizeAllowedCharacters(raw, role);
-
-        if (next !== raw) {
-          setEditableText(el, next);
+        if (result.text !== raw) {
+          setEditableText(el, result.text);
         }
+
+        if (result.blocked) el.classList.add('audit-error');
+        else el.classList.remove('audit-error');
+      }
+
+      // Only normalize after the user leaves the editing area.
+      // This prevents JS from rewriting text while the user is typing.
+      el.addEventListener('blur', function(){
+        // Use setTimeout to ensure activeElement has updated before we check.
+        setTimeout(normalizeLiveEditable, 0);
       });
 
       el.addEventListener('paste', function(e){
@@ -708,6 +737,9 @@
       installLiveInputGuards();
     }
   }
+
+  global.__BANWORD_ENGINE_READY = true;
+  console.log('[banword] engine ready: blur-only combined');
 
   global.banwordEngine = {
     rules: currentRules,
