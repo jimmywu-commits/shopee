@@ -7,10 +7,16 @@ var BN_LAYOUTS = [
   "SCBN_APP.html",
   "IG方logo排版.html",
   "IG橫logo排版.html",
-  "HBN_橫式LOGO.html",
   "HBN_方式LOGO.html",
+  "HBN_橫式LOGO.html",
   "ddcard方logo.html",
-  "ddcard橫logo.html"
+  "ddcard橫logo.html",
+  "Coin_pageBN_APP方LOGO.html",
+  "Coin_pageBN_APP橫LOGO.html",
+  "FB_POST_方LOGO.html",
+  "FB_POST_橫LOGO.html",
+  "LPBN_PC方LOGO.html",
+  "LPBN_PC橫LOGO.html"
 ];
 
 /* ★ 這行不要刪 */

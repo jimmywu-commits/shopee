@@ -370,13 +370,22 @@
     w0 = Math.round(w0); h0 = Math.round(h0);
 
     /* 底部 y 位置：優先使用 CTA 頂部上方，否則用 zone 底部 */
-    var bot0 = zh - 4;
+    var zoneBottom = zh - 4;
     if(ctaEl){
       var ctaTop2   = parseFloat(window.getComputedStyle(ctaEl).top)  || 0;
       var pzoneTop2 = parseFloat(window.getComputedStyle(pzone).top)  || 0;
       var ctaRel2   = ctaTop2 - pzoneTop2 - 8;
-      if(ctaRel2 > 0 && ctaRel2 < zh) bot0 = ctaRel2;
+      if(ctaRel2 > 0 && ctaRel2 < zh) zoneBottom = ctaRel2;
     }
+
+    /* 垂直置中：讓最高的商品（主品 h0）在商品範圍垂直置中
+       配品底部跟主品底部對齊（維持底部齊） */
+    var zoneTop = 4; /* 上邊界留 4px */
+    var zoneH   = zoneBottom - zoneTop;
+    /* 主品置中後的底部位置 */
+    var centeredBot = zoneTop + Math.floor((zoneH + h0) / 2);
+    /* 不超出 zoneBottom */
+    var bot0 = Math.min(centeredBot, zoneBottom);
     var bot1 = bot0;
     var bot2 = bot0;
 
