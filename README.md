@@ -50,6 +50,7 @@ editor-plugin.js<br>
 <br>
 index.js<br>
 版位清單，只有一個功能：<br>
+告訴 BN編輯器有哪些版位要顯示<br>
 <br>
 三、開發同仁名單：<br>
 鄭澤謙	tse.cheng@shopee.com<br>
