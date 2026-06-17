@@ -1,7 +1,6 @@
 /* ══════════════════════════════════════
    js/index.js
    ★ 排版清單，BN編輯器從這裡讀取版位
-   ★ 新增版位：在陣列加入 html 檔名即可
 ══════════════════════════════════════ */
 var BN_LAYOUTS = [
   "SCBN_APP.html",
@@ -15,7 +14,8 @@ var BN_LAYOUTS = [
   "Coin_pageBN_APP橫LOGO.html",
   "FB_POST_方LOGO.html",
   "FB_POST_橫LOGO.html",
-  "LPBN_PC方LOGO.html",
+  "LPBN_APP方LOGO.html",
+  "LPBN_APP橫LOGO.html",
   "LPBN_PC橫LOGO.html"
 ];
 

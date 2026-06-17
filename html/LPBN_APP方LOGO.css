@@ -1,11 +1,3 @@
-.LPBN_APP方LOGO_jpg {
-  position: absolute;
-  left: 17px;
-  top: 0px;
-  width: 1200px;
-  height: 550px;
-  z-index: 100;
-}
 .商品範圍 {
   background-color: rgb(235, 104, 119);
   opacity: 0.4;
@@ -68,12 +60,4 @@
   width: 121px;
   height: 120px;
   z-index: 95;
-}
-.T {
-  position: absolute;
-  left: -17px;
-  top: 0px;
-  width: 2448px;
-  height: 1009px;
-  z-index: 85;
 }

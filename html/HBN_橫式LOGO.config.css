@@ -18,7 +18,7 @@
    ★ 文字內容不可含逗號「,」（逗號是圖層分隔符）
       例：$1,023 → 改寫 $1023
   */
-  --layers: "商品範圍|,logo範圍|,cta底|,放心買_安心退|放心買 安心退,cta三角標|,主標|主標$1023起,日期|5/18 12:00 - 5/25 11:59 中文,副標|副標$1023起";
+  --layers: "左側保護|,bg|,文案保護|,商品範圍|,logo範圍|,cta底|,放心買_安心退|放心買 安心退,cta三角標|,主標|主標$1023起,日期|5/18 12:00 - 5/25 11:59 中文,副標|副標$1023起,漸層左|";
 }
 
 /* ── logo範圍、商品範圍：opacity 改 rgba，避免影響子元素 ──
@@ -58,3 +58,43 @@
 .日期        { left: 100px;     top: 268.76px; line-height: 1; white-space: nowrap; }
 .主標        { left: 100px;     top: 151.57px; line-height: 1; white-space: nowrap; }
 .放心買_安心退 { left: 953.62px; top: 297.82px; line-height: 1; white-space: nowrap; letter-spacing: 0.05em; }
+
+/* ── bg 圖層（背景圖容器）── */
+.bg {
+  position: absolute;
+  left: 0; top: 0;
+  width: 1200px; height: 360px;
+  z-index: 1;
+}
+
+/* ── 文案保護：左側純色塊（漸層起點+2px 重疊）── */
+.文案保護 {
+  position: absolute;
+  left: 0; top: 0;
+  width: 613px; height: 360px;
+  background: #6ec6e8;
+  pointer-events: none;
+  z-index: 3;
+}
+
+/* ── 漸層左：起點 611px ── */
+.漸層左 {
+  position: absolute;
+  left: 611px; top: 0;
+  width: 70px; height: 360px;
+  background: linear-gradient(to right, #6ec6e8 0%, transparent 100%);
+  pointer-events: none;
+  z-index: 3;
+  --grad-dir: to right;
+}
+
+/* ── 左側保護色塊 ── */
+.左側保護 {
+  position: absolute;
+  left: 0; top: 0;
+  width: 613px;
+  height: 360px;
+  background: #6ec6e8;
+  pointer-events: none;
+  z-index: 3;
+}

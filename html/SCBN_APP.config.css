@@ -6,7 +6,7 @@
   --canvas-h:   200px;
   --canvas-bg:  rgb(255, 255, 255);
   --bg-img:     ;
-  --layers: "背景色|,逛逛去底|,逛逛去|逛逛去,逛逛去三角標|,商品範圍|,副標|滿$2000折$200,品牌名|品牌名稱";
+  --layers: "背景色|,文案保護|,右側保護|,逛逛去底|,逛逛去|逛逛去,逛逛去三角標|,商品範圍|,副標|滿$2000折$200,品牌名|品牌名稱,漸層左|,漸層右|";
 }
 
 /* ── transform-origin 全域修正 ── */
@@ -21,7 +21,7 @@
 ──────────────────────────────────────── */
 .品牌名  { left: 88.19px;  top: 71.75px;  line-height: 1; }
 .副標    { left: 85.07px;  top: 115.93px; line-height: 1; }
-.逛逛去  { left: 967.43px; top: 106.2px;  line-height: 1; }
+.逛逛去  { left: 967.43px; top: 106.2px;  line-height: 1; letter-spacing: 0.05em; }
 
 /* ══ PS 不會輸出的樣式（設定一次，之後不用動）══ */
 
@@ -33,11 +33,76 @@
 
 /* CTA 三角形 */
 .逛逛去三角標 {
+  position: absolute;
+  box-sizing: content-box;
   background: transparent;
   width: 0;
   height: 0;
   border-top:    10px solid transparent;
   border-bottom: 10px solid transparent;
   border-left:   17px solid rgb(107, 192, 236);
-  top: 115.93px;
+  left: 1084.8px;  /* 逛逛去文字右邊緣(1081.8) + 3px 間距 */
+  top: 115.5px;
 }
+
+/* ── 色塊底（文案保護）：背景圖之上，所有物件之下 ──
+   .背景色 範圍內左側純色，防背景圖透出影響文案
+   width 多 2px 跟漸層重疊，避免細線
+────────────────────────── */
+.文案保護 {
+  position: absolute;
+  left: 28px;    /* 對齊 .背景色 left */
+  top: 46px;     /* 對齊 .背景色 top */
+  width: 515px;  /* 541 - 28 + 2px 重疊 */
+  height: 154px; /* 對齊 .背景色 height */
+  background: #6bc0ec;
+  pointer-events: none;
+  z-index: 3;
+}
+
+/* ── 漸層左：起點 541px，在 .背景色 範圍內 ── */
+.漸層左 {
+  position: absolute;
+  left: 541px;
+  top: 46px;
+  width: 70px;
+  height: 154px;
+  background: linear-gradient(to right, #6bc0ec 0%, transparent 100%);
+  pointer-events: none;
+  z-index: 3;
+  --grad-dir: to right;
+}
+
+/* ── 漸層右：起點 903px，在 .背景色 範圍內 ── */
+.漸層右 {
+  position: absolute;
+  left: 903px;
+  top: 46px;
+  width: 70px;
+  height: 154px;
+  background: linear-gradient(to left, #6bc0ec 0%, transparent 100%);
+  pointer-events: none;
+  z-index: 3;
+  --grad-dir: to left;
+}
+
+/* ── 右側保護色塊：漸層右端到 .背景色 右邊界 ──
+   left = 漸層右端(973) - 2px 重疊 = 971px
+   width = 背景色右邊界(1171) - 971 = 200px
+────────────────────────── */
+.右側保護 {
+  border-radius: 0 30px 0 0;
+  position: absolute;
+  left: 971px;
+  top: 46px;
+  width: 200px;
+  height: 154px;
+  background: #6bc0ec;
+  pointer-events: none;
+  z-index: 3;
+}
+/* ── z-index 層級修正 ──
+   .背景色（含背景圖）→ 最底層
+   .文案保護底色 + 漸層 → 在背景色之上、所有其他物件之下
+────────────────────────── */
+.背景色 { z-index: 2; }

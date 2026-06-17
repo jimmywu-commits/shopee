@@ -1,11 +1,3 @@
-.LPBN_PC橫LOGO_jpg {
-  position: absolute;
-  left: 1248px;
-  top: 609px;
-  width: 1200px;
-  height: 400px;
-  z-index: 65;
-}
 .商品範圍 {
   background-color: rgb(235, 104, 119);
   opacity: 0.4;

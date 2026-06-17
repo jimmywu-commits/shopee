@@ -16,7 +16,7 @@
   --bg-img:    img/ig用蝦皮logo卡片.png;
 
   /* 圖層清單：class名稱|預設文字，純佔位框留空 */
-  --layers: "logo範圍|,主標|滿$200享9折,副標|滿$2000折$200,日期|5/18 12:00 - 5/25 11:59 期間限定,商品圖範圍|";
+  --layers: "bg|,上方保護|,漸層上|,logo範圍|,主標|滿$200享9折,副標|滿$2000折$200,日期|5/18 12:00 - 5/25 11:59 期間限定,商品圖範圍|";
 }
 
 /* ── transform-origin 全域修正 ──────────────────
@@ -34,3 +34,36 @@
 /* ── 商品圖範圍、logo範圍：避免 opacity 影響子元素 ── */
 .商品圖範圍 { background-color: rgba(235, 104, 119, 0.4); opacity: 1; }
 .logo範圍   { background-color: rgba(235, 104, 119, 0.4); opacity: 1; }
+
+/* ── 上方保護色塊 ── */
+.上方保護 {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 900px;
+  height: 685.9px;
+  background: #6ec6e8;
+  pointer-events: none;
+  z-index: 3;
+}
+
+/* ── 漸層上：起點 683.9px ── */
+.漸層上 {
+  position: absolute;
+  left: 0;
+  top: 683.9px;
+  width: 900px;
+  height: 70px;
+  background: linear-gradient(to bottom, #6ec6e8 0%, transparent 100%);
+  pointer-events: none;
+  z-index: 3;
+  --grad-dir: to bottom;
+}
+/* ── .bg：全畫布底色（背景圖容器）── */
+.bg {
+  position: absolute;
+  left: 0; top: 0;
+  width: 900px; height: 1600px;
+  background-color: #6ec6e8;
+  z-index: 1;
+}

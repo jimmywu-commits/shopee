@@ -7,7 +7,7 @@
 /* ── 畫布設定 ── */
 :root {
   --canvas-w:  1200px;
-  --canvas-h:  400px;
+  --canvas-h: 400px;
   --canvas-bg: #6ec6e8;
   --bg-img:    ;
 
@@ -18,7 +18,7 @@
    ★ 文字內容不可含逗號「,」（逗號是圖層分隔符）
       例：$1,023 → 改寫 $1023
   */
-  --layers: "商品範圍|,logo範圍|,cta底|,主標|主標$1023起,日期|5/18 12:00 - 5/25 11:59 中文,副標|副標$1023起";
+  --layers: "bg|,左側保護|,漸層左|,商品範圍|,logo範圍|,cta底|,主標|主標$1023起,日期|5/18 12:00 - 5/25 11:59 中文,副標|副標$1023起";
 }
 
 /* ── logo範圍、商品範圍：opacity 改 rgba，避免影響子元素 ──
@@ -42,5 +42,32 @@
      PS 改版後若有移動文字，重新查 X/Y 更新這裡
 ──────────────────────────────────────────── */
 .主標        { left: 146.26px;     top: 147.39px; line-height: 1; white-space: nowrap; }
-.副標        { left: 146.26px;     top: 207.27px; line-height: 1; white-space: nowrap; }
+.副標        { left: 146.26px;     top: 209.27px; line-height: 1; white-space: nowrap; }
 .日期        { left: 146.26px;     top: 282.14px; line-height: 1; white-space: nowrap; }
+
+/* ── 左側保護色塊 ── */
+.左側保護 {
+  position: absolute;
+  left: 0; top: 0;
+  width: 669px; height: 550px;
+  background: #6ec6e8;
+  pointer-events: none; z-index: 3;
+}
+
+/* ── 漸層左：起點 667px ── */
+.漸層左 {
+  position: absolute;
+  left: 667px; top: 0;
+  width: 70px; height: 550px;
+  background: linear-gradient(to right, #6ec6e8 0%, transparent 100%);
+  pointer-events: none; z-index: 3;
+  --grad-dir: to right;
+}
+/* ── .bg：全畫布底色（背景圖容器）── */
+.bg {
+  position: absolute;
+  left: 0; top: 0;
+  width: 1200px; height: 550px;
+  background-color: #6ec6e8;
+  z-index: 2;
+}

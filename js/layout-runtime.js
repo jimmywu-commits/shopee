@@ -118,8 +118,26 @@
     if (e.data.type === 'bn-color') {
       var c = e.data.data||{}, cv = document.getElementById('canvas');
       if (c.canvasBg) {
-        var bg = cv.querySelector('.背景色');
+        /* 支援 .背景色 和 .bg 兩種 class 名稱 */
+        var bg = cv.querySelector('.背景色') || cv.querySelector('.bg');
         if(bg) bg.style.backgroundColor = c.canvasBg; else cv.style.background = c.canvasBg;
+        /* 漸層顏色跟著背景色同步（讀 CSS --grad-dir 變數）*/
+        ['漸層左','漸層右','漸層上','漸層下'].forEach(function(cls){
+          var gel = cv.querySelector('.'+cls);
+          if(!gel) return;
+          var gradDir = window.getComputedStyle(gel).getPropertyValue('--grad-dir').trim();
+          if(gradDir){
+            gel.style.background = 'linear-gradient(' + gradDir + ', ' + c.canvasBg + ' 0%, transparent 100%)';
+          }
+        });
+        /* 所有保護色塊跟著背景色同步 */
+        ['.文案保護','.右側保護','.左側保護','.上方保護','.下方保護','.上保護','.下保護'].forEach(function(sel){
+          var el = cv.querySelector(sel);
+          if(el) el.style.background = c.canvasBg;
+        });
+        /* .bg 純色塊也同步（Coin 等版位） */
+        var bgEl2 = cv.querySelector('.bg');
+        if(bgEl2 && !cv.querySelector('.背景色')) bgEl2.style.backgroundColor = c.canvasBg;
       }
       function ac(cls,col){ if(!col)return; document.querySelectorAll('.'+cls).forEach(function(el){ if(!el.querySelector('.cta-text')) el.style.color=col; }); }
       ac('主標',c.mainText); ac('副標',c.subText); ac('日期',c.dateText); ac('品牌名',c.brandText);
@@ -145,11 +163,19 @@
 
       var fn = decodeURIComponent(location.pathname.split('/').pop());
       var fnLow = fn.toLowerCase();
-      /* HBN：檔名含 hbn */
-      var isHBN = fnLow.indexOf('hbn') !== -1;
-      /* IG方/ddcard方：不是 HBN、但檔名含「方」→ 正方形 logo 範圍 */
-      var isIGSquare = !isHBN && fn.indexOf('方') !== -1;
-      /* ddcard橫：檔名含 ddcard → 橫式 logo 範圍（多張並排） */
+      var _logoZone = document.querySelector('.logo範圍') || document.querySelector('.LOGO範圍');
+      var _logoIsWide = _logoZone &&
+        (parseFloat(window.getComputedStyle(_logoZone).width) >
+         parseFloat(window.getComputedStyle(_logoZone).height) * 1.5);
+      /* HBN：檔名含 hbn，或已知左對齊版位 → 左對齊 absolute 並排 */
+      var _leftAlignNames = ['hbn','coin','fb_post','lpbn'];
+      var _isLeftAlign = _leftAlignNames.some(function(n){ return fnLow.indexOf(n) !== -1; });
+      var isHBN = _isLeftAlign;
+      /* 多張置中：logo範圍是橫條 且 不是左對齊版位 → flex 置中並排（ddcard橫、IG橫等）*/
+      var isMultiCenter = !isHBN && !!_logoIsWide;
+      /* IG方/ddcard方：不是 HBN、不是橫條、但檔名含「方」→ 單張正方 */
+      var isIGSquare = !isHBN && !isMultiCenter && fn.indexOf('方') !== -1;
+      /* ddcard：檔名含 ddcard */
       var isDDCard = fnLow.indexOf('ddcard') !== -1;
 
       var logos = [];
@@ -160,7 +186,7 @@
 
       /* IG方：只取第一張 */
       if (isIGSquare) logos = logos.slice(0, 1);
-      if (isDDCard && !isIGSquare) logos = logos.slice(0, 1); /* ddcard橫也只取一張 */
+      /* ddcard橫：isMultiCenter → 多張，不限制；ddcard方（isIGSquare）→ 單張 */
 
       zone.style.background = 'transparent';
       zone.style.opacity    = '1';
@@ -197,6 +223,20 @@
             };
           })(img, hbnX, i);
           hbnX += 60; /* 先佔位，onload 後重排 */
+        });
+      } else if(isMultiCenter){
+        /* 多張置中並排（ddcard橫、IG橫等）：flex 置中，高度 fit logo範圍 */
+        zone.style.display        = 'flex';
+        zone.style.alignItems     = 'center';
+        zone.style.justifyContent = 'center';
+        zone.style.gap            = '15px';
+        zone.style.transformOrigin = '';
+        logos.forEach(function(lg){
+          var img = new Image(); img.className = 'bn-logo-img';
+          var roundCss = lg.round ? 'border-radius:10px;' : '';
+          img.style.cssText = 'height:100%;width:auto;max-width:none;object-fit:contain;pointer-events:none;flex-shrink:0;'+roundCss;
+          img.src = lg.src;
+          zone.appendChild(img);
         });
       } else if(isIGSquare){
         /* IG方：單張，依較大邊 contain 縮放，置中不裁切 */
@@ -272,6 +312,59 @@
         var box = pzone.querySelector('.bn-prod-box[data-id="'+id+'"]');
         if(box) box.style.zIndex = String(total - i + 10);
       });
+    }
+
+    /* 背景圖：放到 .背景色（如有）或畫布底層 */
+    if (e.data.type === 'bn-bg') {
+      /* 支援 .背景色 和 .bg 兩種 class 名稱 */
+      var bgContainer = document.querySelector('.背景色') || document.querySelector('.bg');
+      var bimg2 = document.getElementById('底圖');
+      var bgSrc   = e.data.src   || null;
+      var bgFit   = e.data.fit   || 'cover';
+      var bgScale = e.data.scale !== undefined ? e.data.scale : 100;
+      var bgX     = e.data.x     !== undefined ? e.data.x     : 50;
+      var bgY     = e.data.y     !== undefined ? e.data.y     : 50;
+
+      /* background-size 根據模式計算 */
+      var bgSize, bgPos;
+      if(bgFit === 'cover'){
+        bgSize = 'cover';
+        bgPos  = bgX + '% ' + bgY + '%';
+      } else if(bgFit === 'contain'){
+        bgSize = 'contain';
+        bgPos  = bgX + '% ' + bgY + '%';
+      } else {
+        /* 原尺寸（auto）：用 background-size 百分比，從中心縮放
+           技巧：position 設 50% 50%，size 設 scale%，
+           這樣圖片中心固定在容器中心，往外放大 */
+        bgSize = bgScale + '%';
+        /* 以中心為基準：position 固定在 50% 50%，
+           再用 background-position-x/y 微調偏移 */
+        var offsetX = bgX - 50;  /* -50~+50 */
+        var offsetY = bgY - 50;
+        bgPos = 'calc(50% + ' + offsetX + '%) calc(50% + ' + offsetY + '%)';
+      }
+
+      if(bgSrc){
+        if(bgContainer){
+          bgContainer.style.backgroundImage    = 'url(' + bgSrc + ')';
+          bgContainer.style.backgroundSize     = bgSize;
+          bgContainer.style.backgroundPosition = bgPos;
+          bgContainer.style.backgroundRepeat   = 'no-repeat';
+        } else {
+          if(bimg2){
+            bimg2.src = bgSrc;
+            bimg2.style.display = 'block';
+            bimg2.style.objectFit = bgFit === 'auto' ? 'none' : bgFit;
+            bimg2.style.objectPosition = bgPos;
+            if(bgFit === 'auto') bimg2.style.transform = 'scale(' + bgScale/100 + ')';
+          }
+        }
+      } else {
+        if(bgContainer) bgContainer.style.backgroundImage = '';
+        if(bimg2){ bimg2.src=''; bimg2.style.display='none'; bimg2.style.transform=''; }
+      }
+      return;
     }
 
     /* 底圖核對：疊加半透明底圖 */

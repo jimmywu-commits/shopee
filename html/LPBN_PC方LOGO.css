@@ -1,10 +1,19 @@
 .LPBN_PC方LOGO_jpg {
   position: absolute;
   left: 0px;
-  top: 609px;
+  top: 800px;
   width: 1200px;
   height: 400px;
-  z-index: 75;
+  z-index: 77;
+}
+.矩形_2 {
+  background-color: rgb(26, 71, 174);
+  position: absolute;
+  left: 668px;
+  top: -165px;
+  width: 70px;
+  height: 630px;
+  z-index: 76;
 }
 .商品範圍 {
   background-color: rgb(235, 104, 119);
@@ -14,7 +23,7 @@
   top: 22px;
   width: 466px;
   height: 354px;
-  z-index: 74;
+  z-index: 75;
 }
 .logo範圍 {
   background-color: rgb(235, 104, 119);
@@ -24,7 +33,7 @@
   top: 150px;
   width: 121px;
   height: 120px;
-  z-index: 73;
+  z-index: 74;
 }
 .主標 {
   font-size: 51px;
@@ -38,7 +47,7 @@
   position: absolute;
   left: 149.321px;
   top: 142.761px;
-  z-index: 72;
+  z-index: 73;
 }
 .副標 {
   font-size: 81.599px;
@@ -53,7 +62,7 @@
   position: absolute;
   left: 80.117px;
   top: 192.454px;
-  z-index: 71;
+  z-index: 72;
 }
 .日期 {
   font-size: 36px;
@@ -67,13 +76,13 @@
   position: absolute;
   left: 105.039px;
   top: 276.008px;
-  z-index: 70;
+  z-index: 71;
 }
 .常態標籤 {
   position: absolute;
   left: 0px;
-  top: -609px;
+  top: -800px;
   width: 2448px;
-  height: 3027px;
-  z-index: 69;
+  height: 2400px;
+  z-index: 70;
 }

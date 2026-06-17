@@ -392,10 +392,363 @@
         '  <button id="bn-prod-open-btn">＋ 上傳商品圖</button>',
         '  <div class="bn-prod-list" id="bn-prod-list"></div>',
         '</div>',
+        '<div class="s-section" style="margin-top:8px">背景圖</div>',
+        '<div class="bn-section">',
+        '  <label id="bn-bg-upload-label" style="display:block;width:100%;padding:8px;background:var(--bg2,#1c2333);border:1.5px dashed var(--border,#30363d);border-radius:7px;color:var(--text2,#8b949e);font-size:11px;cursor:pointer;text-align:center;transition:.15s;box-sizing:border-box">',
+        '    ⬆ 上傳背景圖（套用全部版位）',
+        '    <input type="file" id="bn-bg-inp" accept="image/*" style="display:none">',
+        '  </label>',
+        '  <div id="bn-bg-preview" style="display:none;margin-top:6px">',
+        '    <div style="position:relative;margin-bottom:4px">',
+        '      <img id="bn-bg-thumb" style="width:100%;max-height:60px;object-fit:cover;border-radius:5px;border:1px solid var(--border,#30363d)">',
+        '      <button id="bn-bg-clear" style="position:absolute;top:3px;right:3px;background:rgba(0,0,0,.6);border:none;color:#fff;border-radius:50%;width:18px;height:18px;font-size:11px;cursor:pointer;line-height:1">✕</button>',
+        '    </div>',
+        '    <div style="font-size:10px;color:var(--text3,#687090)">各版位可在右側獨立調整縮放和位置</div>',
+        '  </div>',
+        '</div>',
       ].join('');
       if(target)scroll.insertBefore(sec,target);else scroll.appendChild(sec);
       document.getElementById('bn-prod-open-btn').addEventListener('click',openModal);
       buildModal();
+
+      /* 背景圖上傳事件 */
+      var bgInp = document.getElementById('bn-bg-inp');
+      var bgPreview = document.getElementById('bn-bg-preview');
+      var bgThumb = document.getElementById('bn-bg-thumb');
+      var bgClear = document.getElementById('bn-bg-clear');
+      var bgLabel = document.getElementById('bn-bg-upload-label');
+
+      /* 每個版位獨立的背景圖狀態 */
+      var _bgStates = {}; /* { layoutId: {src,fit,scale,x,y} } */
+      var _bgActiveId = null; /* 目前編輯的版位 id */
+
+      function getBgState(id){
+        if(!_bgStates[id]) _bgStates[id] = {src:null,fit:'cover',scale:100,x:50,y:50};
+        return _bgStates[id];
+      }
+
+      function getIfrBnid(ifrEl){
+        try{
+          /* 先從 src query string 取 */
+          var qs = (ifrEl.src||'').split('?')[1]||'';
+          var id = new URLSearchParams(qs).get('bnid');
+          if(id) return String(id);
+          /* fallback：從 contentWindow 的 location 取 */
+          var loc = ifrEl.contentWindow && ifrEl.contentWindow.location;
+          if(loc){ id = new URLSearchParams(loc.search||'').get('bnid'); if(id) return String(id); }
+        }catch(_){}
+        return null;
+      }
+
+      function bgSendToIframe(ifrEl, id){
+        var st = getBgState(id);
+        try{ ifrEl.contentWindow.postMessage(
+          {type:'bn-bg', src:st.src, fit:st.fit, scale:st.scale, x:st.x, y:st.y}, '*');
+        }catch(_){}
+      }
+
+      function bgBroadcastOne(id){
+        document.querySelectorAll('.preview-block iframe').forEach(function(ifrEl){
+          if(getIfrBnid(ifrEl) === String(id)) bgSendToIframe(ifrEl, id);
+        });
+      }
+
+      function bgBroadcastAll(){
+        document.querySelectorAll('.preview-block iframe').forEach(function(ifrEl){
+          var id = getIfrBnid(ifrEl);
+          /* id 取不到時，用 _bgActiveId 的狀態廣播給所有 iframe */
+          var st = id ? getBgState(id) : (_bgActiveId ? getBgState(_bgActiveId) : null);
+          if(!st || !st.src) return;
+          try{
+            ifrEl.contentWindow.postMessage({
+              type:'bn-bg', src:st.src, fit:st.fit, scale:st.scale, x:st.x, y:st.y
+            }, '*');
+          }catch(_){}
+        });
+      }
+
+      function bgBroadcast(){
+        if(_bgActiveId){
+          bgBroadcastOne(_bgActiveId);
+        } else {
+          /* activeId 未設定，廣播所有版位 */
+          document.querySelectorAll('.preview-block iframe').forEach(function(ifrEl){
+            var id = getIfrBnid(ifrEl);
+            if(id) bgSendToIframe(ifrEl, id);
+          });
+        }
+      }
+
+      /* 舊的版位切換函式保留但不使用 */
+      function bindBgLayoutSwitch(){
+        document.querySelectorAll('.preview-block').forEach(function(block){
+          block.addEventListener('click', function(){
+            var ifrEl = block.querySelector('iframe');
+            if(!ifrEl) return;
+            var bnid = getIfrBnid(ifrEl);
+            if(!bnid) return;
+            _bgActiveId = bnid;
+            var st = getBgState(bnid);
+            /* 更新控制面板 */
+            var scaleEl = document.getElementById('bn-bg-scale');
+            var scaleValEl = document.getElementById('bn-bg-scale-val');
+            var xEl = document.getElementById('bn-bg-x');
+            var yEl = document.getElementById('bn-bg-y');
+            var thumbEl = document.getElementById('bn-bg-thumb');
+            var previewEl = document.getElementById('bn-bg-preview');
+            var labelEl = document.getElementById('bn-bg-upload-label');
+            if(scaleEl){ scaleEl.value = st.scale; }
+            if(scaleValEl){ scaleValEl.textContent = st.scale+'%'; }
+            if(xEl){ xEl.value = st.x; }
+            if(yEl){ yEl.value = st.y; }
+            if(thumbEl && st.src){ thumbEl.src = st.src; }
+            if(previewEl){ previewEl.style.display = st.src ? 'block' : 'none'; }
+            if(labelEl){ labelEl.style.display = st.src ? 'none' : 'block'; }
+            updateFitBtns(st.fit);
+            /* 標示選取中的版位 */
+            document.querySelectorAll('.preview-block').forEach(function(b){
+              b.style.outline = b===block ? '2px solid #4a90e2' : '';
+            });
+          });
+        });
+        /* 預設選第一個版位 */
+        var first = document.querySelector('.preview-block iframe');
+        if(first && !_bgActiveId){
+          var bnid = getIfrBnid(first);
+          if(bnid) _bgActiveId = bnid;
+        }
+      }
+
+      /* 每次 iframe ready 後重新綁定 */
+      var origOnIframeReady = window._bnOnIframeReady;
+      window._bnOnIframeReady = function(id){
+        if(typeof origOnIframeReady==='function') origOnIframeReady(id);
+        setTimeout(function(){
+          bindBgLayoutSwitch();
+          /* 把已有的狀態推給新 iframe */
+          var st = getBgState(id);
+          if(st.src){
+            document.querySelectorAll('.preview-block iframe').forEach(function(ifrEl){
+              var bnid = getIfrBnid(ifrEl);
+              if(bnid && String(bnid)===String(id)){
+                try{ ifrEl.contentWindow.postMessage({type:'bn-bg',src:st.src,fit:st.fit,scale:st.scale,x:st.x,y:st.y},'*');}catch(_){}
+              }
+            });
+          }
+        }, 300);
+      };
+
+      /* 吸取圖片左上角 5x5px 平均色 */
+      function sampleTopLeftColor(dataUrl, cb){
+        var img = new Image();
+        img.onload = function(){
+          var c = document.createElement('canvas');
+          c.width = 5; c.height = 5;
+          var ctx = c.getContext('2d');
+          ctx.drawImage(img, 0, 0, 5, 5);
+          var d = ctx.getImageData(0, 0, 5, 5).data;
+          var r=0,g=0,b=0;
+          for(var i=0;i<d.length;i+=4){ r+=d[i]; g+=d[i+1]; b+=d[i+2]; }
+          var n=d.length/4;
+          r=Math.round(r/n); g=Math.round(g/n); b=Math.round(b/n);
+          cb('#'+[r,g,b].map(function(v){ return ('0'+v.toString(16)).slice(-2); }).join(''));
+        };
+        img.src = dataUrl;
+      }
+
+      function updateFitBtns(panelEl, fitVal){
+        if(!panelEl) return;
+        panelEl.querySelectorAll('[data-fit]').forEach(function(btn){
+          var active = btn.dataset.fit === fitVal;
+          btn.style.background = active ? '#1f6feb' : 'rgba(255,255,255,.06)';
+          btn.style.color = active ? '#fff' : '#8b9dbf';
+        });
+      }
+
+      /* 建立每個 preview-block 右側的背景圖控制面板 */
+      function buildBgPanels(){
+        document.querySelectorAll('.preview-block').forEach(function(block){
+          if(block.querySelector('.bn-bg-panel')) {
+            /* 背景圖上傳後，更新面板顯示條件 */
+            return;
+          }
+          var ifrEl = block.querySelector('iframe');
+          if(!ifrEl) return;
+          var id = getIfrBnid(ifrEl);
+          if(!id) return;
+
+          var panel = document.createElement('div');
+          panel.className = 'bn-bg-panel';
+          panel.style.cssText = [
+            'position:fixed;width:150px;',
+            'background:#13161f;border:1px solid #2e3347;border-radius:8px;',
+            'padding:8px;font-size:10px;color:#8b9dbf;',
+            'display:none;z-index:10000;',
+            'box-shadow:0 4px 16px rgba(0,0,0,.4);'
+          ].join('');
+
+          /* 跟隨視窗捲動：固定在版位右側，垂直置中於視窗可見區域（不超出版位範圍）*/
+          function updatePanelPos(){
+            if(panel.style.display === 'none') return;
+            var blockRect = block.getBoundingClientRect();
+            var panelH = panel.offsetHeight || 200;
+            /* 水平：版位右側 8px */
+            var px = blockRect.right + 8;
+            /* 垂直：視窗中心，限制在版位範圍內 */
+            var viewMid = window.innerHeight / 2;
+            var py = viewMid - panelH / 2;
+            var minY = blockRect.top;
+            var maxY = blockRect.bottom - panelH;
+            py = Math.max(minY, Math.min(py, maxY));
+            panel.style.left = px + 'px';
+            panel.style.top  = py + 'px';
+          }
+          window.addEventListener('scroll', updatePanelPos, true);
+          panel.innerHTML = [
+            '<div style="font-weight:700;margin-bottom:6px;color:#dde3f0">背景圖調整</div>',
+            '<div style="display:flex;gap:3px;margin-bottom:6px">',
+            '  <button data-fit="cover"   style="flex:1;padding:3px;border-radius:4px;border:none;cursor:pointer;font-size:9px">填滿</button>',
+            '  <button data-fit="auto"    style="flex:1;padding:3px;border-radius:4px;border:none;cursor:pointer;font-size:9px">原尺寸</button>',
+            '</div>',
+            '<div style="margin-bottom:2px">縮放 <span class="bg-scale-val">100%</span></div>',
+            '<input type="range" class="bg-scale" min="0" max="400" value="100" style="width:100%;margin-bottom:4px">',
+            '<div style="margin-bottom:2px">水平位置</div>',
+            '<input type="range" class="bg-x" min="-100" max="200" value="50" style="width:100%;margin-bottom:4px">',
+            '<div style="margin-bottom:2px">垂直位置</div>',
+            '<input type="range" class="bg-y" min="-100" max="200" value="50" style="width:100%">',
+          ].join('');
+
+          /* 事件 */
+          function setSlider(el, disabled){
+            el.disabled = disabled;
+            el.style.opacity = disabled ? '0.3' : '1';
+            el.style.cursor  = disabled ? 'not-allowed' : 'pointer';
+          }
+          function updateSliderState(fitVal){
+            var scaleEl = panel.querySelector('.bg-scale');
+            var xEl     = panel.querySelector('.bg-x');
+            var yEl     = panel.querySelector('.bg-y');
+            if(fitVal === 'auto'){
+              /* 原尺寸：三個都可用 */
+              setSlider(scaleEl, false);
+              setSlider(xEl, false);
+              setSlider(yEl, false);
+            } else if(fitVal === 'cover'){
+              /* 填滿：圖片裁切填滿，水平/垂直可移動裁切位置，縮放無效 */
+              setSlider(scaleEl, true);
+              setSlider(xEl, false);
+              setSlider(yEl, false);
+}
+          }
+
+          panel.querySelectorAll('[data-fit]').forEach(function(btn){
+            btn.addEventListener('click', function(){
+              getBgState(id).fit = btn.dataset.fit;
+              updateFitBtns(panel, btn.dataset.fit);
+              updateSliderState(btn.dataset.fit);
+              bgBroadcastOne(id);
+            });
+          });
+          panel.querySelector('.bg-scale').addEventListener('input', function(){
+            var v = parseInt(this.value);
+            getBgState(id).scale = v;
+            panel.querySelector('.bg-scale-val').textContent = v + '%';
+            bgBroadcastOne(id);
+          });
+          panel.querySelector('.bg-x').addEventListener('input', function(){
+            getBgState(id).x = parseInt(this.value);
+            bgBroadcastOne(id);
+          });
+          panel.querySelector('.bg-y').addEventListener('input', function(){
+            getBgState(id).y = parseInt(this.value);
+            bgBroadcastOne(id);
+          });
+
+          /* 初始 fit 樣式（預設原尺寸）*/
+          updateFitBtns(panel, 'auto');
+          updateSliderState('auto');
+
+          /* hover 顯示面板：用 timer 延遲隱藏，避免移到面板途中消失 */
+          var _hideTimer = null;
+          function showPanel(){
+            var thumb = document.getElementById('bn-bg-thumb');
+            if(!thumb || !thumb.src) return;
+            clearTimeout(_hideTimer);
+            panel.style.display = 'block';
+            updatePanelPos();
+          }
+          function hidePanel(){
+            clearTimeout(_hideTimer);
+            _hideTimer = setTimeout(function(){ panel.style.display = 'none'; }, 300);
+          }
+          block.style.position = 'relative';
+          block.addEventListener('mouseenter', showPanel);
+          block.addEventListener('mouseleave', hidePanel);
+          panel.addEventListener('mouseenter', function(){ clearTimeout(_hideTimer); });
+          panel.addEventListener('mouseleave', hidePanel);
+
+          block.appendChild(panel);
+        });
+      }
+
+      if(bgInp){
+        bgInp.addEventListener('change', function(){
+          var file = this.files[0];
+          if(!file) return;
+          var reader = new FileReader();
+          reader.onload = function(e){
+            var dataUrl = e.target.result;
+            /* 把所有版位的 src 都設成這張圖，各自保留自己的 scale/x/y/fit */
+            document.querySelectorAll('.preview-block iframe').forEach(function(ifrEl){
+              var id = getIfrBnid(ifrEl);
+              if(!id) return;
+              var st = getBgState(id);
+              st.src = dataUrl;
+              /* 只有第一次上傳才重設位置，已有設定則保留 */
+              if(!st._initialized){
+                st.scale = 100; st.x = 50; st.y = 50; st.fit = 'auto';
+                st._initialized = true;
+              }
+            });
+            bgThumb.src = dataUrl;
+            bgPreview.style.display = 'block';
+            bgLabel.style.display = 'none';
+            /* 立即廣播給所有版位 */
+            bgBroadcastAll();
+            /* 建立/更新版位右側控制面板 */
+            setTimeout(buildBgPanels, 100);
+            /* 吸左上角顏色→自動套用背景色 */
+            sampleTopLeftColor(dataUrl, function(hex){
+              if(window.colorState && window.applyColor){
+                window.colorState.canvasBg = hex;
+                window.applyColor && (function(){
+                  /* 直接觸發 canvasBg 更新 */
+                  var prevKey = window.cpActiveKey;
+                  window.cpActiveKey = 'canvasBg';
+                  if(typeof window.applyColor === 'function') window.applyColor(hex);
+                  window.cpActiveKey = prevKey;
+                })();
+              }
+            });
+          };
+          reader.readAsDataURL(file);
+          bgInp.value = '';
+        });
+
+        bgClear.addEventListener('click', function(){
+          /* 清除所有版位的背景圖 */
+          Object.keys(_bgStates).forEach(function(id){ _bgStates[id].src = null; });
+          bgThumb.src = '';
+          bgPreview.style.display = 'none';
+          bgLabel.style.display = 'block';
+          bgBroadcastAll();
+          /* 隱藏所有控制面板 */
+          document.querySelectorAll('.bn-bg-panel').forEach(function(p){ p.style.display='none'; });
+        });
+
+        /* 初始化版位右側控制面板（iframe ready 後觸發） */
+        setTimeout(buildBgPanels, 1000);
+      }
     }
 
     function buildModal(){

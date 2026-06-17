@@ -297,7 +297,6 @@ html, body { height: 100%; background: var(--bg0); color: var(--text);
         <div class="empty-hint">點「重新掃描」載入排版</div>
       </div>
     </div>
-
     <div class="card">
       <h3>🖼 底圖核對</h3>
       <p style="font-size:12px;color:var(--text2);margin-bottom:12px">
@@ -388,8 +387,10 @@ html, body { height: 100%; background: var(--bg0); color: var(--text);
     <span id="cp-hex-label">色碼</span>
     <input id="cp-hex-input" maxlength="7" placeholder="#ffffff">
     <input type="color" id="cp-native">
+    <button id="cp-eyedrop" title="吸取螢幕顏色" style="background:none;border:1px solid #2e3347;border-radius:5px;color:#8b9dbf;cursor:pointer;padding:2px 6px;font-size:13px;flex-shrink:0" onclick="openEyeDropper()">💉</button>
   </div>
   <div id="cp-swatches"></div>
+  <div id="cp-swatch-groups" style="margin-top:8px;border-top:1px solid #2e3347;padding-top:8px"></div>
 </div>
 
 <script>
@@ -657,7 +658,7 @@ function onCheck(id, val) {
 /* ════════════════════════════════════════
    前台 — 畫版預覽
 ════════════════════════════════════════ */
-var PREVIEW_MAX = 800;   /* 寬或高最多 800px */
+var PREVIEW_MAX = 800;   /* 寬或高最多 Npx，可在後台調整 */
 
 function renderPreviews() {
   /* checked 裡沒記錄的視為 true（預設全勾） */
@@ -851,6 +852,8 @@ window.addEventListener('message', function (e) {
 
     /* 套用底圖核對 */
     setTimeout(applyBgCheckers, 100);
+    /* 套用背景圖（由 bn-editor-plugin 的 _bgStates 管理）*/
+    if(window._bnBgReadyCallback) window._bnBgReadyCallback(id);
   }
 });
 
@@ -896,6 +899,14 @@ function getTextData() {
 /* ════════════════════════════════════════
    色票選色器
 ════════════════════════════════════════ */
+/* 分組色票 */
+var SWATCH_GROUPS = [
+  { label: '蝦皮品牌色', colors: ['#ee4d2d','#f5a623','#f8e71c','#6bc0ec','#2b79c4','#2540b5'] },
+  { label: '文字常用', colors: ['#ffffff','#000000','#1a1a2e','#2d3748','#4a5568','#718096'] },
+  { label: 'CTA', colors: ['#c9e624','#0f7db6','#ff6b35','#00b894','#6c5ce7','#fd79a8'] },
+  { label: '淺色', colors: ['#f7faff','#eef3f8','#dbeafe','#d1fae5','#fef3c7','#fce7f3'] },
+];
+
 var SWATCHES = [
   '#ff6b35','#ff3b3b','#ff69b4','#e040fb',
   '#7c4dff','#3d5afe','#2b79c4','#00bcd4',
@@ -956,7 +967,7 @@ function renderColorPickers() {
     dot.addEventListener('click', (function(key){ return function(e){ openPanel(key, e); }; })(k));
   });
 
-  /* 建色票 */
+  /* 建快速色票（原有） */
   var sw = document.getElementById('cp-swatches');
   sw.innerHTML = '';
   SWATCHES.forEach(function(c) {
@@ -968,6 +979,29 @@ function renderColorPickers() {
     sw.appendChild(s);
   });
 
+  /* 建分組色票 */
+  var sg = document.getElementById('cp-swatch-groups');
+  if(sg){
+    sg.innerHTML = '';
+    SWATCH_GROUPS.forEach(function(group){
+      var lbl = document.createElement('div');
+      lbl.style.cssText = 'font-size:9px;color:#687090;margin-bottom:4px;margin-top:4px';
+      lbl.textContent = group.label;
+      sg.appendChild(lbl);
+      var row = document.createElement('div');
+      row.style.cssText = 'display:flex;flex-wrap:wrap;gap:5px;margin-bottom:4px';
+      group.colors.forEach(function(c){
+        var s = document.createElement('div');
+        s.className = 'cp-swatch';
+        s.style.background = c;
+        s.title = c;
+        s.addEventListener('click', function(){ applyColor(c); });
+        row.appendChild(s);
+      });
+      sg.appendChild(row);
+    });
+  }
+
   /* hex input 事件 */
   document.getElementById('cp-hex-input').addEventListener('input', function() {
     var v = this.value.trim();
@@ -976,6 +1010,18 @@ function renderColorPickers() {
     if (native && /^#[0-9a-fA-F]{6}$/.test(v)) native.value = v;
     if (/^#[0-9a-fA-F]{6}$/.test(v)) applyColor(v);
   });
+
+  /* cp-native 原生色彩選擇器事件（只綁一次） */
+  var nativeEl = document.getElementById('cp-native');
+  if(nativeEl && !nativeEl.dataset.bound){
+    nativeEl.dataset.bound = '1';
+    nativeEl.addEventListener('input', function(){
+      applyColor(this.value);
+    });
+    nativeEl.addEventListener('change', function(){
+      applyColor(this.value);
+    });
+  }
 }
 
 function openPanel(key, e) {
@@ -1030,6 +1076,18 @@ document.addEventListener('click', function(e) {
   if (panel && !panel.contains(e.target)) panel.classList.remove('open');
 });
 
+/* EyeDropper 吸管 */
+function openEyeDropper(){
+  if(!window.EyeDropper){
+    alert('你的瀏覽器不支援吸管功能（需要 Chrome 95+）');
+    return;
+  }
+  var ed = new EyeDropper();
+  ed.open().then(function(result){
+    applyColor(result.sRGBHex);
+  }).catch(function(){});
+}
+
 /* banword 警告（inline 顯示在輸入框旁） */
 function showBanwordWarningInline(inp, msg){
   var wid = '_bw_warn_'+inp.id;
@@ -1052,6 +1110,51 @@ function showBanwordWarningInline(inp, msg){
   el.style.display = 'block';
   clearTimeout(el._timer);
   el._timer = setTimeout(function(){ el.style.display='none'; }, 4000);
+}
+
+/* ════════════════════════════════════════
+   背景圖上傳
+════════════════════════════════════════ */
+var _bgDataUrl = null;
+
+function broadcastBg(src){
+  document.querySelectorAll('.preview-block iframe').forEach(function(iframe){
+    try{
+      iframe.contentWindow.postMessage({ type:'bn-bg', src: src||null }, '*');
+    }catch(_){}
+  });
+}
+
+function initBgUpload(){
+  var inp = document.getElementById('bg-upload-input');
+  var clearBtn = document.getElementById('bg-clear-btn');
+  var nameEl = document.getElementById('bg-upload-name');
+  var previewWrap = document.getElementById('bg-preview-wrap');
+  var previewImg = document.getElementById('bg-preview-img');
+  if(!inp) return;
+
+  inp.addEventListener('change', function(){
+    var file = this.files[0];
+    if(!file) return;
+    var reader = new FileReader();
+    reader.onload = function(e){
+      _bgDataUrl = e.target.result;
+      nameEl.textContent = file.name;
+      previewImg.src = _bgDataUrl;
+      previewWrap.style.display = 'block';
+      broadcastBg(_bgDataUrl);
+    };
+    reader.readAsDataURL(file);
+    inp.value = '';
+  });
+
+  clearBtn.addEventListener('click', function(){
+    _bgDataUrl = null;
+    nameEl.textContent = '';
+    previewWrap.style.display = 'none';
+    previewImg.src = '';
+    broadcastBg(null);
+  });
 }
 
 /* ════════════════════════════════════════
@@ -1171,6 +1274,7 @@ renderColorPickers();
 switchTab('frontend');
 /* 掃描排版（非同步，完成後 callback 裡會呼叫 renderPreviews） */
 scanLayouts();
+initBgUpload();
 
 /* 暴露函式給 bn-state-plugin */
 window.renderColorPickers = renderColorPickers;

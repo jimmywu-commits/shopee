@@ -7,7 +7,7 @@
 /* ── 畫布設定 ── */
 :root {
   --canvas-w:  1200px;
-  --canvas-h:  391px;
+  --canvas-h: 391px;
   --canvas-bg: #6ec6e8;
   --bg-img:    ;
 
@@ -18,7 +18,7 @@
    ★ 文字內容不可含逗號「,」（逗號是圖層分隔符）
       例：$1,023 → 改寫 $1023
   */
-  --layers: "商品範圍|,logo範圍|,cta底|,逛逛去|逛逛去,cta三角標|,主標|主標$1023起,日期|5/18 12:00 - 5/25 11:59 中文,副標|副標$1023起";
+  --layers: "bg|,左側保護|,漸層左|,商品範圍|,logo範圍|,cta底|,逛逛去|逛逛去,cta三角標|,主標|主標$1023起,日期|5/18 12:00 - 5/25 11:59 中文,副標|副標$1023起";
 }
 
 /* ── logo範圍、商品範圍：opacity 改 rgba，避免影響子元素 ──
@@ -58,3 +58,30 @@
 .副標        { left: 90px;     top: 224.13px; line-height: 1; white-space: nowrap; }
 .日期        { left: 90px;     top: 298.76px; line-height: 1; white-space: nowrap; }
 .逛逛去 { left: 1064.52px; top: 346.73px; line-height: 1; white-space: nowrap; letter-spacing: 0.05em; }
+
+/* ── 左側保護色塊 ── */
+.左側保護 {
+  position: absolute;
+  left: 0; top: 0;
+  width: 602px; height: 391px;
+  background: #4fb5eb;
+  pointer-events: none; z-index: 3;
+}
+
+/* ── 漸層左：起點 600px ── */
+.漸層左 {
+  position: absolute;
+  left: 600px; top: 0;
+  width: 70px; height: 391px;
+  background: linear-gradient(to right, #4fb5eb 0%, transparent 100%);
+  pointer-events: none; z-index: 3;
+  --grad-dir: to right;
+}
+/* ── .bg：全畫布底色（背景圖容器）── */
+.bg {
+  position: absolute;
+  left: 0; top: 0;
+  width: 1200px; height: 391px;
+  background-color: #4fb5eb;
+  z-index: 2;
+}
