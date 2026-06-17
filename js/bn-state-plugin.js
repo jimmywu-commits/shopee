@@ -378,10 +378,55 @@
     });
     ulWrap.appendChild(ulInp);
 
+    /* 清除本機暫存按鈕 */
+    var clrBar=document.createElement('div');
+    clrBar.style.cssText='padding:0 14px 10px;flex-shrink:0;';
+    var clrBtn=document.createElement('button');
+    clrBtn.textContent='🗑 清除本機暫存';
+    clrBtn.style.cssText='width:100%;padding:7px 6px;background:transparent;border:1px solid var(--border,#30363d);border-radius:7px;color:#ef4444;font-size:11px;cursor:pointer;transition:.12s;text-align:center;';
+    clrBtn.addEventListener('mouseenter',function(){ clrBtn.style.background='rgba(239,68,68,.08)'; });
+    clrBtn.addEventListener('mouseleave',function(){ clrBtn.style.background='transparent'; });
+    clrBtn.addEventListener('click',function(){
+      if(!confirm('確定要清除本機暫存？畫面將回到預設值。')) return;
+      try{
+        /* 1. 清除 localStorage */
+        Object.keys(localStorage).filter(function(k){ return k.startsWith('bn'); })
+          .forEach(function(k){ localStorage.removeItem(k); });
+
+        /* 2. 文字輸入框還原預設 value，觸發 broadcastText */
+        var defaults = {
+          'txt-brand': '品牌名不放圖$9字折內',
+          'txt-main':  '滿$200享9折',
+          'txt-sub':   '副標$500折起',
+          'txt-date':  '5/18 12:00 - 5/25 11:59 期間限定'
+        };
+        Object.keys(defaults).forEach(function(id){
+          var el = document.getElementById(id);
+          if(el){ el.value = defaults[id]; el.dispatchEvent(new Event('input',{bubbles:true})); }
+        });
+
+        /* 3. 顏色還原預設 */
+        if(global.colorState){
+          Object.assign(global.colorState, {
+            mainText:'#2b79c4', subText:'#2540b5', dateText:'#ffffff',
+            brandText:'#ffffff', canvasBg:'#6bc0ec', ctaText:'#6bc0ec', ctaBg:'#ffffff'
+          });
+          if(typeof global.renderColorPickers==='function') global.renderColorPickers();
+          if(typeof global.broadcastColors==='function') global.broadcastColors();
+        }
+
+        showToast('已還原為預設值','ok');
+      }catch(e){ showToast('清除失敗：'+e.message,'err'); }
+    });
+    clrBar.appendChild(clrBtn);
+
     bar.appendChild(dlBtn); bar.appendChild(ulWrap);
     var dlBar=document.getElementById('bn-download-bar');
     if(dlBar&&dlBar.nextSibling) sidebar.insertBefore(bar,dlBar.nextSibling);
     else sidebar.appendChild(bar);
+    /* 清除按鈕加在暫存列下面 */
+    if(bar.nextSibling) sidebar.insertBefore(clrBar,bar.nextSibling);
+    else sidebar.appendChild(clrBar);
   }
 
   /* ══════════════════════════════════════
