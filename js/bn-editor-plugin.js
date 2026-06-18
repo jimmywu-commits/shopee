@@ -1154,26 +1154,58 @@
       if(!sidebar||document.getElementById('bn-download-bar'))return;
       var bar=document.createElement('div');bar.id='bn-download-bar';
       bar.innerHTML='<button class="bn-dl-btn" id="bn-dl-all">⬇ 下載全部勾選畫版</button><div class="bn-dl-progress" id="bn-dl-progress"></div>';
-      var ew=sidebar.querySelector('.export-wrap');
-      if(ew)sidebar.insertBefore(bar,ew);else sidebar.appendChild(bar);
+      /* 加到 sidebar 最底部（sidebar-scroll 下方）*/
+      var scroll=document.getElementById('sidebar-scroll');
+      if(scroll && scroll.nextSibling) sidebar.insertBefore(bar, scroll.nextSibling);
+      else sidebar.appendChild(bar);
       document.getElementById('bn-dl-all').addEventListener('click',downloadAll);
     }
 
     function downloadAll(){
-      var iframes=document.querySelectorAll('.preview-block iframe');
-      if(!iframes.length){setProgress('沒有勾選的排版');return;}
+      /* 下載所有顯示中的版位（序列下載，避免 html2canvas 互相干擾）*/
+      var iframes=Array.from(document.querySelectorAll('.preview-block iframe'));
+      if(!iframes.length){setProgress('沒有版位可下載');return;}
       var btn=document.getElementById('bn-dl-all');btn.disabled=true;
-      var total=iframes.length,done=0;setProgress('準備中…');
-      iframes.forEach(function(iframe){
+      var total=iframes.length,done=0;
+      setProgress('準備下載 '+total+' 個版位…');
+
+      function downloadNext(idx){
+        if(idx>=total){
+          btn.disabled=false;
+          setTimeout(function(){setProgress('');},2500);
+          return;
+        }
+        var iframe=iframes[idx];
         var blockEl=iframe.closest('.preview-block');
         var name=(blockEl?(blockEl.querySelector('.pname')||{}).textContent||'layout':'layout');
-        name=name.trim().replace(/[\\/:*?"<>|]/g,'_');
-        var msgId='dl_'+Date.now()+'_'+Math.random();
-        function onMsg(e){if(!e.data||e.data.type!=='bn-snapshot'||e.data.msgId!==msgId)return;window.removeEventListener('message',onMsg);if(e.data.dataUrl)triggerDownload(e.data.dataUrl,name+'.png');done++;setProgress('已下載 '+done+' / '+total);if(done>=total){btn.disabled=false;setTimeout(function(){setProgress('');},2500);}}
-        window.addEventListener('message',onMsg);
-        try{iframe.contentWindow.postMessage({type:'bn-capture',msgId:msgId},'*');}catch(e){done++;}
-        setTimeout(function(){window.removeEventListener('message',onMsg);if(done<total){done++;setProgress('已下載 '+done+' / '+total+'（部分逾時）');if(done>=total){btn.disabled=false;setTimeout(function(){setProgress('');},2500);}}},6000);
-      });
+        name=name.trim().replace(/[\/\\:*?"<>|]/g,'_');
+        /* 每個 iteration 獨立的 msgId（用 IIFE 隔離）*/
+        (function(iframeEl, fileName, i){
+          var msgId='dl_'+Date.now()+'_'+i;
+          var timer;
+          function onMsg(e){
+            if(!e.data||e.data.type!=='bn-snapshot'||e.data.msgId!==msgId)return;
+            clearTimeout(timer);
+            window.removeEventListener('message',onMsg);
+            if(e.data.dataUrl) triggerDownload(e.data.dataUrl, fileName+'.png');
+            done++;
+            setProgress('已下載 '+done+' / '+total);
+            downloadNext(i+1);
+          }
+          window.addEventListener('message',onMsg);
+          try{ iframeEl.contentWindow.postMessage({type:'bn-capture',msgId:msgId},'*'); }
+          catch(e){ done++; downloadNext(i+1); return; }
+          /* 10秒 timeout */
+          timer=setTimeout(function(){
+            window.removeEventListener('message',onMsg);
+            done++;
+            setProgress('已下載 '+done+' / '+total+'（部分逾時）');
+            downloadNext(i+1);
+          },10000);
+        })(iframe, name, idx);
+      }
+
+      downloadNext(0);
     }
     function setProgress(msg){var el=document.getElementById('bn-dl-progress');if(el)el.textContent=msg;}
     function triggerDownload(dataUrl,filename){var a=document.createElement('a');a.href=dataUrl;a.download=filename;a.style.display='none';document.body.appendChild(a);a.click();setTimeout(function(){a.remove();},1000);}

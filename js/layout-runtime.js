@@ -19,7 +19,18 @@
   var loaded = 0;
   function onBothLoaded() {
     loaded++;
-    if (loaded >= 2) requestAnimationFrame(function(){ requestAnimationFrame(init); });
+    if (loaded < 2) return;
+    /* CSS 兩個都載完後，等字型也載完再 init
+       document.fonts.ready 在字型下載完成後 resolve，
+       保證 scrollWidth / getComputedStyle 拿到的是正確字型的量測值 */
+    function doInit() {
+      requestAnimationFrame(function(){ requestAnimationFrame(init); });
+    }
+    if (document.fonts && document.fonts.ready) {
+      document.fonts.ready.then(doInit);
+    } else {
+      doInit();
+    }
   }
   loadCSS(fname + '.css',        onBothLoaded);
   loadCSS(fname + '.config.css', onBothLoaded);
@@ -82,6 +93,92 @@
     if (window.parent !== window && urlId)
       window.parent.postMessage({type:'bn-iframe-ready',id:urlId,w:W,h:H},'*');
 
+    /* Search_Image：動態置中 */
+    if(fname.toLowerCase().indexOf('search_image') !== -1){
+      /* Search_Image2：兩個 logo 各自垂直置中，水平位置由 PS CSS 決定 */
+      if(fname.toLowerCase().indexOf('search_image2') !== -1 || fname.toLowerCase().indexOf('search_image3') !== -1){
+        var _si23H = H;
+        /* 所有 logo 範圍垂直置中 */
+        ['logo範圍_左','logo範圍_中','logo範圍_右'].forEach(function(cls){
+          var el = canvas.querySelector('.'+cls);
+          if(!el) return;
+          var elH = parseFloat(window.getComputedStyle(el).height) || 121;
+          el.style.top = ((_si23H - elH) / 2) + 'px';
+        });
+        /* 間隔線垂直置中（支援單名和左右命名）*/
+        ['.logo間隔直線','.logo間隔直線_左','.logo間隔直線_右'].forEach(function(sel){
+          var el = canvas.querySelector(sel);
+          if(!el) return;
+          var elH = parseFloat(window.getComputedStyle(el).height) || 55;
+          el.style.top = ((_si23H - elH) / 2) + 'px';
+        });
+        return;
+      }
+      var _siLogo = canvas.querySelector('.logo範圍');
+      var _siText = canvas.querySelector('.副標案型七字內');
+      if(_siLogo && _siText){
+        var _siCanvasH = H;
+        /* 文案區：紅底右邊緣 ~ CTA 左邊緣 */
+        var _siRedEl  = canvas.querySelector('.蝦皮商城logo紅底');
+        var _siCtaEl  = canvas.querySelector('.cta圓底');
+        var _siAreaLeft  = _siRedEl  ?
+          parseFloat(window.getComputedStyle(_siRedEl).left) + parseFloat(window.getComputedStyle(_siRedEl).width) : 299;
+        var _siAreaRight = _siCtaEl  ?
+          parseFloat(window.getComputedStyle(_siCtaEl).left) : 1007;
+        var _siAreaCenter = (_siAreaLeft + _siAreaRight) / 2;
+
+        /* logo 固定尺寸（從 CSS 讀，之後不變）*/
+        var _siLogoW = parseFloat(window.getComputedStyle(_siLogo).width)  || 120;
+        var _siLogoH = parseFloat(window.getComputedStyle(_siLogo).height) || 121;
+
+        function siLayout(){
+          /* canvas 縮放比例（用於把 getBoundingClientRect 轉回原始座標）*/
+          var m = canvas.style.transform && canvas.style.transform.match(/scale\(([\d.]+)\)/);
+          var scale = m ? parseFloat(m[1]) : 1;
+
+          /* 副標實際視覺寬高（原始座標）
+             getBoundingClientRect 回傳的是螢幕像素，除以 scale 得原始大小
+             但文字有 matrix transform，用 scrollWidth 更準確 */
+          var textW = _siText.scrollWidth;
+          /* matrix scale 也會影響視覺寬度 */
+          var matStyle = window.getComputedStyle(_siText).transform;
+          var matM = matStyle && matStyle.match(/matrix\(([^,]+)/);
+          var matScale = matM ? parseFloat(matM[1]) : 1;
+          var visTextW = textW * matScale;
+
+          var visTextH = parseFloat(window.getComputedStyle(_siText).fontSize) * matScale;
+
+          /* 整體寬度：logo + 26px 間距 + 副標視覺寬 */
+          var totalW = _siLogoW + 26 + visTextW;
+
+          /* 左右置中在文案區 */
+          var startX = _siAreaCenter - totalW / 2;
+          _siLogo.style.left = startX + 'px';
+          _siText.style.left = (startX + _siLogoW + 26) + 'px';
+
+          /* 上下置中：logo 和文字各自垂直置中 */
+          _siLogo.style.top = ((_siCanvasH - _siLogoH) / 2) + 'px';
+          _siText.style.top = ((_siCanvasH - visTextH) / 2) + 'px';
+        }
+
+        /* 等字型載完再算位置，避免 fallback 字型造成 scrollWidth 偏差 */
+        window._siRelayout = siLayout;
+        function runSiLayout() {
+          if (document.fonts && document.fonts.ready) {
+            document.fonts.ready.then(function() {
+              siLayout();
+            });
+          } else {
+            /* 不支援 document.fonts：延遲兩幀保守等待 */
+            requestAnimationFrame(function(){
+              requestAnimationFrame(siLayout);
+            });
+          }
+        }
+        runSiLayout();
+      }
+    } /* end search_image */
+
     /* 啟用畫布文字直接編輯 */
     attachEditableToAll();
   }
@@ -98,6 +195,24 @@
           if(ct) ct.textContent = d[cls];
           else if(!el.children.length) el.textContent = d[cls];
         });
+        /* Search_Image：副標案型七字內 連動副標（雙向同步）*/
+        if(cls === '副標'){
+          var siEl = document.querySelector('.副標案型七字內');
+          if(siEl && !siEl.children.length) {
+            siEl.textContent = d[cls];
+            if(typeof window._siRelayout === 'function'){
+              if(document.fonts && document.fonts.ready){
+                document.fonts.ready.then(function(){ window._siRelayout(); });
+              } else {
+                setTimeout(window._siRelayout, 150);
+              }
+            }
+          }
+        }
+        if(cls === '副標案型七字內'){
+          var subEl = document.querySelector('.副標');
+          /* 副標案型七字內 編輯時不反向同步到其他版位的 .副標，由 bn-text-update 統一處理 */
+        }
       });
     }
 
@@ -122,12 +237,22 @@
         var bg = cv.querySelector('.背景色') || cv.querySelector('.bg');
         if(bg) bg.style.backgroundColor = c.canvasBg; else cv.style.background = c.canvasBg;
         /* 漸層顏色跟著背景色同步（讀 CSS --grad-dir 變數）*/
+        /* 漸層顏色同步：transparent → rgba(r,g,b,0) 避免截圖變黑 */
+        function _toRgba0rt(color){
+          var m=color.match(/rgb[a]?\((\d+),\s*(\d+),\s*(\d+)/);
+          if(m) return 'rgba('+m[1]+','+m[2]+','+m[3]+',0)';
+          var h=color.replace('#','');
+          if(h.length===3) h=h[0]+h[0]+h[1]+h[1]+h[2]+h[2];
+          if(h.length===6) return 'rgba('+parseInt(h.slice(0,2),16)+','+parseInt(h.slice(2,4),16)+','+parseInt(h.slice(4,6),16)+',0)';
+          return 'rgba(0,0,0,0)';
+        }
+        var _dirsRt = {'漸層左':'to right','漸層右':'to left','漸層上':'to bottom','漸層下':'to top'};
         ['漸層左','漸層右','漸層上','漸層下'].forEach(function(cls){
           var gel = cv.querySelector('.'+cls);
           if(!gel) return;
-          var gradDir = window.getComputedStyle(gel).getPropertyValue('--grad-dir').trim();
-          if(gradDir){
-            gel.style.background = 'linear-gradient(' + gradDir + ', ' + c.canvasBg + ' 0%, transparent 100%)';
+          var dir = _dirsRt[cls] || window.getComputedStyle(gel).getPropertyValue('--grad-dir').trim();
+          if(dir){
+            gel.style.background = 'linear-gradient(' + dir + ', ' + c.canvasBg + ' 0%, ' + _toRgba0rt(c.canvasBg) + ' 100%)';
           }
         });
         /* 所有保護色塊跟著背景色同步 */
@@ -141,6 +266,8 @@
       }
       function ac(cls,col){ if(!col)return; document.querySelectorAll('.'+cls).forEach(function(el){ if(!el.querySelector('.cta-text')) el.style.color=col; }); }
       ac('主標',c.mainText); ac('副標',c.subText); ac('日期',c.dateText); ac('品牌名',c.brandText);
+      /* Search_Image：副標案型七字內 顏色鎖定白色，不跟 subText 連動 */
+      document.querySelectorAll('.副標案型七字內').forEach(function(el){ el.style.color='#ffffff'; });
       document.querySelectorAll('.cta-text').forEach(function(el){ if(c.ctaText) el.style.color=c.ctaText; });
       document.querySelectorAll('.cta-arrow').forEach(function(el){ if(c.ctaText) el.style.borderLeftColor=c.ctaText; });
       /* CTA 底色：.逛逛去按鈕 / .cta底 / .逛逛去底 */
@@ -154,6 +281,33 @@
 
     if (e.data.type === 'bn-logo' || e.data.type === 'bn-logos') {
       var zone = null;
+      /* Search_Image2：依 logo index 分左右 zone */
+      var _fname2 = decodeURIComponent(location.pathname.split('/').pop()).toLowerCase();
+      if(_fname2.indexOf('search_image2') !== -1 || _fname2.indexOf('search_image3') !== -1){
+        var logos2 = Array.isArray(e.data.logos) ? e.data.logos :
+                     (e.data.src ? [e.data] : []);
+        var _is3 = _fname2.indexOf('search_image3') !== -1;
+        /* 2logo：左/右；3logo：左/中/右 */
+        var _zoneNames = _is3
+          ? ['logo範圍_左','logo範圍_中','logo範圍_右']
+          : ['logo範圍_左','logo範圍_右'];
+        function _siPlaceLogo(zn, lg){
+          if(!zn||!lg) return;
+          Array.from(zn.querySelectorAll('img.bn-logo-img')).forEach(function(i){i.remove();});
+          zn.style.background = 'transparent'; zn.style.opacity = '1'; zn.style.overflow = 'hidden';
+          zn.style.display = 'flex'; zn.style.alignItems = 'center'; zn.style.justifyContent = 'center';
+          var img = new Image(); img.className = 'bn-logo-img';
+          img.style.cssText = 'max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain;pointer-events:none;display:block;';
+          if(lg.round) img.style.borderRadius = '50%';
+          img.src = lg.src;
+          zn.appendChild(img);
+        }
+        _zoneNames.forEach(function(cls, i){
+          var zn = document.querySelector('.'+cls);
+          if(logos2[i]) _siPlaceLogo(zn, logos2[i]);
+        });
+        return;
+      }
       ['logo範圍','LOGO範圍'].forEach(function(n){ if(!zone){ var z=document.querySelector('.'+n); if(z) zone=z; } });
       if (!zone) return;
 
@@ -173,8 +327,9 @@
       var isHBN = _isLeftAlign;
       /* 多張置中：logo範圍是橫條 且 不是左對齊版位 → flex 置中並排（ddcard橫、IG橫等）*/
       var isMultiCenter = !isHBN && !!_logoIsWide;
-      /* IG方/ddcard方：不是 HBN、不是橫條、但檔名含「方」→ 單張正方 */
-      var isIGSquare = !isHBN && !isMultiCenter && fn.indexOf('方') !== -1;
+      /* IG方/ddcard方/Search_Image：單張 contain 置中 */
+      var isIGSquare = !isHBN && !isMultiCenter &&
+        (fn.indexOf('方') !== -1 || fnLow.indexOf('search_image') !== -1);
       /* ddcard：檔名含 ddcard */
       var isDDCard = fnLow.indexOf('ddcard') !== -1;
 
@@ -250,6 +405,15 @@
         /* max-width/max-height 100% + width/height auto = contain 效果，不裁切 */
         img0.style.cssText = 'max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain;pointer-events:none;display:block;'+roundCss0;
         img0.src = lg0.src;
+        img0.onload = function(){
+          if(typeof window._siRelayout === 'function'){
+              if(document.fonts && document.fonts.ready){
+                document.fonts.ready.then(function(){ window._siRelayout(); });
+              } else {
+                setTimeout(window._siRelayout, 150);
+              }
+            }
+        };
         zone.appendChild(img0);
       } else {
         /* IG橫：flex 置中並排，間距 15px */
@@ -395,7 +559,19 @@
     }
 
     if (e.data.type === 'bn-capture') {
+      var _cv = document.getElementById('canvas');
+
+      /* 隱藏所有編輯用控制元素（縮放點等），截完再還原 */
+      var _editEls = [];
+      if(_cv){
+        _cv.querySelectorAll('[data-corner]').forEach(function(h){
+          _editEls.push({el:h, disp:h.style.display});
+          h.style.display = 'none';
+        });
+      }
+
       captureCanvas(function(dataUrl){
+        _editEls.forEach(function(o){ o.el.style.display = o.disp; });
         window.parent.postMessage({type:'bn-snapshot',msgId:e.data.msgId,dataUrl:dataUrl},'*');
       });
     }
@@ -516,7 +692,6 @@
     });
   }
 
-
   function getProductZone(){
     var names=['商品範圍','商品圖範圍'];
     for(var i=0;i<names.length;i++){ var z=document.querySelector('.'+names[i]); if(z)return z; }
@@ -573,9 +748,8 @@
     },{passive:false});
   }
 
-
   /* ── 畫布文字直接點擊編輯 ── */
-  var EDITABLE_CLASSES = ['主標','副標','日期','品牌名'];
+  var EDITABLE_CLASSES = ['主標','副標','副標案型七字內','日期','品牌名'];
   var _dollarExemptSet = {};   /* {className: true} */
 
   /* ── 字數計算（中文1字，英數0.5字） ── */
@@ -888,11 +1062,44 @@
   function doCapture(cb){
     var cv=document.getElementById('canvas');
     if(!cv){if(cb)cb(null);return;}
-    html2canvas(cv,{scale:1,useCORS:true,allowTaint:true,backgroundColor:null,
-      width:parseFloat(cv.style.width)||cv.offsetWidth,
-      height:parseFloat(cv.style.height)||cv.offsetHeight,logging:false})
-    .then(function(c){if(cb)cb(c.toDataURL('image/png'));})
-    .catch(function(){if(cb)cb(null);});
+    var W = parseFloat(cv.style.width)  || cv.offsetWidth;
+    var H = parseFloat(cv.style.height) || cv.offsetHeight;
+    if(!W||!H){if(cb)cb(null);return;}
+
+    /* 截圖策略：所見即所得
+       直接對目前已渲染的畫面截圖，不移動 canvas、不重算任何位置。
+       用目前的 scale 反推，讓 html2canvas 輸出符合設計原始尺寸。*/
+
+    var scaleMatch = cv.style.transform && cv.style.transform.match(/scale\(([\d.]+)\)/);
+    var scale = scaleMatch ? parseFloat(scaleMatch[1]) : 1;
+
+    var overlay = document.getElementById('_bn_bg_overlay');
+    if(overlay) overlay.style.display = 'none';
+
+    requestAnimationFrame(function(){
+      requestAnimationFrame(function(){
+        html2canvas(cv,{
+          scale: 1 / scale,   /* 把螢幕縮放還原回設計原始尺寸 */
+          useCORS: true,
+          allowTaint: true,
+          backgroundColor: null,
+          width: W,
+          height: H,
+          logging: false
+        })
+        .then(function(c){
+          if(overlay) overlay.style.display = '';
+          var out = document.createElement('canvas');
+          out.width = W; out.height = H;
+          out.getContext('2d').drawImage(c, 0, 0, out.width, out.height);
+          if(cb) cb(out.toDataURL('image/png'));
+        })
+        .catch(function(){
+          if(overlay) overlay.style.display = '';
+          if(cb) cb(null);
+        });
+      });
+    });
   }
 
   function applyColor(cls,color){

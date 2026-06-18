@@ -362,7 +362,13 @@ html, body { height: 100%; background: var(--bg0); color: var(--text);
         <div id="color-rows"></div>
 
         <!-- 排版勾選 -->
-        <div class="s-section" style="margin-top:16px">排版選擇</div>
+        <div class="s-section" style="margin-top:16px;display:flex;align-items:center;justify-content:space-between;padding-right:10px">
+          <span>排版選擇</span>
+          <span style="display:flex;gap:4px">
+            <button onclick="checkAll(true)"  style="font-size:9px;padding:1px 5px;background:var(--bg2);border:1px solid var(--border);border-radius:3px;color:var(--text2);cursor:pointer;text-transform:none;letter-spacing:0">全選</button>
+            <button onclick="checkAll(false)" style="font-size:9px;padding:1px 5px;background:var(--bg2);border:1px solid var(--border);border-radius:3px;color:var(--text2);cursor:pointer;text-transform:none;letter-spacing:0">全消</button>
+          </span>
+        </div>
         <div id="layout-checks">
           <div class="no-layouts">請先在後台新增排版</div>
         </div>
@@ -652,6 +658,13 @@ function renderChecks() {
 
 function onCheck(id, val) {
   checked[id] = val;
+  renderPreviews();
+}
+
+function checkAll(val) {
+  var layouts = loadLayouts().filter(function(l){ return l.enabled; });
+  layouts.forEach(function(l){ checked[l.id] = val; });
+  renderChecks();
   renderPreviews();
 }
 

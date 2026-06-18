@@ -16,7 +16,10 @@ var BN_LAYOUTS = [
   "FB_POST_橫LOGO.html",
   "LPBN_APP方LOGO.html",
   "LPBN_APP橫LOGO.html",
-  "LPBN_PC橫LOGO.html"
+  "LPBN_PC橫LOGO.html",
+  "Search_Image1logo.html",
+  "Search_Image2logo.html",
+  "Search_Image3logo.html"
 ];
 
 /* ★ 這行不要刪 */

@@ -2,7 +2,7 @@
 /*!
  * HBN Product Editor Plugin
  * External plugin replacement for HBN product image editor.
- * Requires bg.png in the same folder.
+ * Requires img/bg.png in the html/img/ folder.
  */
 (function(){
   if (window.__HBN_PRODUCT_EDITOR_PLUGIN__) return;
@@ -389,8 +389,8 @@
     function loadShadowImage(cb){
       if(shadowLoaded){ cb && cb(); return; }
       shadowImg.onload = ()=>{ shadowLoaded=true; cb && cb(); };
-      shadowImg.onerror = ()=> setStatus('找不到 bg.png：請確認 bg.png 跟 hbn.html 放在同一層資料夾');
-      shadowImg.src = 'bg.png';
+      shadowImg.onerror = ()=> setStatus('找不到 html/img/bg.png：請確認 bg.png 放在 html/img/ 資料夾裡');
+      shadowImg.src = 'html/img/bg.png';
     }
     function setShadowMode(){
       if(!hasImage()) return;
