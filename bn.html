@@ -444,27 +444,37 @@ function scanLayouts() {
       return;
     }
 
-    var layouts = loadLayouts();
+    var oldLayouts = loadLayouts();
+    var now = Date.now();
+
+    /* 依照 js/index.js 的 files 順序重建 layouts，避免 localStorage 舊排序卡住 */
+    var layouts = [];
+    var seen = {};
     var changed = 0;
 
-    files.forEach(function(file) {
+    files.forEach(function(file, idx) {
       file = String(file).trim();
       if (!file) return;
       if (!/\.html$/i.test(file)) file = file + '.html';
-      var name = file.replace(/\.html$/i, '');
-      if (layouts.find(function(l){ return l.file === file; })) return;
-      layouts.push({ id: Date.now() + changed, name: name, file: file, w: 0, h: 0, enabled: true });
-      changed++;
+
+      /* 避免 index.js 裡重複列到同一個檔案 */
+      if (seen[file]) return;
+      seen[file] = true;
+
+      var old = oldLayouts.find(function(l){ return l.file === file; });
+      if (!old) changed++;
+
+      layouts.push({
+        id: old ? old.id : now + idx,
+        name: file.replace(/\.html$/i, ''),
+        file: file,
+        w: old ? old.w : 0,
+        h: old ? old.h : 0,
+        enabled: old ? old.enabled : true
+      });
     });
 
-    /* 移除已不在 index.js 的項目 */
-    var fileSet = {};
-    files.forEach(function(f) {
-      fileSet[String(f).trim().replace(/\.html$/i,'') + '.html'] = true;
-    });
-    var before = layouts.length;
-    layouts = layouts.filter(function(l){ return fileSet[l.file]; });
-    var removed = before - layouts.length;
+    var removed = oldLayouts.filter(function(l){ return !seen[l.file]; }).length;
 
     saveLayouts(layouts);
     renderAdmin();
