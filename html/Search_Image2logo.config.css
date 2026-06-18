@@ -1,0 +1,122 @@
+/* ================================================
+   Search_Image2logo.config.css
+   ★ 兩logo版本，無副標文字
+   ================================================ */
+:root {
+  --canvas-w:  1125px;
+  --canvas-h:  156px;
+  --canvas-bg: rgb(84, 84, 84);
+  --bg-img:    ;
+
+  /* 圖層：底色、紅底logo、裝飾線、logo範圍×2、間隔線、CTA */
+  --layers: "底色|,蝦皮商城logo紅底|,蝦皮商城logo圖|,主logo橫線_左|,主logo橫線_右|,官方旗艦店|官方旗艦店,logo範圍_左|,logo間隔直線|,logo範圍_右|,cta圓底|,cta白線|,cta三角箭頭|";
+}
+
+/* ── transform-origin 全域修正 ── */
+* { transform-origin: 0 0; }
+
+.主logo橫線_左 {
+  position: absolute;
+  left: 35px;
+  top: 109px;
+  width: 30px;
+  height: 0;
+  border-width: 2px;
+  border-color: rgb(255, 255, 255);
+  border-style: solid;
+  display: block;
+  z-index: 201;
+}
+.主logo橫線_右 {
+  position: absolute;
+  left: 223px;
+  top: 109px;
+  width: 30px;
+  height: 0;
+  border-width: 2px;
+  border-color: rgb(255, 255, 255);
+  border-style: solid;
+  display: block;
+  z-index: 202;
+}
+
+/* ── 主logo橫線 fallback：直接用紅底 logo 區塊畫線，不依賴主logo橫線 layer DOM ── */
+.蝦皮商城logo紅底::before,
+.蝦皮商城logo紅底::after {
+  content: "";
+  position: absolute;
+  display: block;
+  width: 30px;
+  height: 0;
+  border-top: 2px solid rgb(255, 255, 255);
+  border-bottom: 2px solid rgb(255, 255, 255);
+  pointer-events: none;
+  z-index: 999;
+}
+.蝦皮商城logo紅底::before {
+  left: 91px;   /* canvas x35 - 紅底 x-56 */
+  top: 116px;   /* canvas y109 - 紅底 y-7 */
+}
+.蝦皮商城logo紅底::after {
+  left: 279px;  /* canvas x223 - 紅底 x-56 */
+  top: 116px;   /* canvas y109 - 紅底 y-7 */
+}
+
+
+/* ── logo 範圍：opacity 修正 ── */
+.logo範圍_左 { background-color: rgba(235, 104, 119, 0.4); opacity: 1; }
+.logo範圍_右 { background-color: rgba(235, 104, 119, 0.4); opacity: 1; }
+
+
+/* ── 官方旗艦店：字體覆蓋 ── */
+.官方旗艦店 {
+  font-family: "ShopeeNotoSans (content)";
+  font-weight: 300;
+  font-size: 29.63px;
+  transform: none !important;
+  line-height: 1;
+  white-space: nowrap;
+  top: 96.4px;
+}
+
+/* ── 主logo橫線：左線 x35 y110，右線用 ::after ── */
+
+/* ── 蝦皮商城logo圖 ── */
+.蝦皮商城logo圖 {
+  position: absolute;
+  left: 39px;
+  top: 37px;
+  width: 219px;
+  height: 50px;
+  background-image: url('img/蝦皮商城logo.png');
+  background-size: 219px 50px;
+  background-repeat: no-repeat;
+  pointer-events: none;
+  z-index: 215;
+}
+
+/* ── logo間隔直線：opacity 修正 ── */
+.logo間隔直線 { opacity: 0.6; }
+
+/* ── CTA：紅底置中 ── */
+.cta圓底 {
+  background-color: #d0021b !important;
+  background-image: none !important;
+  top: 38px;
+  left: 1007px;
+}
+.cta白線 {
+  top: 46.6px;
+  left: 1015.6px;
+}
+.cta三角箭頭 {
+  background: transparent;
+  width: 0; height: 0;
+  border-top:    13px solid transparent;
+  border-bottom: 13px solid transparent;
+  border-left:   23px solid rgb(255, 255, 255);
+  position: absolute;
+  left: 1035.5px;
+  top: 65px;
+  box-sizing: content-box;
+}

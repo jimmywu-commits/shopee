@@ -21,9 +21,9 @@
 
 /* ── 文字置中：left:0 + width 等於版位寬，text-align:center 才生效 ── */
 /* ── 同時修正 top（PS 變形面板 Y）和 transform-origin ── */
-.主標 { left: 0; width: 531px; top: 162.54px;  transform-origin: center top; line-height: 1; }
-.副標 { left: 0; width: 531px; top: 206.77px; transform-origin: center top; line-height: 1; }
-.日期 { left: 0; width: 531px; top: 271.7px;  transform-origin: center top; line-height: 1; }
+.主標 { left: 0; width: 531px; top: 169.4px;  transform-origin: center top; line-height: 1; }
+.副標 { left: 0; width: 531px; top: 219.13px; transform-origin: center top; line-height: 1; }
+.日期 { left: 0; width: 531px; top: 291.59 px;  transform-origin: center top; line-height: 1; }
 
 /* ── CTA ── */
 .cta三角標 {
