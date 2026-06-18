@@ -1,4 +1,7 @@
-一、字體路徑：
+一鍵下載案例檔案的公區路徑：<br>
+G:\共用雲端硬碟\INT_TWN_SHP_內部-素材\AI審圖\AI優化專案範例<br>
+<br>
+一、字體路徑：<br>
 https://jimmywu-commits.github.io/shopee/fonts/<br>
 在coding時將上述的字體路徑提供給GPT, 裡面包含了三種粗細，分別是：<br>
 ShopeeNotoSans(content)-Bold.ttf<br>
