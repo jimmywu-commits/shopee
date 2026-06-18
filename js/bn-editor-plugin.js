@@ -1162,53 +1162,159 @@
     }
 
     function downloadAll(){
-      /* 下載所有顯示中的版位（序列下載，避免 html2canvas 互相干擾）*/
+      /* 1張直接 PNG；2張以上先收集成功截圖，逾時跳過，最後一定打 ZIP */
       var iframes=Array.from(document.querySelectorAll('.preview-block iframe'));
       if(!iframes.length){setProgress('沒有版位可下載');return;}
-      var btn=document.getElementById('bn-dl-all');btn.disabled=true;
-      var total=iframes.length,done=0;
-      setProgress('準備下載 '+total+' 個版位…');
 
-      function downloadNext(idx){
-        if(idx>=total){
-          btn.disabled=false;
-          setTimeout(function(){setProgress('');},2500);
-          return;
-        }
-        var iframe=iframes[idx];
-        var blockEl=iframe.closest('.preview-block');
-        var name=(blockEl?(blockEl.querySelector('.pname')||{}).textContent||'layout':'layout');
-        name=name.trim().replace(/[\/\\:*?"<>|]/g,'_');
-        /* 每個 iteration 獨立的 msgId（用 IIFE 隔離）*/
-        (function(iframeEl, fileName, i){
-          var msgId='dl_'+Date.now()+'_'+i;
-          var timer;
-          function onMsg(e){
-            if(!e.data||e.data.type!=='bn-snapshot'||e.data.msgId!==msgId)return;
-            clearTimeout(timer);
-            window.removeEventListener('message',onMsg);
-            if(e.data.dataUrl) triggerDownload(e.data.dataUrl, fileName+'.png');
-            done++;
-            setProgress('已下載 '+done+' / '+total);
-            downloadNext(i+1);
-          }
-          window.addEventListener('message',onMsg);
-          try{ iframeEl.contentWindow.postMessage({type:'bn-capture',msgId:msgId},'*'); }
-          catch(e){ done++; downloadNext(i+1); return; }
-          /* 10秒 timeout */
-          timer=setTimeout(function(){
-            window.removeEventListener('message',onMsg);
-            done++;
-            setProgress('已下載 '+done+' / '+total+'（部分逾時）');
-            downloadNext(i+1);
-          },10000);
-        })(iframe, name, idx);
+      var btn=document.getElementById('bn-dl-all');
+      btn.disabled=true;
+
+      var total=iframes.length;
+      var done=0, ok=0, fail=0;
+      var files=[];
+
+      setProgress(total===1 ? '準備下載 1 個版位…' : '準備打包 '+total+' 個版位…');
+
+      function safeName(name){
+        return String(name||'layout').trim().replace(/[\/\\:*?"<>|]/g,'_') || 'layout';
       }
 
-      downloadNext(0);
+      function loadJSZip(cb){
+        if(window.JSZip){ cb(); return; }
+
+        var existed=document.querySelector('script[data-bn-jszip="1"]');
+        if(existed){
+          existed.addEventListener('load', cb, {once:true});
+          existed.addEventListener('error', function(){ cb(new Error('JSZip 載入失敗')); }, {once:true});
+          return;
+        }
+
+        var s=document.createElement('script');
+        s.dataset.bnJszip='1';
+        s.src='https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+        s.onload=function(){ cb(); };
+        s.onerror=function(){ cb(new Error('JSZip 載入失敗')); };
+        document.head.appendChild(s);
+      }
+
+      function dataUrlToBase64(dataUrl){
+        return String(dataUrl||'').split(',')[1] || '';
+      }
+
+      function makeZip(){
+        if(total===1){
+          btn.disabled=false;
+          if(ok){ setTimeout(function(){setProgress('');},2500); }
+          else { setProgress('下載失敗：截圖逾時或回傳空白'); }
+          return;
+        }
+
+        if(!files.length){
+          btn.disabled=false;
+          setProgress('ZIP 未產生：全部截圖都失敗或逾時');
+          return;
+        }
+
+        setProgress('正在產生 ZIP（成功 '+ok+'，失敗 '+fail+'）…');
+
+        loadJSZip(function(err){
+          if(err || !window.JSZip){
+            btn.disabled=false;
+            setProgress('ZIP 失敗：JSZip 載入失敗');
+            return;
+          }
+
+          try{
+            var zip=new JSZip();
+            files.forEach(function(f){
+              zip.file(f.name, dataUrlToBase64(f.dataUrl), {base64:true});
+            });
+            zip.generateAsync({type:'blob'}).then(function(blob){
+              triggerBlobDownload(blob,'BN_Export.zip');
+              btn.disabled=false;
+              setProgress('ZIP下載完成：成功 '+ok+' / '+total+(fail ? '，失敗 '+fail+' 個已跳過' : ''));
+            }).catch(function(){
+              btn.disabled=false;
+              setProgress('ZIP 產生失敗');
+            });
+          }catch(e){
+            btn.disabled=false;
+            setProgress('ZIP 產生失敗：'+e.message);
+          }
+        });
+      }
+
+      function captureOne(iframeEl, fileName, cb){
+        var msgId='dl_'+Date.now()+'_'+Math.random().toString(36).slice(2);
+        var settled=false;
+        var timer;
+
+        function settle(dataUrl){
+          if(settled) return;
+          settled=true;
+          clearTimeout(timer);
+          window.removeEventListener('message',onMsg);
+          cb(dataUrl||null);
+        }
+
+        function onMsg(e){
+          if(!e.data || e.data.type!=='bn-snapshot' || e.data.msgId!==msgId) return;
+          settle(e.data.dataUrl || null);
+        }
+
+        window.addEventListener('message',onMsg);
+
+        try{
+          iframeEl.contentWindow.postMessage({type:'bn-capture',msgId:msgId},'*');
+        }catch(e){
+          settle(null);
+          return;
+        }
+
+        /* 單一版位最多等 12 秒；失敗就跳過，整包繼續 */
+        timer=setTimeout(function(){ settle(null); },12000);
+      }
+
+      function next(idx){
+        if(idx>=total){
+          makeZip();
+          return;
+        }
+
+        var iframe=iframes[idx];
+        var blockEl=iframe.closest('.preview-block');
+        var baseName=safeName(blockEl ? ((blockEl.querySelector('.pname')||{}).textContent||'layout') : 'layout');
+
+        captureOne(iframe, baseName+'.png', function(dataUrl){
+          done++;
+
+          if(dataUrl){
+            ok++;
+            if(total===1){
+              triggerDownload(dataUrl, baseName+'.png');
+            }else{
+              files.push({name:baseName+'.png', dataUrl:dataUrl});
+            }
+          }else{
+            fail++;
+          }
+
+          if(total===1){
+            setProgress(dataUrl ? '已下載 1 / 1' : '下載失敗：截圖逾時或回傳空白');
+          }else{
+            setProgress('打包中 '+done+' / '+total+'（成功 '+ok+'，失敗 '+fail+'）');
+          }
+
+          /* 稍微讓瀏覽器釋放資源，避免連續截圖卡住 */
+          setTimeout(function(){ next(idx+1); },250);
+        });
+      }
+
+      next(0);
     }
     function setProgress(msg){var el=document.getElementById('bn-dl-progress');if(el)el.textContent=msg;}
     function triggerDownload(dataUrl,filename){var a=document.createElement('a');a.href=dataUrl;a.download=filename;a.style.display='none';document.body.appendChild(a);a.click();setTimeout(function(){a.remove();},1000);}
+    function triggerBlobDownload(blob,filename){var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=filename;a.style.display='none';document.body.appendChild(a);a.click();setTimeout(function(){URL.revokeObjectURL(a.href);a.remove();},2000);}
 
     /* ── iframe ready 推送 ── */
     var origOnReady=window._bnOnIframeReady;
