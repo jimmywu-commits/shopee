@@ -93,3 +93,14 @@
   top: 285.093px;
   z-index: 33;
 }
+
+
+/* ── 副標滿版寬度修正：原副標有 0.796 縮放，531px 會被縮成約423px；
+   改用放大後的邏輯寬度，視覺呈現寬度才會接近主標滿版。 ── */
+.副標 {
+  left: 0 !important;
+  width: 666.97px !important;
+  max-width: none !important;
+  transform-origin: left top !important;
+  white-space: nowrap;
+}
