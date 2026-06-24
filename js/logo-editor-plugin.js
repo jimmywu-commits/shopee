@@ -36,7 +36,135 @@
     if(document.getElementById('_bn_lm_css')) return;
     var s = document.createElement('style');
     s.id = '_bn_lm_css';
-    s.textContent = "<style id=\"jimmy-new-logo-menu-only-style\">\n.logo-edit-btn,\n.logo-swap-btn,\n.logo-delete-btn,\n.logo-white-btn,\n.logo-main-pen-btn,\n.logo-action-menu{\n  display:none !important;\n}\n\n.logo-v14-trigger{\n  position:absolute !important;\n  top:-24px !important;\n  right:-2px !important;\n  width:20px !important;\n  height:20px !important;\n  border-radius:50% !important;\n  background:#000 !important;\n  color:#fff !important;\n  display:flex !important;\n  align-items:center !important;\n  justify-content:center !important;\n  cursor:pointer !important;\n  z-index:2147483645 !important;\n  font-size:12px !important;\n  line-height:1 !important;\n  user-select:none !important;\n  box-shadow:0 2px 6px rgba(0,0,0,.25);\n}\n.logo-item,\n#square .brand{ overflow:visible !important; }\n\n#logoMenuV14{\n  position:fixed !important;\n  min-width:118px !important;\n  background:#111 !important;\n  color:#fff !important;\n  border-radius:10px !important;\n  box-shadow:0 8px 24px rgba(0,0,0,.28) !important;\n  padding:6px 0 !important;\n  display:none !important;\n  z-index:2147483647 !important;\n}\n#logoMenuV14.show{ display:block !important; }\n#logoMenuV14 button{\n  width:100% !important;\n  border:0 !important;\n  background:transparent !important;\n  color:#fff !important;\n  text-align:left !important;\n  padding:7px 12px !important;\n  font-size:12px !important;\n  line-height:1.35 !important;\n  cursor:pointer !important;\n}\n#logoMenuV14 button:hover{ background:#2b2b2b !important; }\n#logoMenuV14 button[hidden]{ display:none !important; }\n\n.is-exporting .logo-v14-trigger,\n.is-exporting #logoMenuV14{ display:none !important; }\n\n#logoCropModal{ z-index:2147483646 !important; }\n</style>\n\n\n<style id=\"logo-cropper-modal-style\">\n  .cropper-modal-wrap{\n    position:fixed; inset:0; background:rgba(0,0,0,.5);\n    display:none; align-items:center; justify-content:center; z-index:10020;\n  }\n  .cropper-modal-wrap.open{ display:flex; }\n  .cropper-panel{\n    width:min(90vw, 900px); background:#fff; border-radius:12px; overflow:hidden;\n    display:flex; flex-direction:column;\n  }\n  .cropper-panel header{\n    display:flex; align-items:center; justify-content:space-between;\n    padding:10px 14px; margin:0;\n  }\n  .cropper-panel .body{ padding:10px; }\n  .cropper-panel .actions{ display:flex; gap:8px; padding:10px; justify-content:flex-end; }\n  .cropper-panel img{ max-width:100%; max-height:65vh; display:block; margin:0 auto; }\n";
+    s.textContent = `
+.logo-edit-btn,
+.logo-swap-btn,
+.logo-delete-btn,
+.logo-white-btn,
+.logo-main-pen-btn,
+.logo-action-menu{
+  display:none !important;
+}
+
+.logo-v14-trigger{
+  position:absolute !important;
+  top:-24px !important;
+  right:-2px !important;
+  width:20px !important;
+  height:20px !important;
+  border-radius:50% !important;
+  background:#000 !important;
+  color:#fff !important;
+  display:flex !important;
+  align-items:center !important;
+  justify-content:center !important;
+  cursor:pointer !important;
+  z-index:2147483645 !important;
+  font-size:12px !important;
+  line-height:1 !important;
+  user-select:none !important;
+  box-shadow:0 2px 6px rgba(0,0,0,.25);
+}
+.logo-item,
+#square .brand{ overflow:visible !important; }
+
+#logoMenuV14{
+  position:fixed !important;
+  min-width:118px !important;
+  background:#111 !important;
+  color:#fff !important;
+  border-radius:10px !important;
+  box-shadow:0 8px 24px rgba(0,0,0,.28) !important;
+  padding:6px 0 !important;
+  display:none !important;
+  z-index:2147483647 !important;
+}
+#logoMenuV14.show{ display:block !important; }
+#logoMenuV14 button{
+  width:100% !important;
+  border:0 !important;
+  background:transparent !important;
+  color:#fff !important;
+  text-align:left !important;
+  padding:7px 12px !important;
+  font-size:12px !important;
+  line-height:1.35 !important;
+  cursor:pointer !important;
+}
+#logoMenuV14 button:hover{ background:#2b2b2b !important; }
+#logoMenuV14 button[hidden]{ display:none !important; }
+
+.is-exporting .logo-v14-trigger,
+.is-exporting #logoMenuV14,
+.is-exporting #logoCropModal{ display:none !important; }
+
+#logoCropModal{
+  position:fixed !important;
+  inset:0 !important;
+  background:rgba(0,0,0,.5) !important;
+  display:none !important;
+  align-items:center !important;
+  justify-content:center !important;
+  z-index:2147483646 !important;
+  padding:24px !important;
+  box-sizing:border-box !important;
+}
+#logoCropModal.open{ display:flex !important; }
+#logoCropModal .cropper-panel{
+  position:relative !important;
+  width:min(92vw, 900px) !important;
+  max-height:88vh !important;
+  background:#fff !important;
+  border-radius:14px !important;
+  overflow:hidden !important;
+  display:flex !important;
+  flex-direction:column !important;
+  box-shadow:0 18px 60px rgba(0,0,0,.35) !important;
+}
+#logoCropModal .cropper-panel header{
+  display:flex !important;
+  align-items:center !important;
+  justify-content:space-between !important;
+  padding:12px 16px !important;
+  margin:0 !important;
+  border-bottom:1px solid #eee !important;
+  background:#fff !important;
+}
+#logoCropModal .cropper-panel header strong{
+  font-size:14px !important;
+  color:#111 !important;
+}
+#logoCropModal .cropper-panel .body{
+  padding:12px !important;
+  min-height:280px !important;
+  overflow:auto !important;
+}
+#logoCropModal .cropper-panel .actions{
+  display:flex !important;
+  align-items:center !important;
+  justify-content:space-between !important;
+  gap:10px !important;
+  padding:10px 12px !important;
+  border-top:1px solid #eee !important;
+  background:#fff !important;
+}
+#logoCropModal .cropper-help{
+  font-size:12px !important;
+  color:#777 !important;
+  line-height:1.5 !important;
+}
+#logoCropModal .cropper-buttons{
+  display:flex !important;
+  gap:8px !important;
+  justify-content:flex-end !important;
+}
+#logoCropModal img{
+  max-width:100% !important;
+  max-height:64vh !important;
+  display:block !important;
+  margin:0 auto !important;
+}
+`;
     document.head.appendChild(s);
   }
 
@@ -44,7 +172,24 @@
   function injectHTML(){
     if(document.getElementById('logoCropModal')) return;
     var tmp = document.createElement('div');
-    tmp.innerHTML = "<div id=\"logoCropModal\" class=\"cropper-modal-wrap\">\n  <div class=\"cropper-panel\">\n    <header>\n      <strong>Logo \u88c1\u5207</strong>\n      <button id=\"logoCropClose\" class=\"btn secondary\" type=\"button\">\u95dc\u9589</button>\n    </header>\n    <div class=\"body\"><img id=\"logoCropImg\" alt=\"Logo \u88c1\u5207\" /></div>\n    <div class=\"actions\">\n<div style=\"font-size:12px;color:#888;padding:0 12px 10px;\">\u540c\u7b49\u6bd4\u88c1\u5207\uff1a\u6309\u4f4fshift\u9375\u518d\u7528\u6ed1\u9f20\u62c9\u6846\u7dda</div>\n      <button id=\"logoCropApply\" class=\"btn\" type=\"button\">\u5957\u7528</button>\n    </div>\n  </div>\n</div>\n\n";
+    tmp.innerHTML = `
+<div id="logoCropModal" class="cropper-modal-wrap" aria-hidden="true">
+  <div class="cropper-panel" role="dialog" aria-modal="true" aria-label="Logo 裁切">
+    <header>
+      <strong>Logo 裁切</strong>
+      <button id="logoCropClose" class="btn secondary" type="button">關閉</button>
+    </header>
+    <div class="body"><img id="logoCropImg" alt="Logo 裁切" /></div>
+    <div class="actions">
+      <div class="cropper-help">同等比裁切：按住 shift 鍵再用滑鼠拉框線</div>
+      <div class="cropper-buttons">
+        <button id="logoCropCancel" class="btn secondary" type="button">取消</button>
+        <button id="logoCropApply" class="btn" type="button">套用</button>
+      </div>
+    </div>
+  </div>
+</div>
+`;
     while(tmp.firstChild) document.body.appendChild(tmp.firstChild);
   }
 
@@ -133,6 +278,16 @@
     activeCropper = null;
   }
 
+  function closeCropEditor(){
+    var modal = document.getElementById('logoCropModal');
+    destroyCropper();
+    if(modal){
+      modal.classList.remove('open');
+      modal.setAttribute('aria-hidden', 'true');
+    }
+    _cropDone = null;
+  }
+
   function openCropEditor(src, onDone){
     injectCSS();
     injectHTML();
@@ -142,6 +297,7 @@
       var cropImg = document.getElementById('logoCropImg');
       var apply   = document.getElementById('logoCropApply');
       var close   = document.getElementById('logoCropClose');
+      var cancel  = document.getElementById('logoCropCancel');
       if(!modal || !cropImg) return;
 
       activeTarget = null;
@@ -149,6 +305,7 @@
       /* 重設 img 讓瀏覽器重新 load */
       cropImg.removeAttribute('src');
       modal.classList.add('open');
+      modal.setAttribute('aria-hidden', 'false');
 
       cropImg.onload = function(){
         cropImg.onload = null;
@@ -172,18 +329,31 @@
           var out = activeCropper.getCroppedCanvas();
           if(!out) return;
           var url = out.toDataURL('image/png');
-          destroyCropper();
-          modal.classList.remove('open');
-          if(typeof _cropDone === 'function'){ _cropDone(url); _cropDone = null; }
+          var done = _cropDone;
+          closeCropEditor();
+          if(typeof done === 'function'){ done(url); }
         });
       }
-      /* 「關閉」按鈕 */
+      /* 「關閉 / 取消」按鈕 */
       if(close && close.dataset.bnBound !== '1'){
         close.dataset.bnBound = '1';
-        close.addEventListener('click', function(){
-          destroyCropper();
-          modal.classList.remove('open');
-          _cropDone = null;
+        close.addEventListener('click', closeCropEditor);
+      }
+      if(cancel && cancel.dataset.bnBound !== '1'){
+        cancel.dataset.bnBound = '1';
+        cancel.addEventListener('click', closeCropEditor);
+      }
+      if(modal.dataset.bnBackdropBound !== '1'){
+        modal.dataset.bnBackdropBound = '1';
+        modal.addEventListener('mousedown', function(e){
+          if(e.target === modal) closeCropEditor();
+        });
+      }
+      if(document.documentElement.dataset.bnLogoEscBound !== '1'){
+        document.documentElement.dataset.bnLogoEscBound = '1';
+        document.addEventListener('keydown', function(e){
+          var m = document.getElementById('logoCropModal');
+          if(e.key === 'Escape' && m && m.classList.contains('open')) closeCropEditor();
         });
       }
     });

@@ -41,6 +41,25 @@
 .bn-dl-btn:hover{opacity:.88}
 .bn-dl-btn:disabled{opacity:.35;cursor:not-allowed}
 .bn-dl-progress{font-size:10px;color:var(--text3,#6e7681);text-align:center;margin-top:5px;min-height:14px}
+
+/* ── 背景上傳 Modal ── */
+#bn-bg-open-btn{display:block;width:100%;padding:8px;background:var(--bg2,#1c2333);border:1.5px dashed var(--border,#30363d);border-radius:7px;color:var(--text2,#8b949e);font-size:11px;cursor:pointer;text-align:center;transition:.15s;box-sizing:border-box}
+#bn-bg-open-btn:hover{border-color:var(--accent,#1f6feb);color:var(--accent,#1f6feb)}
+#bn-bg-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:99999;align-items:center;justify-content:center;backdrop-filter:blur(4px)}
+#bn-bg-modal.show{display:flex}
+.bn-bg-modal-box{background:#13161f;border:1px solid #252b3d;border-radius:14px;width:min(720px,94vw);max-height:88vh;display:flex;flex-direction:column;box-shadow:0 24px 70px rgba(0,0,0,.6);overflow:hidden}
+.bn-bg-pair-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.bn-bg-drop-card{border:1.5px dashed #252b3d;border-radius:12px;padding:14px;text-align:center;cursor:pointer;color:#687090;font-size:12px;position:relative;transition:.15s;min-height:190px;display:flex;flex-direction:column;justify-content:center;background:#0d1018}
+.bn-bg-drop-card:hover,.bn-bg-drop-card.over{border-color:#4a90e2;background:rgba(74,144,226,.06);color:#4a90e2}
+.bn-bg-drop-card input{position:absolute;inset:0;opacity:0;cursor:pointer;font-size:0}
+.bn-bg-drop-card img{display:none;width:100%;height:120px;object-fit:contain;border-radius:8px;margin:8px 0;background:rgba(255,255,255,.04)}
+.bn-bg-drop-card.has-img img{display:block}
+.bn-bg-drop-title{font-size:14px;font-weight:700;color:#dde3f0;margin-bottom:4px}
+.bn-bg-drop-desc{font-size:11px;line-height:1.6;color:#687090}
+.bn-bg-drop-name{font-size:10px;color:#8b9dbf;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:4px}
+.bn-bg-hint{font-size:12px;color:#8b9dbf;background:rgba(74,144,226,.08);border:1px solid rgba(74,144,226,.2);border-radius:10px;padding:9px 12px;margin-bottom:14px;line-height:1.7}
+@media(max-width:640px){.bn-bg-pair-grid{grid-template-columns:1fr}.bn-bg-modal-box{width:94vw}}
+
 /* ── 商品上傳 Modal ── */
 #bn-prod-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:99999;align-items:center;justify-content:center;backdrop-filter:blur(4px)}
 #bn-prod-modal.show{display:flex}
@@ -109,6 +128,43 @@
     function broadcastTo(id,msg){var f=document.getElementById('iframe-'+id);if(f)try{f.contentWindow.postMessage(msg,'*');}catch(e){}}
     function requestProductLayouts(){ broadcast({type:'bn-product-layout-request'}); }
     function markStateDirty(){ try{ document.dispatchEvent(new CustomEvent('bn-state-dirty')); }catch(_){ } }
+
+    /* 方版 / 橫版排品連動：同一版位只差「方 / 橫」時，共用商品位置比例。 */
+    function normalizePairName(name){
+      return String(name || '')
+        .replace(/\.html$/i, '')
+        .replace(/#U65b9|#U6a6b/gi, '')
+        .replace(/[方橫横]/g, '')
+        .replace(/(square|vertical|portrait|horizontal|landscape)/gi, '')
+        .replace(/[\s_\-()（）]+/g, '')
+        .toLowerCase();
+    }
+    function getLayoutById(id){
+      if(typeof window.loadLayouts !== 'function') return null;
+      var layouts = window.loadLayouts() || [];
+      return layouts.find(function(l){ return String(l.id) === String(id); }) || null;
+    }
+    function getPairedLayoutIds(sourceId){
+      if(typeof window.loadLayouts !== 'function') return [];
+      var layouts = window.loadLayouts() || [];
+      var src = layouts.find(function(l){ return String(l.id) === String(sourceId); });
+      if(!src) return [];
+      var key = normalizePairName(src.name || src.file);
+      if(!key) return [];
+      return layouts.filter(function(l){
+        return l.enabled !== false && String(l.id) !== String(sourceId) && normalizePairName(l.name || l.file) === key;
+      }).map(function(l){ return String(l.id); });
+    }
+    function syncProductLayoutToPairs(product, sourceBnid, layout){
+      var pairIds = getPairedLayoutIds(sourceBnid);
+      if(!pairIds.length || !product || !layout) return;
+      if(!product.layouts) product.layouts = {};
+      pairIds.forEach(function(tid){
+        var cloned = JSON.parse(JSON.stringify(layout));
+        product.layouts[tid] = cloned;
+        broadcastTo(tid, {type:'bn-product-layout-apply', id:product.id, layout:cloned});
+      });
+    }
     window.addEventListener('message', function(ev){
       var d = ev.data || {};
       if(d.type !== 'bn-product-layout-update' || !d.id || !d.layout) return;
@@ -121,6 +177,7 @@
       if(!p.layouts) p.layouts = {};
       var key = d.bnid ? String(d.bnid) : 'default';
       p.layouts[key] = d.layout;
+      syncProductLayoutToPairs(p, key, d.layout);
       /* 也保留最後一次實際畫布座標，方便舊版 JSON 或單版位還原 */
       p.x = d.layout.left; p.y = d.layout.top; p.width = d.layout.width; p.height = d.layout.height;
       p.layout = d.layout;
@@ -413,16 +470,14 @@
         '</div>',
         '<div class="s-section" style="margin-top:8px">背景圖</div>',
         '<div class="bn-section">',
-        '  <label id="bn-bg-upload-label" style="display:block;width:100%;padding:8px;background:var(--bg2,#1c2333);border:1.5px dashed var(--border,#30363d);border-radius:7px;color:var(--text2,#8b949e);font-size:11px;cursor:pointer;text-align:center;transition:.15s;box-sizing:border-box">',
-        '    ⬆ 上傳背景圖（套用全部版位）',
-        '    <input type="file" id="bn-bg-inp" accept="image/*" style="display:none">',
-        '  </label>',
+        '  <button id="bn-bg-open-btn">⬆ 上傳背景圖</button>',
+        '  <input type="file" id="bn-bg-inp" accept="image/*" style="display:none">',
         '  <div id="bn-bg-preview" style="display:none;margin-top:6px">',
         '    <div style="position:relative;margin-bottom:4px">',
         '      <img id="bn-bg-thumb" style="width:100%;max-height:60px;object-fit:cover;border-radius:5px;border:1px solid var(--border,#30363d)">',
         '      <button id="bn-bg-clear" style="position:absolute;top:3px;right:3px;background:rgba(0,0,0,.6);border:none;color:#fff;border-radius:50%;width:18px;height:18px;font-size:11px;cursor:pointer;line-height:1">✕</button>',
         '    </div>',
-        '    <div style="font-size:10px;color:var(--text3,#687090)">各版位可在右側獨立調整縮放和位置</div>',
+        '    <div id="bn-bg-summary" style="font-size:10px;color:var(--text3,#687090)">各版位可在右側獨立調整縮放和位置</div>',
         '  </div>',
         '</div>',
       ].join('');
@@ -435,7 +490,7 @@
       var bgPreview = document.getElementById('bn-bg-preview');
       var bgThumb = document.getElementById('bn-bg-thumb');
       var bgClear = document.getElementById('bn-bg-clear');
-      var bgLabel = document.getElementById('bn-bg-upload-label');
+      var bgOpenBtn = document.getElementById('bn-bg-open-btn');
 
       /* 每個版位獨立的背景圖狀態 */
       var _bgStates = {}; /* { layoutId: {src,fit,scale,x,y} } */
@@ -483,7 +538,7 @@
         });
         if(bgThumb) bgThumb.src = first || '';
         if(bgPreview) bgPreview.style.display = first ? 'block' : 'none';
-        if(bgLabel) bgLabel.style.display = first ? 'none' : 'block';
+        if(bgOpenBtn) bgOpenBtn.textContent = first ? '⬆ 更換背景圖' : '⬆ 上傳背景圖';
       }
 
       function applyBgStates(nextStates, activeId){
@@ -624,14 +679,14 @@
             var yEl = document.getElementById('bn-bg-y');
             var thumbEl = document.getElementById('bn-bg-thumb');
             var previewEl = document.getElementById('bn-bg-preview');
-            var labelEl = document.getElementById('bn-bg-upload-label');
+            var openBtnEl = document.getElementById('bn-bg-open-btn');
             if(scaleEl){ scaleEl.value = st.scale; }
             if(scaleValEl){ scaleValEl.textContent = st.scale+'%'; }
             if(xEl){ xEl.value = st.x; }
             if(yEl){ yEl.value = st.y; }
             if(thumbEl && st.src){ thumbEl.src = st.src; }
             if(previewEl){ previewEl.style.display = st.src ? 'block' : 'none'; }
-            if(labelEl){ labelEl.style.display = st.src ? 'none' : 'block'; }
+            if(openBtnEl){ openBtnEl.textContent = st.src ? '⬆ 更換背景圖' : '⬆ 上傳背景圖'; }
             updateFitBtns(st.fit);
             /* 標示選取中的版位 */
             document.querySelectorAll('.preview-block').forEach(function(b){
@@ -826,6 +881,167 @@
         });
       }
 
+      function getBgLayoutOrientation(id, ifrEl){
+        /*
+         * 背景套用方向改用版位實際寬高比判斷，不再用名稱裡的「橫 / 方 / 直」判斷。
+         * 例如「DDCard 橫 Logo」只是 Logo 排法，版位本身仍是方 / 直比例，應吃直式背景。
+         */
+        function toNum(v){
+          var n = parseFloat(v);
+          return isFinite(n) && n > 0 ? n : 0;
+        }
+        function pickBySize(w, h){
+          w = toNum(w); h = toNum(h);
+          if(w && h) return w > h ? 'horizontal' : 'vertical';
+          return '';
+        }
+
+        try{
+          var doc = ifrEl && (ifrEl.contentDocument || (ifrEl.contentWindow && ifrEl.contentWindow.document));
+          if(doc){
+            var body = doc.body || null;
+            var byData = body ? pickBySize(body.getAttribute('data-fw'), body.getAttribute('data-fh')) : '';
+            if(byData) return byData;
+
+            var canvas = doc.getElementById('canvas') || doc.querySelector('#canvas,.canvas,[data-canvas]');
+            if(canvas){
+              var rect = canvas.getBoundingClientRect ? canvas.getBoundingClientRect() : null;
+              var byRect = rect ? pickBySize(rect.width, rect.height) : '';
+              if(byRect) return byRect;
+
+              var cs = doc.defaultView && doc.defaultView.getComputedStyle ? doc.defaultView.getComputedStyle(canvas) : null;
+              var byCss = cs ? pickBySize(cs.width, cs.height) : '';
+              if(byCss) return byCss;
+
+              var byEl = pickBySize(canvas.offsetWidth || canvas.clientWidth || canvas.scrollWidth, canvas.offsetHeight || canvas.clientHeight || canvas.scrollHeight);
+              if(byEl) return byEl;
+            }
+          }
+        }catch(_){}
+
+        try{
+          var layouts = (typeof window.loadLayouts === 'function') ? (window.loadLayouts() || []) : [];
+          var item = layouts.find(function(l){ return String(l.id) === String(id); });
+          if(item){
+            var byLayout = pickBySize(item.width || item.w || item.fw || item.canvasWidth, item.height || item.h || item.fh || item.canvasHeight);
+            if(byLayout) return byLayout;
+          }
+        }catch(_){}
+
+        return 'vertical';
+      }
+
+      function applyBgByOrientation(horizontalSrc, verticalSrc){
+        var h = horizontalSrc || null;
+        var v = verticalSrc || null;
+        if(!h && !v) return;
+        var single = (h && !v) ? h : ((!h && v) ? v : null);
+        window._bgDataUrl = h || v || single || null;
+        document.querySelectorAll('.preview-block iframe').forEach(function(ifrEl){
+          var id = getIfrBnid(ifrEl);
+          if(!id) return;
+          var st = getBgState(id);
+          var nextSrc = single || (getBgLayoutOrientation(id, ifrEl) === 'vertical' ? v : h) || h || v;
+          st.src = nextSrc;
+          if(!st._initialized){
+            st.scale = 100; st.x = 50; st.y = 50; st.fit = 'auto';
+            st._initialized = true;
+          }
+        });
+        if(bgThumb) bgThumb.src = h || v || '';
+        if(bgPreview) bgPreview.style.display = 'block';
+        if(bgOpenBtn) bgOpenBtn.textContent = '⬆ 更換背景圖';
+        var sum = document.getElementById('bn-bg-summary');
+        if(sum) sum.textContent = (h && v) ? '已分別套用橫式 / 直式背景，各版位可在右側獨立調整縮放和位置' : '已套用單張背景到所有版位，各版位可在右側獨立調整縮放和位置';
+        bgBroadcastAll();
+        markStateDirty();
+        setTimeout(buildBgPanels, 100);
+        sampleTopLeftColor(h || v, function(hex){
+          if(window.colorState && window.applyColor){
+            window.colorState.canvasBg = hex;
+            window._bnCanvasBgHardLock = hex;
+            window._bnPersistentCanvasBg = hex;
+            window._bnUserCanvasBgLocked = true;
+            var prevKey = window.cpActiveKey;
+            window.cpActiveKey = 'canvasBg';
+            if(typeof window.applyColor === 'function') window.applyColor(hex);
+            window.cpActiveKey = prevKey;
+            markStateDirty();
+          }
+        });
+      }
+
+      function buildBgUploadModal(){
+        if(document.getElementById('bn-bg-modal')) return;
+        var el = document.createElement('div');
+        el.id = 'bn-bg-modal';
+        el.innerHTML = [
+          '<div class="bn-bg-modal-box">',
+          '  <div class="bn-modal-head"><h3>上傳背景圖</h3><button class="bn-modal-close" id="bn-bg-close">×</button></div>',
+          '  <div class="bn-modal-body">',
+          '    <div class="bn-bg-hint">左邊放橫式背景、右邊放直式背景。只放一邊時會套用到全部版位；兩邊都有時，系統會依每個版位的實際寬高比判斷：寬大於高套橫式，否則套直式。</div>',
+          '    <div class="bn-bg-pair-grid">',
+          '      <div class="bn-bg-drop-card" id="bn-bg-hdrop">',
+          '        <div class="bn-bg-drop-title">橫式背景圖</div>',
+          '        <div class="bn-bg-drop-desc">拖曳到這裡，或點擊選取檔案</div>',
+          '        <img id="bn-bg-himg"><div class="bn-bg-drop-name" id="bn-bg-hname"></div>',
+          '        <input id="bn-bg-hinp" type="file" accept="image/*">',
+          '      </div>',
+          '      <div class="bn-bg-drop-card" id="bn-bg-vdrop">',
+          '        <div class="bn-bg-drop-title">直式背景圖</div>',
+          '        <div class="bn-bg-drop-desc">拖曳到這裡，或點擊選取檔案</div>',
+          '        <img id="bn-bg-vimg"><div class="bn-bg-drop-name" id="bn-bg-vname"></div>',
+          '        <input id="bn-bg-vinp" type="file" accept="image/*">',
+          '      </div>',
+          '    </div>',
+          '  </div>',
+          '  <div class="bn-modal-foot"><button class="bn-btn-skip" id="bn-bg-cancel">取消</button><button class="bn-btn-confirm" id="bn-bg-confirm">套用背景</button></div>',
+          '</div>'
+        ].join('');
+        document.body.appendChild(el);
+        var stagedH = null, stagedV = null;
+        function readTo(slot, file){
+          if(!file || !file.type || !file.type.startsWith('image/')) return;
+          var r = new FileReader();
+          r.onload = function(e){
+            var dataUrl = e.target.result;
+            if(slot === 'h') stagedH = dataUrl; else stagedV = dataUrl;
+            var drop = document.getElementById(slot === 'h' ? 'bn-bg-hdrop' : 'bn-bg-vdrop');
+            var img = document.getElementById(slot === 'h' ? 'bn-bg-himg' : 'bn-bg-vimg');
+            var name = document.getElementById(slot === 'h' ? 'bn-bg-hname' : 'bn-bg-vname');
+            if(drop) drop.classList.add('has-img');
+            if(img) img.src = dataUrl;
+            if(name) name.textContent = file.name;
+          };
+          r.readAsDataURL(file);
+        }
+        function bindDrop(slot){
+          var drop = document.getElementById(slot === 'h' ? 'bn-bg-hdrop' : 'bn-bg-vdrop');
+          var inp = document.getElementById(slot === 'h' ? 'bn-bg-hinp' : 'bn-bg-vinp');
+          if(!drop || !inp) return;
+          inp.addEventListener('change', function(){ readTo(slot, this.files && this.files[0]); this.value=''; });
+          drop.addEventListener('dragover', function(e){ e.preventDefault(); drop.classList.add('over'); });
+          drop.addEventListener('dragleave', function(){ drop.classList.remove('over'); });
+          drop.addEventListener('drop', function(e){
+            e.preventDefault(); drop.classList.remove('over');
+            readTo(slot, e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]);
+          });
+        }
+        bindDrop('h'); bindDrop('v');
+        function close(){ el.classList.remove('show'); }
+        document.getElementById('bn-bg-close').addEventListener('click', close);
+        document.getElementById('bn-bg-cancel').addEventListener('click', close);
+        el.addEventListener('click', function(e){ if(e.target === el) close(); });
+        document.getElementById('bn-bg-confirm').addEventListener('click', function(){
+          applyBgByOrientation(stagedH, stagedV);
+          close();
+        });
+        window._bnOpenBgModal = function(){ el.classList.add('show'); };
+      }
+
+      buildBgUploadModal();
+      if(bgOpenBtn) bgOpenBtn.addEventListener('click', function(){ if(window._bnOpenBgModal) window._bnOpenBgModal(); });
+
       if(bgInp){
         bgInp.addEventListener('change', function(){
           var file = this.files[0];
@@ -848,7 +1064,7 @@
             });
             bgThumb.src = dataUrl;
             bgPreview.style.display = 'block';
-            bgLabel.style.display = 'none';
+            if(bgOpenBtn) bgOpenBtn.textContent = '⬆ 更換背景圖';
             /* 立即廣播給所有版位 */
             bgBroadcastAll();
             markStateDirty();
@@ -882,7 +1098,7 @@
           window._bgDataUrl = null;
           bgThumb.src = '';
           bgPreview.style.display = 'none';
-          bgLabel.style.display = 'block';
+          if(bgOpenBtn) bgOpenBtn.textContent = '⬆ 上傳背景圖';
           bgBroadcastAll();
           markStateDirty();
           /* 隱藏所有控制面板 */

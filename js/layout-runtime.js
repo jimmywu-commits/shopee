@@ -312,7 +312,7 @@
           zn.style.display = 'flex'; zn.style.alignItems = 'center'; zn.style.justifyContent = 'center';
           var img = new Image(); img.className = 'bn-logo-img';
           img.style.cssText = 'max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain;pointer-events:none;display:block;';
-          if(lg.round) img.style.borderRadius = '50%';
+          if(lg.round) img.style.borderRadius = '10px';
           img.src = lg.src;
           zn.appendChild(img);
         }
@@ -346,6 +346,8 @@
         (fn.indexOf('方') !== -1 || fnLow.indexOf('search_image') !== -1);
       /* ddcard：檔名含 ddcard */
       var isDDCard = fnLow.indexOf('ddcard') !== -1;
+      /* 方 Logo 系列：不依「橫 Logo」文字判斷，而是針對實際上傳圖片比例做 fit。 */
+      var isSquareLogoLayout = (fn.indexOf('方') !== -1);
 
       var logos = [];
       if (e.data.type === 'bn-logos') logos = e.data.logos || [];
@@ -353,8 +355,8 @@
 
       if (!logos.length) { zone.style.opacity=''; zone.style.background=''; return; }
 
-      /* IG方：只取第一張 */
-      if (isIGSquare) logos = logos.slice(0, 1);
+      /* IG方 / 方 Logo 系列：只取第一張，避免方版 logo 區多張擠壓或裁切。 */
+      if (isIGSquare || isSquareLogoLayout) logos = logos.slice(0, 1);
       /* ddcard橫：isMultiCenter → 多張，不限制；ddcard方（isIGSquare）→ 單張 */
 
       zone.style.background = 'transparent';
@@ -363,7 +365,41 @@
       zone.style.overflow   = 'hidden';
 
       /* HBN：absolute 多張；IG方/ddcard方：單張 contain 正方；IG橫/ddcard橫：flex 並排 */
-      if(isHBN){
+      if(isSquareLogoLayout){
+        /* 方 Logo 系列：若上傳的是橫向 logo，改以寬度為主、高度 auto，並上下左右置中，避免被裁切。 */
+        zone.style.display = 'flex';
+        zone.style.alignItems = 'center';
+        zone.style.justifyContent = 'center';
+        zone.style.gap = '';
+        zone.style.transformOrigin = '';
+        var sqLg = logos[0];
+        var sqImg = new Image(); sqImg.className = 'bn-logo-img';
+        var sqRoundCss = sqLg.round ? 'border-radius:10px;' : '';
+        sqImg.style.cssText = 'max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain;object-position:center center;pointer-events:none;display:block;flex-shrink:1;'+sqRoundCss;
+        sqImg.onload = function(){
+          var isWideLogo = sqImg.naturalWidth > sqImg.naturalHeight;
+          if(isWideLogo){
+            sqImg.style.width = '100%';
+            sqImg.style.height = 'auto';
+            sqImg.style.maxWidth = '100%';
+            sqImg.style.maxHeight = '100%';
+          }else{
+            sqImg.style.width = 'auto';
+            sqImg.style.height = 'auto';
+            sqImg.style.maxWidth = '100%';
+            sqImg.style.maxHeight = '100%';
+          }
+          if(typeof window._siRelayout === 'function'){
+            if(document.fonts && document.fonts.ready){
+              document.fonts.ready.then(function(){ window._siRelayout(); });
+            } else {
+              setTimeout(window._siRelayout, 150);
+            }
+          }
+        };
+        sqImg.src = sqLg.src;
+        zone.appendChild(sqImg);
+      } else if(isHBN){
         /* HBN：每個 logo 用 absolute 定位，從左往右排，間距 15px */
         zone.style.display = '';
         var hbnX = 0;
@@ -584,6 +620,33 @@
 
     if (e.data.type === 'bn-product-layout-request') {
       postAllProductLayouts();
+    }
+
+    if (e.data.type === 'bn-product-layout-apply') {
+      var pzoneApply = getProductZone(); if(!pzoneApply) return;
+      var boxApply = pzoneApply.querySelector('.bn-prod-box[data-id="'+e.data.id+'"]');
+      var lay = e.data.layout || {};
+      if(boxApply){
+        var csApply = window.getComputedStyle(pzoneApply);
+        var zwApply = parseFloat(csApply.width) || pzoneApply.offsetWidth || 1;
+        var zhApply = parseFloat(csApply.height) || pzoneApply.offsetHeight || 1;
+        var l = lay.leftPct !== undefined ? lay.leftPct * zwApply : lay.left;
+        var t = lay.topPct !== undefined ? lay.topPct * zhApply : lay.top;
+        var w = lay.widthPct !== undefined ? lay.widthPct * zwApply : lay.width;
+        var h = lay.heightPct !== undefined ? lay.heightPct * zhApply : lay.height;
+        if(isFinite(l) && isFinite(t) && isFinite(w) && isFinite(h) && w > 0 && h > 0){
+          w = Math.max(1, Math.min(w, zwApply));
+          h = Math.max(1, Math.min(h, zhApply));
+          l = Math.max(0, Math.min(zwApply - w, l));
+          t = Math.max(0, Math.min(zhApply - h, t));
+          boxApply.dataset.manualLayout = '1';
+          boxApply.style.left = l + 'px';
+          boxApply.style.top = t + 'px';
+          boxApply.style.width = w + 'px';
+          boxApply.style.height = h + 'px';
+        }
+      }
+      return;
     }
 
     if (e.data.type === 'bn-capture') {
