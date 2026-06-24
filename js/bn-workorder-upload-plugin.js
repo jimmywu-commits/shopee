@@ -102,7 +102,21 @@
     var header = findHeader(rows, '版位');
     var found = {ddcard:false, hbn:false, scbn:false};
     var raw = [];
-    if(!header) return {types:found, raw:raw, header:null};
+    if(!header){
+      for(var rr=0; rr<rows.length; rr++){
+        var row = rows[rr] || [];
+        for(var cc=0; cc<row.length; cc++){
+          var value2 = cellText(row[cc]);
+          if(!value2) continue;
+          var type2 = detectLayoutType(value2);
+          if(type2){
+            found[type2] = true;
+            raw.push(value2);
+          }
+        }
+      }
+      return {types:found, raw:raw, header:null};
+    }
 
     for(var r = header.row + 1; r < rows.length; r++){
       var value = cellText((rows[r] || [])[header.col]);
@@ -150,12 +164,173 @@
     return result;
   }
 
+
+  function parsePublicTemplateCode(text){
+    var s = cellText(text)
+      .replace(/[＿]/g, '_')
+      .replace(/[－—–]/g, '-')
+      .replace(/\u00a0/g, ' ');
+    if(!s) return null;
+
+    /* 支援：
+       EL-9 / EL_09 / EL 09 / EL09
+       FMCG-10
+       Fashion-12 / Fashion-Mockup-28 / Fashion Mockup 28
+       Lifestyle-3
+    */
+    var m = s.match(/\b(EL|FMCG|Fashion|Lifestyle)\s*[-_ ]?\s*(?:Mock\s*up|Mockup)?\s*[-_ ]?\s*0*(\d{1,3})\b/i);
+    if(!m) return null;
+    var rawCat = m[1].toLowerCase();
+    var catMap = { el:'EL', fmcg:'FMCG', fashion:'Fashion', lifestyle:'Lifestyle' };
+    var cat = catMap[rawCat] || m[1];
+    var num = parseInt(m[2], 10);
+    return { category: cat, number: num, code: cat + '-' + num, raw: m[0] };
+  }
+
+  function isPublicTemplateHeader(v){
+    var n = norm(v);
+    if(!n) return false;
+    return n.indexOf('公版編號') !== -1 ||
+           n.indexOf('指定公版編號') !== -1 ||
+           n.indexOf('請選公版') !== -1 ||
+           n === '公版' ||
+           n.indexOf('mockup') !== -1;
+  }
+
+  function findPublicTemplateHeaders(rows){
+    var headers = [];
+    for(var r = 0; r < rows.length; r++){
+      var row = rows[r] || [];
+      for(var c = 0; c < row.length; c++){
+        if(isPublicTemplateHeader(row[c])) headers.push({row:r, col:c});
+      }
+    }
+    return headers;
+  }
+
+  function pushCandidate(candidates, value, score){
+    var text = cellText(value);
+    if(!text) return;
+    candidates.push({text:text, score:score || 0});
+  }
+
+  function scanPublicTemplateCode(rows){
+    var candidates = [];
+    var headers = findPublicTemplateHeaders(rows);
+
+    /* 優先抓關鍵字同格、右邊欄位、下方附近欄位。 */
+    headers.forEach(function(header){
+      for(var dr = -1; dr <= 6; dr++){
+        var rr = header.row + dr;
+        if(rr < 0 || rr >= rows.length) continue;
+        var row = rows[rr] || [];
+        for(var dc = 0; dc <= 8; dc++){
+          var cc = header.col + dc;
+          if(cc < 0 || cc >= row.length) continue;
+          var score = 100 - Math.abs(dr) * 6 - dc;
+          if(dr === 0 && dc === 0) score += 8;
+          if(dr === 0 && dc > 0) score += 12;
+          if(dr > 0 && dc === 0) score += 6;
+          pushCandidate(candidates, row[cc], score);
+        }
+      }
+    });
+
+    /* fallback：整張工單找 EL/FMCG/Fashion/Lifestyle + 編號，避免欄位名稱變體漏抓。 */
+    for(var r = 0; r < rows.length; r++){
+      var row2 = rows[r] || [];
+      for(var c = 0; c < row2.length; c++){
+        pushCandidate(candidates, row2[c], 1);
+      }
+    }
+
+    candidates.sort(function(a,b){ return b.score - a.score; });
+    for(var i = 0; i < candidates.length; i++){
+      var parsed = parsePublicTemplateCode(candidates[i].text);
+      if(parsed) return parsed;
+    }
+    return null;
+  }
+
+  function applyPublicTemplateBackground(publicCode){
+    if(!publicCode || !publicCode.code) return;
+    function run(){
+      if(global.BNBgLibrary && typeof global.BNBgLibrary.applyByCode === 'function'){
+        global.BNBgLibrary.applyByCode(publicCode.code).then(function(ok){
+          if(ok) toast('已依公版編號套用背景：' + publicCode.code, 'ok', 2600);
+        });
+      }else{
+        toast('已偵測公版編號 ' + publicCode.code + '，但背景圖庫外掛尚未載入', 'err', 3200);
+      }
+    }
+    /* renderPreviews 會重建 iframe，稍等 iframe ready 後再套背景。 */
+    setTimeout(run, 900);
+  }
+
+  function countCopyFields(copy){
+    var n = 0;
+    if(copy && copy.brand) n++;
+    if(copy && copy.main) n++;
+    if(copy && copy.sub) n++;
+    if(copy && copy.date) n++;
+    return n;
+  }
+
+  function countLayoutTypes(types){
+    var n = 0;
+    Object.keys(types || {}).forEach(function(k){ if(types[k]) n++; });
+    return n;
+  }
+
+  function scoreSheetCandidate(candidate, index){
+    var rows = candidate.rows || [];
+    var layoutResult = scanAppearedLayoutTypes(rows);
+    var copy = scanCopy(rows);
+    var publicCode = scanPublicTemplateCode(rows);
+    var specHeader = findHeader(rows, '規範字數');
+    var layoutCount = countLayoutTypes(layoutResult.types);
+    var copyCount = countCopyFields(copy);
+    var score = 0;
+
+    if(specHeader) score += 35;
+    if(layoutResult.header) score += 22;
+    score += layoutCount * 12;
+    score += copyCount * 18;
+    if(copy && copy.brand) score += 10;
+    if(copy && copy.main && copy.sub && copy.main !== copy.sub) score += 8;
+    if(publicCode) score += 28;
+
+    /* 如果只抓到相同 CTA 文案，通常是總覽或錯誤區塊，降低優先順序。 */
+    if(copy && copy.main && copy.sub && copy.main === copy.sub) score -= 18;
+    if(copyCount === 0 && layoutCount === 0 && !publicCode) score -= 40;
+
+    /* 同分時仍保留原始分頁順序，符合最新資料通常在前面的習慣。 */
+    score -= index * 0.01;
+
+    candidate.layoutResult = layoutResult;
+    candidate.copy = copy;
+    candidate.publicCode = publicCode;
+    candidate.score = score;
+    return candidate;
+  }
+
   function rowsFromWorkbook(wb){
-    var sheetName = wb.SheetNames && wb.SheetNames[0];
-    if(!sheetName) throw new Error('找不到工作表');
-    var sheet = wb.Sheets[sheetName];
-    var rows = global.XLSX.utils.sheet_to_json(sheet, {header:1, defval:'', raw:false});
-    return {sheetName:sheetName, rows:rows};
+    if(!wb.SheetNames || !wb.SheetNames.length) throw new Error('找不到工作表');
+    var candidates = wb.SheetNames.map(function(sheetName, idx){
+      var sheet = wb.Sheets[sheetName];
+      var rows = global.XLSX.utils.sheet_to_json(sheet, {header:1, defval:'', raw:false});
+      return scoreSheetCandidate({sheetName:sheetName, rows:rows}, idx);
+    }).filter(function(c){ return c.rows && c.rows.length; });
+
+    if(!candidates.length) throw new Error('找不到可讀取的工作表');
+    candidates.sort(function(a,b){ return b.score - a.score; });
+    var best = candidates[0];
+
+    /* 若所有分頁都沒有明確欄位，才退回第一個分頁。 */
+    if(best.score < 10){
+      best = candidates.sort(function(a,b){ return wb.SheetNames.indexOf(a.sheetName) - wb.SheetNames.indexOf(b.sheetName); })[0];
+    }
+    return best;
   }
 
   function layoutMatchesType(layout, type){
@@ -166,12 +341,61 @@
     return false;
   }
 
+  function rerenderLayoutSelection(){
+    if(typeof global.renderChecks === 'function') global.renderChecks();
+    if(typeof global.renderPreviews === 'function') global.renderPreviews();
+    /* renderChecks/renderPreviews 有時會在工單匯入與 iframe 重建的同一輪事件中被呼叫，
+       多補兩次可以避免右側短暫停在「請在左側勾選排版」。 */
+    setTimeout(function(){
+      if(typeof global.renderChecks === 'function') global.renderChecks();
+      if(typeof global.renderPreviews === 'function') global.renderPreviews();
+    }, 60);
+    setTimeout(function(){
+      if(typeof global.renderPreviews === 'function') global.renderPreviews();
+    }, 220);
+  }
+
+  function hasAnyRequestedLayoutType(types){
+    return Object.keys(types || {}).some(function(k){ return !!types[k]; });
+  }
+
+  function keepExistingOrDefaultSelection(layouts){
+    if(!global.checked) global.checked = {};
+    layouts.forEach(function(l){
+      /* checked 沒有記錄時，BN 原本規則就是預設勾選。 */
+      if(!(l.id in global.checked)) global.checked[l.id] = true;
+    });
+    rerenderLayoutSelection();
+  }
+
   function applyLayouts(types){
-    if(typeof global.loadLayouts !== 'function') return {matched:0, selectedNames:[]};
+    if(typeof global.loadLayouts !== 'function') return {matched:0, selectedNames:[], preserved:true};
     var layouts = global.loadLayouts().filter(function(l){ return l.enabled; });
     if(!global.checked) global.checked = {};
     var selectedNames = [];
     var matched = 0;
+    var hasRequestedTypes = hasAnyRequestedLayoutType(types);
+
+    /* 沒有從工單抓到版位時，不要把所有排版都取消勾選。
+       之前右側會顯示「請在左側勾選排版」，就是因為這裡把 checked 全部設成 false。 */
+    if(!hasRequestedTypes){
+      keepExistingOrDefaultSelection(layouts);
+      return {matched:0, selectedNames:selectedNames, preserved:true};
+    }
+
+    layouts.forEach(function(l){
+      var shouldCheck = false;
+      Object.keys(types).forEach(function(type){
+        if(types[type] && layoutMatchesType(l, type)) shouldCheck = true;
+      });
+      if(shouldCheck){ matched++; selectedNames.push(l.name || l.file || String(l.id)); }
+    });
+
+    /* 工單有版位字樣，但目前排版清單沒有對應項目時，也不要清空畫布。 */
+    if(!matched){
+      keepExistingOrDefaultSelection(layouts);
+      return {matched:0, selectedNames:selectedNames, preserved:true};
+    }
 
     layouts.forEach(function(l){
       var shouldCheck = false;
@@ -179,12 +403,10 @@
         if(types[type] && layoutMatchesType(l, type)) shouldCheck = true;
       });
       global.checked[l.id] = shouldCheck;
-      if(shouldCheck){ matched++; selectedNames.push(l.name || l.file || String(l.id)); }
     });
 
-    if(typeof global.renderChecks === 'function') global.renderChecks();
-    if(typeof global.renderPreviews === 'function') global.renderPreviews();
-    return {matched:matched, selectedNames:selectedNames};
+    rerenderLayoutSelection();
+    return {matched:matched, selectedNames:selectedNames, preserved:false};
   }
 
   function setInputValue(id, value){
@@ -212,10 +434,12 @@
       .then(function(buf){
         var wb = global.XLSX.read(buf, {type:'array'});
         var parsed = rowsFromWorkbook(wb);
-        var layoutResult = scanAppearedLayoutTypes(parsed.rows);
-        var copy = scanCopy(parsed.rows);
+        var layoutResult = parsed.layoutResult || scanAppearedLayoutTypes(parsed.rows);
+        var copy = parsed.copy || scanCopy(parsed.rows);
+        var publicCode = parsed.publicCode || scanPublicTemplateCode(parsed.rows);
         var appliedLayouts = applyLayouts(layoutResult.types);
         applyCopy(copy);
+        applyPublicTemplateBackground(publicCode);
 
         var importedText = [];
         if(copy.brand) importedText.push('品牌名');
@@ -224,8 +448,9 @@
         if(copy.date) importedText.push('日期/警語');
 
         var appeared = Object.keys(layoutResult.types).filter(function(k){ return layoutResult.types[k]; }).length;
-        setStatus('完成：勾選 ' + appliedLayouts.matched + ' 個排版，匯入 ' + importedText.join('、'), 'ok');
-        toast('工單已匯入：偵測到 ' + appeared + ' 個版位，已同步文字與畫布', 'ok', 2800);
+        var bgMsg = publicCode ? ('，公版背景 ' + publicCode.code + ' 套用中') : '';
+        setStatus('完成：讀取「' + parsed.sheetName + '」，勾選 ' + appliedLayouts.matched + ' 個排版，匯入 ' + importedText.join('、') + bgMsg, 'ok');
+        toast('工單已匯入：讀取「' + parsed.sheetName + '」，偵測到 ' + appeared + ' 個版位，已同步文字與畫布' + bgMsg, 'ok', 3000);
       })
       .catch(function(err){
         console.error('[工單上傳] 失敗', err);
@@ -276,7 +501,10 @@
   }
 
   global.bnWorkorderUploadPlugin = {
-    parseRows: function(rows){ return {layouts:scanAppearedLayoutTypes(rows), copy:scanCopy(rows)}; },
+    parseRows: function(rows){ return {layouts:scanAppearedLayoutTypes(rows), copy:scanCopy(rows), publicCode:scanPublicTemplateCode(rows)}; },
+    rowsFromWorkbook: rowsFromWorkbook,
+    scanPublicTemplateCode: scanPublicTemplateCode,
+    applyPublicTemplateBackground: applyPublicTemplateBackground,
     applyCopy: applyCopy,
     applyLayouts: applyLayouts
   };
