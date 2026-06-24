@@ -28,16 +28,16 @@
   z-index: 221;
 }
 .cta白線 {
-  border-width: 6.11px;
-  border-color: rgb(255, 255, 255);
-  border-style: solid;
-  border-radius: 50%;
   position: absolute;
-left: 1000px;
-  top: 44px;
-  width: 73.66px;
-  height: 73.66px;
-  z-index: 220;
+  left: 1010px;
+  top: 41px;
+  width: 86px;
+  height: 86px;
+  z-index: 204;
+  border: none !important;
+  border-radius: 0 !important;
+  background: transparent url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='86' height='86' viewBox='0 0 86 86'%3E%3Ccircle cx='43' cy='43' r='37' fill='none' stroke='%23fff' stroke-width='6'/%3E%3C/svg%3E") center center / 86px 86px no-repeat !important;
+  overflow: visible;
 }
 .cta圓底 {
   border-radius: 50%;

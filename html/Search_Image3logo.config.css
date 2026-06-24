@@ -28,10 +28,9 @@
   left: 35px;
   top: 110px;
   width: 30px;
-  height: 0;
-  border-width: 1px;
-  border-color: rgb(255, 255, 255);
-  border-style: solid;
+  height: 1.5px;
+  background: #fff;
+  border: none;
   display: block;
   z-index: 201;
 }
@@ -40,10 +39,9 @@
   left: 223px;
   top: 109px;
   width: 30px;
-  height: 0;
-  border-width: 1px;
-  border-color: rgb(255, 255, 255);
-  border-style: solid;
+  height: 1.5px;
+  background: #fff;
+  border: none;
   display: block;
   z-index: 202;
 }
@@ -145,7 +143,6 @@
 .logo間隔直線_左,
 .logo間隔直線_右 {
   opacity: 0.6;
-  border-width: 1px !important;
 }
 
 
@@ -159,8 +156,21 @@
   left: 1007px;
 }
 .cta白線 {
-  top: 40px;
-  left: 1009.5px;
+  position: absolute;
+  left: 1010px;
+  top: 41px;
+  width: 74px;
+  height: 74px;
+  z-index: 300;
+
+  border: none !important;
+  border-radius: 0 !important;
+
+  background:
+    transparent url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='74' height='74' viewBox='0 0 74 74'%3E%3Ccircle cx='37' cy='37' r='34' fill='none' stroke='%23fff' stroke-width='6'/%3E%3C/svg%3E")
+    center center / 74px 74px no-repeat !important;
+
+  overflow: visible;
 }
 .cta三角箭頭 {
   background: transparent;
@@ -208,10 +218,9 @@
   left: 35px !important;
   top: 110px !important;
   width: 30px !important;
-  height: 0 !important;
-  border-width: 1px !important;
-  border-color: rgb(255, 255, 255) !important;
-  border-style: solid !important;
+  height: 1.5px !important;
+  background: #fff !important;
+  border: none !important;
   display: block !important;
   opacity: 1 !important;
   visibility: visible !important;
@@ -222,10 +231,9 @@
   left: 223px !important;
   top: 109px !important;
   width: 30px !important;
-  height: 0 !important;
-  border-width: 1px !important;
-  border-color: rgb(255, 255, 255) !important;
-  border-style: solid !important;
+  height: 1.5px !important;
+  background: #fff !important;
+  border: none !important;
   display: block !important;
   opacity: 1 !important;
   visibility: visible !important;
