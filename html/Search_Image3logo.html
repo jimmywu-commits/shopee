@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<title>排版預覽</title>
+<title>Search_Image3logo 排版預覽</title>
 <style>
 @font-face {
   font-family: "ShopeeNotoSans (content)";
@@ -29,7 +29,6 @@ html, body {
 #stage { position: relative; }
 #canvas {
   position: absolute; top: 0; left: 0;
-  /* 尺寸由 layout-runtime.js 從 config.css 讀取後設定，不在這裡硬碼 */
   overflow: hidden; transform-origin: top left;
 }
 #底圖 {
@@ -45,52 +44,46 @@ html, body {
   padding: 7px 16px; border-radius: 6px; z-index: 9999;
 }
 </style>
-<style id="export-stable-logo-lines">
-/* Export-stable cleanup: remove every legacy or JS-generated logo line source */
+<style id="export-stable-overrides">
+/*
+  官方旗艦店：純文字，不用 flex，不用偽元素
+  橫線改由真實 DOM（主logo橫線_左 / _右）負責
+  html2canvas 可以正確截到真實 DOM，但無法正確處理 flex + ::before/::after
+*/
 .主logo橫線,
-.主logo橫線_左,
-.主logo橫線_右,
 svg.main-logo-auto-lines {
   display: none !important;
-  opacity: 0 !important;
-  visibility: hidden !important;
 }
 
+/* 主logo橫線_左 / _右：真實 DOM，讓 html2canvas 能截到 */
+.主logo橫線_左,
+.主logo橫線_右 {
+  display: block !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+/* 紅底的 ::before/::after fallback 關掉，避免跟真實 DOM 橫線重複 */
 .蝦皮商城logo紅底::before,
 .蝦皮商城logo紅底::after {
   content: none !important;
   display: none !important;
 }
 
-/*
-  Export-stable main logo label:
-  - no JS measurement
-  - no SVG dynamic line
-  - no transform
-  - pure CSS flex layout
-  - total original PS span: x 35 → 253 = 218px
-  - text centered
-  - left/right lines equal length
-  - 6px gap on both sides
-  - 2px line
-*/
+/* 官方旗艦店：純文字，位置正確，不用 flex */
 .官方旗艦店 {
   position: absolute !important;
-  left: 35px !important;
+  left: 69px !important;      /* 共用 Image1 左側官方旗艦店位置 */
   top: 96.4px !important;
-  width: 218px !important;
   height: 30px !important;
 
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  gap: 6px !important;
+  display: block !important;  /* 取消 flex */
+  line-height: 30px !important;
+  white-space: nowrap !important;
 
   font-family: "ShopeeNotoSans (content)" !important;
   font-weight: 300 !important;
   font-size: 29.63px !important;
-  line-height: 30px !important;
-  white-space: nowrap !important;
   color: #fff !important;
   text-align: center !important;
 
@@ -102,19 +95,14 @@ svg.main-logo-auto-lines {
   z-index: 999 !important;
 }
 
+/* 官方旗艦店 偽元素全部關掉 */
 .官方旗艦店::before,
 .官方旗艦店::after {
-  content: "" !important;
-  display: block !important;
-  flex: 1 1 auto !important;
-  min-width: 0 !important;
-  height: 0 !important;
-  border-top: 2px solid #fff !important;
-  opacity: 1 !important;
-  visibility: visible !important;
+  content: none !important;
+  display: none !important;
 }
 
-/* Stabilize subtitle export by removing matrix scaling and using final equivalent size/position */
+/* 副標案型七字內：拿掉 PS matrix，用等效字號 */
 .副標案型七字內 {
   transform: none !important;
   -moz-transform: none !important;
@@ -122,7 +110,6 @@ svg.main-logo-auto-lines {
   -ms-transform: none !important;
   font-size: 60.08px !important;
   line-height: 1 !important;
-  top: 34.08px !important;
 }
 </style>
 </head>
@@ -136,5 +123,7 @@ svg.main-logo-auto-lines {
   </div>
 </div>
 <script src="../js/layout-runtime.js"></script>
+<!-- 共用左側紅底 Logo 最終覆蓋：放在 runtime 後面，手動改 Search_Image1logo_logo.css 才會生效 -->
+<link rel="stylesheet" href="Search_Image1logo_logo.css">
 </body>
 </html>

@@ -27,6 +27,140 @@
     document.head.appendChild(s);
   }
 
+
+
+  /* IndexedDB：完整本機暫存。背景圖 dataURL 很容易超過 localStorage 容量，
+     因此完整 state 存 IndexedDB；localStorage 僅作為小型備援/舊版相容。 */
+  var IDB_DB = 'bn_editor_state_db';
+  var IDB_STORE = 'states';
+  var IDB_KEY = 'current';
+
+  function openStateDb(){
+    return new Promise(function(resolve, reject){
+      if(!('indexedDB' in global)){ reject(new Error('IndexedDB not supported')); return; }
+      var req = indexedDB.open(IDB_DB, 1);
+      req.onupgradeneeded = function(){
+        var db = req.result;
+        if(!db.objectStoreNames.contains(IDB_STORE)) db.createObjectStore(IDB_STORE);
+      };
+      req.onsuccess = function(){ resolve(req.result); };
+      req.onerror = function(){ reject(req.error || new Error('IndexedDB open failed')); };
+    });
+  }
+
+  function idbSetState(state){
+    return openStateDb().then(function(db){
+      return new Promise(function(resolve, reject){
+        var tx = db.transaction(IDB_STORE, 'readwrite');
+        tx.objectStore(IDB_STORE).put(state, IDB_KEY);
+        tx.oncomplete = function(){ db.close(); resolve(); };
+        tx.onerror = function(){ var err = tx.error; try{ db.close(); }catch(_){} reject(err || new Error('IndexedDB write failed')); };
+      });
+    });
+  }
+
+  function idbGetState(){
+    return openStateDb().then(function(db){
+      return new Promise(function(resolve, reject){
+        var tx = db.transaction(IDB_STORE, 'readonly');
+        var req = tx.objectStore(IDB_STORE).get(IDB_KEY);
+        req.onsuccess = function(){ resolve(req.result || null); };
+        req.onerror = function(){ reject(req.error || new Error('IndexedDB read failed')); };
+        tx.oncomplete = function(){ try{ db.close(); }catch(_){} };
+      });
+    });
+  }
+
+  function idbClearState(){
+    return openStateDb().then(function(db){
+      return new Promise(function(resolve, reject){
+        var tx = db.transaction(IDB_STORE, 'readwrite');
+        tx.objectStore(IDB_STORE).delete(IDB_KEY);
+        tx.oncomplete = function(){ db.close(); resolve(); };
+        tx.onerror = function(){ var err = tx.error; try{ db.close(); }catch(_){} reject(err || new Error('IndexedDB delete failed')); };
+      });
+    });
+  }
+
+  function stripHeavyStateForLocalStorage(state){
+    var light = clone(state || {});
+    light._heavyStripped = true;
+    if(light.background && light.background.states){
+      Object.keys(light.background.states).forEach(function(id){
+        if(light.background.states[id]) light.background.states[id].src = light.background.states[id].src ? '__BN_IDB__' : null;
+      });
+      if(light.background.legacySrc) light.background.legacySrc = '__BN_IDB__';
+    }
+    if(light.products){ light.products.forEach(function(p){ if(p && p.src) p.src='__BN_IDB__'; }); }
+    if(light.logos){ light.logos.forEach(function(l){ if(l && l.src) l.src='__BN_IDB__'; }); }
+    return light;
+  }
+
+  function isFullStateCandidate(state){
+    return !!(state && state.version === 1 && !stateHasHeavyPlaceholders(state));
+  }
+
+  function readLocalState(key){
+    try{
+      var raw = localStorage.getItem(key);
+      if(!raw) return null;
+      var state = JSON.parse(raw);
+      return state && state.version === 1 ? state : null;
+    }catch(_){ return null; }
+  }
+
+  function getNewestState(states, preferFull){
+    var list = (states || []).filter(function(s){ return s && s.version === 1; });
+    if(preferFull) list = list.filter(isFullStateCandidate);
+    if(!list.length) return null;
+    list.sort(function(a,b){ return (b.ts || 0) - (a.ts || 0); });
+    return list[0];
+  }
+
+  function mergeLightIntoFull(full, light){
+    if(!full || !light || !light._heavyStripped) return full;
+    if((light.ts || 0) <= (full.ts || 0)) return full;
+    var merged = clone(full);
+    merged.ts = light.ts || merged.ts;
+    ['texts','colors','inputMeta','toolbar','layouts','bgCheckers','checked'].forEach(function(k){
+      if(light[k] !== undefined) merged[k] = clone(light[k]);
+    });
+
+    if(Array.isArray(light.products) && Array.isArray(merged.products)){
+      var byId = {};
+      merged.products.forEach(function(p){ if(p && p.id) byId[p.id] = p; });
+      light.products.forEach(function(lp){
+        if(!lp || !lp.id || !byId[lp.id]) return;
+        ['sizeScale','position','zOrder','width','height','x','y','scale','rotate','layout','layouts','crop','meta'].forEach(function(k){
+          if(lp[k] !== undefined) byId[lp.id][k] = clone(lp[k]);
+        });
+      });
+    }
+
+    if(Array.isArray(light.logos) && Array.isArray(merged.logos)){
+      var logosById = {};
+      merged.logos.forEach(function(l){ if(l && l.id) logosById[l.id] = l; });
+      light.logos.forEach(function(ll, i){
+        var target = (ll && ll.id && logosById[ll.id]) || merged.logos[i];
+        if(!target || !ll) return;
+        Object.keys(ll).forEach(function(k){ if(k !== 'src' && ll[k] !== undefined) target[k] = clone(ll[k]); });
+      });
+    }
+
+    if(light.background && merged.background){
+      if(light.background.activeId !== undefined) merged.background.activeId = light.background.activeId;
+      if(light.background.states && merged.background.states){
+        Object.keys(light.background.states).forEach(function(id){
+          var ls = light.background.states[id] || {};
+          var ms = merged.background.states[id] || {};
+          Object.keys(ls).forEach(function(k){ if(k !== 'src' && ls[k] !== undefined) ms[k] = clone(ls[k]); });
+          merged.background.states[id] = ms;
+        });
+      }
+    }
+    return merged;
+  }
+
   /* ── Toast（同 sba.html 風格） ── */
   function showToast(msg, type, duration){
     var t = document.createElement('div');
@@ -254,6 +388,132 @@
     });
   }
 
+  function clone(obj){
+    try{ return JSON.parse(JSON.stringify(obj)); }
+    catch(_){ return obj; }
+  }
+
+  function isHexColor(v){
+    return typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v.trim());
+  }
+  var BN_DEFAULT_CANVAS_BG = '#6bc0ec';
+  function isDefaultCanvasBg(v){ return isHexColor(v) && String(v).toLowerCase() === BN_DEFAULT_CANVAS_BG; }
+  function isUserCanvasBg(v){ return isHexColor(v) && (global._bnUserCanvasBgLocked || !isDefaultCanvasBg(v)); }
+
+  function getLockedCanvasBg(){
+    /* 以目前父層實際 colorState 為最高優先，避免 ZIP 匯出期間舊暫存/預設藍回灌。 */
+    if(global.colorState && isUserCanvasBg(global.colorState.canvasBg)) return global.colorState.canvasBg;
+    if(isUserCanvasBg(global._bnCanvasBgHardLock)) return global._bnCanvasBgHardLock;
+    if(isUserCanvasBg(global._bnPersistentCanvasBg)) return global._bnPersistentCanvasBg;
+    if(global._bnFrozenColorData && isUserCanvasBg(global._bnFrozenColorData.canvasBg)) return global._bnFrozenColorData.canvasBg;
+    if((global._bnBgColorExportGuardUntil && Date.now() < global._bnBgColorExportGuardUntil) && global._bnLastUserColorState && isUserCanvasBg(global._bnLastUserColorState.canvasBg)) return global._bnLastUserColorState.canvasBg;
+    return null;
+  }
+
+  function applyLockedCanvasBg(colors){
+    var locked = getLockedCanvasBg();
+    if(locked){
+      colors = colors || {};
+      colors.canvasBg = locked;
+      global._bnPersistentCanvasBg = locked;
+      global._bnCanvasBgHardLock = locked;
+      global._bnUserCanvasBgLocked = true;
+      if(global.colorState) global.colorState.canvasBg = locked;
+    }
+    return colors;
+  }
+
+  function markDirty(){
+    try{ document.dispatchEvent(new CustomEvent('bn-state-dirty')); }catch(_){ }
+  }
+
+  function collectInputMeta(){
+    var out = {};
+    ['txt-brand','txt-main','txt-sub','txt-date'].forEach(function(id){
+      var el = document.getElementById(id);
+      if(!el) return;
+      out[id] = {
+        value: el.value || '',
+        dollarExempt: el.dataset.dollarExempt || '',
+        thousandsExempt: el.dataset.thousandsExempt || ''
+      };
+    });
+    return out;
+  }
+
+  function applyInputMeta(meta){
+    if(!meta || typeof meta !== 'object') return;
+    Object.keys(meta).forEach(function(id){
+      var el = document.getElementById(id);
+      var m = meta[id] || {};
+      if(!el) return;
+      if(m.value !== undefined){ el.value = m.value; el.dispatchEvent(new Event('input',{bubbles:true})); }
+      el.dataset.dollarExempt = m.dollarExempt || '';
+      el.dataset.thousandsExempt = m.thousandsExempt || '';
+    });
+  }
+
+  function collectToolbarState(){
+    var sidebar = document.getElementById('sidebar');
+    var scroll = document.getElementById('sidebar-scroll');
+    var state = { controls:{}, panels:{}, scrollTop: scroll ? scroll.scrollTop : 0 };
+    if(!sidebar) return state;
+
+    sidebar.querySelectorAll('input,select,textarea').forEach(function(el, idx){
+      if(!el.id && !el.name) return;
+      if(el.type === 'file') return;
+      var key = el.id || el.name || ('control_'+idx);
+      /* cp-hex-input / cp-native 是色盤面板的暫時輸入值，真正顏色已存在 state.colors。
+         若把它們也存入 toolbar 並在載入時 dispatch input/change，
+         會用舊色盤值覆蓋 colorState.canvasBg，造成背景色跳回預設藍。 */
+      if(key === 'cp-hex-input' || key === 'cp-native') return;
+      var v;
+      if(el.type === 'checkbox' || el.type === 'radio') v = !!el.checked;
+      else v = el.value;
+      state.controls[key] = { tag:el.tagName, type:el.type || '', value:v };
+    });
+
+    var cp = document.getElementById('cp-panel');
+    if(cp){
+      state.panels.colorPicker = {
+        activeKey: global.cpActiveKey || null,
+        open: cp.classList.contains('open'),
+        left: cp.style.left || '',
+        top: cp.style.top || ''
+      };
+    }
+    state.previewMax = global.PREVIEW_MAX;
+    return state;
+  }
+
+  function applyToolbarState(state){
+    if(!state || typeof state !== 'object') return;
+    var controls = state.controls || {};
+    Object.keys(controls).forEach(function(key){
+      var el = document.getElementById(key) || document.querySelector('[name="'+String(key).replace(/"/g,'\\"')+'"]');
+      if(!el || el.type === 'file') return;
+      if(key === 'cp-hex-input' || key === 'cp-native') return;
+      var item = controls[key] || {};
+      if(el.type === 'checkbox' || el.type === 'radio') el.checked = !!item.value;
+      else if(item.value !== undefined) el.value = item.value;
+      try{ el.dispatchEvent(new Event('input',{bubbles:true})); el.dispatchEvent(new Event('change',{bubbles:true})); }catch(_){ }
+    });
+    if(state.scrollTop !== undefined){
+      var scroll = document.getElementById('sidebar-scroll');
+      if(scroll) setTimeout(function(){ scroll.scrollTop = state.scrollTop || 0; }, 80);
+    }
+    if(state.panels && state.panels.colorPicker){
+      var cp = document.getElementById('cp-panel');
+      if(cp){
+        cp.style.left = state.panels.colorPicker.left || cp.style.left;
+        cp.style.top = state.panels.colorPicker.top || cp.style.top;
+        cp.classList.toggle('open', !!state.panels.colorPicker.open);
+      }
+      if(state.panels.colorPicker.activeKey !== undefined) global.cpActiveKey = state.panels.colorPicker.activeKey;
+    }
+    if(state.previewMax !== undefined) global.PREVIEW_MAX = state.previewMax;
+  }
+
   /* ══════════════════════════════════════
      2. 本機暫存
   ══════════════════════════════════════ */
@@ -267,18 +527,46 @@
         sub:  (document.getElementById('txt-sub')  ||{}).value||'',
         date: (document.getElementById('txt-date') ||{}).value||'',
       },
-      colors: global.colorState ? JSON.parse(JSON.stringify(global.colorState)) : {},
-      logos: (global._bnLogos||[]).map(function(l){ return {id:l.id,src:l.src,round:l.round||false}; }),
+      colors: applyLockedCanvasBg(global._bnLastUserColorState ? clone(global._bnLastUserColorState) : (global.colorState ? clone(global.colorState) : {})),
+      inputMeta: collectInputMeta(),
+      logos: (global._bnLogos||[]).map(function(l){ return clone(l); }),
       products:(global._bnProducts||[]).map(function(p){
-        return {id:p.id,src:p.src,ratio:p.ratio,name:p.name,
-          sizeScale:p.sizeScale||1,position:p.position||0,zOrder:p.zOrder||0};
+        return {id:p.id,src:p.src,baseSrc:p.baseSrc,ratio:p.ratio,name:p.name,
+          sizeScale:p.sizeScale||1,position:p.position||0,zOrder:p.zOrder||0,
+          width:p.width, height:p.height, x:p.x, y:p.y, scale:p.scale, rotate:p.rotate,
+          layout:p.layout ? clone(p.layout) : undefined,
+          layouts:p.layouts ? clone(p.layouts) : undefined,
+          crop:p.crop ? clone(p.crop) : undefined, meta:p.meta ? clone(p.meta) : undefined};
       }),
+      background:{
+        activeId: typeof global._bnGetBgActiveId==='function' ? global._bnGetBgActiveId() : null,
+        states: typeof global._bnGetBgStates==='function' ? global._bnGetBgStates() : {},
+        legacySrc: global._bgDataUrl || null
+      },
+      toolbar: collectToolbarState(),
+      layouts: typeof global.getLayoutState==='function' ? clone(global.getLayoutState()) : null,
+      bgCheckers: typeof global.getBgCheckerState==='function' ? clone(global.getBgCheckerState()) : [],
       checked: global.loadChecked ? global.loadChecked() : {},
     };
   }
 
+  function hasRealDataUrl(v){
+    return typeof v === 'string' && v && v !== '__BN_IDB__';
+  }
+
+  function stateHasHeavyPlaceholders(state){
+    if(!state) return false;
+    if(state._heavyStripped) return true;
+    var bg = state.background || {};
+    if(bg.legacySrc === '__BN_IDB__') return true;
+    var st = bg.states || {};
+    return Object.keys(st).some(function(id){ return st[id] && st[id].src === '__BN_IDB__'; });
+  }
+
   function applyState(state){
     if(!state||state.version!==1) return;
+    global._bnStateApplying = true;
+    var heavyStripped = stateHasHeavyPlaceholders(state);
     if(state.texts){
       ['brand','main','sub','date'].forEach(function(k){
         var el=document.getElementById('txt-'+k);
@@ -286,52 +574,126 @@
       });
     }
     if(state.colors&&global.colorState){
-      Object.assign(global.colorState,state.colors);
+      var nextColors = clone(state.colors);
+      /* ZIP 匯出或剛匯出後，若舊暫存帶預設藍進來，不可覆蓋使用者目前吸色後的背景色。 */
+      var guardActive = global._bnFrozenColorData || (global._bnBgColorExportGuardUntil && Date.now() < global._bnBgColorExportGuardUntil);
+      if(guardActive && global._bnLastUserColorState){
+        nextColors = Object.assign(nextColors, clone(global._bnLastUserColorState));
+      }
+      nextColors = applyLockedCanvasBg(nextColors);
+      Object.assign(global.colorState,nextColors);
+      global._bnLastUserColorState = clone(global.colorState);
       if(typeof global.renderColorPickers==='function') global.renderColorPickers();
       if(typeof global.broadcastColors==='function') global.broadcastColors();
     }
+    applyInputMeta(state.inputMeta);
     if(state.logos&&Array.isArray(state.logos)){
-      global._bnLogos=state.logos;
-      global._bnLogoDataUrl=state.logos.length?state.logos[0].src:null;
-      if(typeof global._bnRenderLogoList==='function') global._bnRenderLogoList();
-      if(typeof global._bnBroadcastLogos==='function') global._bnBroadcastLogos();
+      if(!heavyStripped || state.logos.some(function(l){ return l && hasRealDataUrl(l.src); })){
+        global._bnLogos=state.logos.filter(function(l){ return !l || l.src !== '__BN_IDB__'; });
+        global._bnLogoDataUrl=global._bnLogos.length?global._bnLogos[0].src:null;
+        if(typeof global._bnRenderLogoList==='function') global._bnRenderLogoList();
+        if(typeof global._bnBroadcastLogos==='function') global._bnBroadcastLogos();
+      }
     }
     if(state.products&&Array.isArray(state.products)){
-      global._bnProducts=state.products;
-      if(typeof global._bnRenderProdList==='function') global._bnRenderProdList();
-      if(typeof global._bnRebroadcastProducts==='function') global._bnRebroadcastProducts();
+      if(!heavyStripped || state.products.some(function(p){ return p && hasRealDataUrl(p.src); })){
+        global._bnProducts=state.products.filter(function(p){ return !p || p.src !== '__BN_IDB__'; });
+        if(typeof global._bnRenderProdList==='function') global._bnRenderProdList();
+        if(typeof global._bnRebroadcastProducts==='function') global._bnRebroadcastProducts();
+        if(typeof global._bnRequestProductLayouts==='function'){
+          [500, 1200, 2200].forEach(function(delay){ setTimeout(global._bnRequestProductLayouts, delay); });
+        }
+      }
+    }
+    if(state.layouts && typeof global.setLayoutState==='function'){
+      global.setLayoutState(state.layouts);
     }
     if(state.checked&&typeof global.saveChecked==='function'){
       global.saveChecked(state.checked);
       if(typeof global.renderChecks==='function') global.renderChecks();
-      if(typeof global.renderPreviews==='function') global.renderPreviews();
+      /* _bnExporting 期間不重建 iframe，避免下載時畫布被清空並閃回預設顏色 */
+      if(typeof global.renderPreviews==='function' && !global._bnExporting) global.renderPreviews();
     }
+    if(state.bgCheckers && typeof global.setBgCheckerState==='function'){
+      global.setBgCheckerState(state.bgCheckers);
+    }
+    if(state.background && !heavyStripped){
+      if(hasRealDataUrl(state.background.legacySrc)) global._bgDataUrl = state.background.legacySrc;
+      if(typeof global._bnSetBgStates==='function') global._bnSetBgStates(state.background.states || {}, state.background.activeId || null);
+      else if(hasRealDataUrl(state.background.legacySrc) && typeof global.broadcastBg==='function') global.broadcastBg(state.background.legacySrc);
+    }
+    applyToolbarState(state.toolbar);
+    /* 暫存載入後再次刷新畫布背景，避免只更新左側預覽但 iframe 沒重繪。 */
+    if(typeof global._bnRefreshCanvasBackgrounds==='function'){
+      [0, 250, 700, 1500].forEach(function(delay){
+        setTimeout(function(){ global._bnRefreshCanvasBackgrounds(); }, delay);
+      });
+    }
+    setTimeout(function(){ global._bnStateApplying = false; }, 1800);
   }
 
   function autoSave(){
-    try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(collectState())); }
-    catch(e){ console.warn('[BNState] autoSave 失敗',e); }
+    if(global._bnExporting || global._bnStateDownloading) return;
+    var state;
+    try{ state = collectState(); }
+    catch(e){ console.warn('[BNState] collectState 失敗', e); return; }
+
+    /* 完整資料（含背景圖、商品圖、logo dataURL）優先寫入 IndexedDB。 */
+    idbSetState(state).catch(function(e){
+      console.warn('[BNState] IndexedDB autoSave 失敗，改嘗試 localStorage 完整備援', e);
+      try{ localStorage.setItem(STORAGE_KEY + '_full', JSON.stringify(state)); }
+      catch(err){ console.warn('[BNState] localStorage full autoSave 也失敗，可能圖片太大', err); }
+    });
+
+    /* localStorage 只放輕量摘要供文字/工具列備援；帶 _heavyStripped，載入時不會拿它清掉背景/商品/logo。 */
+    try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(stripHeavyStateForLocalStorage(state))); }
+    catch(e){ console.warn('[BNState] localStorage light autoSave 失敗',e); }
   }
 
   function autoLoad(){
-    try{
-      var raw=localStorage.getItem(STORAGE_KEY);
-      if(!raw) return;
-      var state=JSON.parse(raw);
-      applyState(state);
-      console.log('[BNState] 暫存載入完成，時間:',new Date(state.ts).toLocaleString());
-    }catch(e){ console.warn('[BNState] autoLoad 失敗',e); }
+    var localFull = readLocalState(STORAGE_KEY + '_full');
+    var localLight = readLocalState(STORAGE_KEY);
+
+    idbGetState().then(function(idbState){
+      /* 不能盲目用 IndexedDB：若上一輪 IDB 寫入失敗或落後，會讀到更舊的商品位置。
+         這裡改成在 IDB / localStorage full 之間取 ts 最新的完整 state；
+         只有沒有完整 state 時，才使用輕量備援，避免舊資料蓋掉新畫面。 */
+      var full = getNewestState([idbState, localFull], true);
+      if(full){
+        full = mergeLightIntoFull(full, localLight);
+        applyState(full);
+        console.log('[BNState] 完整本機暫存載入完成，來源時間:', new Date(full.ts || Date.now()).toLocaleString());
+        return;
+      }
+      if(localLight){
+        applyState(localLight);
+        console.log('[BNState] 輕量本機暫存載入完成，來源時間:', new Date(localLight.ts || Date.now()).toLocaleString());
+      }
+    }).catch(function(e){
+      console.warn('[BNState] IndexedDB autoLoad 失敗，改用 localStorage', e);
+      var full = getNewestState([localFull], true);
+      if(full){ applyState(mergeLightIntoFull(full, localLight)); return; }
+      if(localLight) applyState(localLight);
+    });
   }
 
   function startAutoSave(){
     setInterval(autoSave,30000);
     window.addEventListener('beforeunload',autoSave);
-    document.addEventListener('input',function(e){
-      if(e.target&&e.target.closest&&e.target.closest('#sidebar-scroll')){
+    function queueSave(e){
+      /* bn-state-dirty 可能從 document 或 iframe message 流程發出，target 不會在 #sidebar。
+         舊邏輯只接受 sidebar 事件，導致商品拖曳/縮放、背景畫布設定等不會寫入本機暫存，刷新後就回到舊資料。 */
+      var isDirtyEvent = e && e.type === 'bn-state-dirty';
+      var fromSidebar = !e || (e.target && e.target.closest && e.target.closest('#sidebar'));
+      if(global._bnExporting || global._bnStateDownloading || global._bnStateApplying) return;
+      if(isDirtyEvent || fromSidebar){
         clearTimeout(global._bnSaveTimer);
-        global._bnSaveTimer=setTimeout(autoSave,1500);
+        global._bnSaveTimer=setTimeout(autoSave, isDirtyEvent ? 250 : 1500);
       }
-    },true);
+    }
+    document.addEventListener('input',queueSave,true);
+    document.addEventListener('change',queueSave,true);
+    document.addEventListener('bn-state-dirty',queueSave,true);
   }
 
   /* ══════════════════════════════════════
@@ -348,15 +710,38 @@
     var bs='flex:1;padding:7px 6px;background:var(--bg2,#1c2333);border:1px solid var(--border,#30363d);border-radius:7px;color:var(--text2,#8b949e);font-size:11px;cursor:pointer;transition:.12s;text-align:center;';
 
     var dlBtn=document.createElement('button');
+    dlBtn.type='button';
     dlBtn.textContent='⬇ 下載暫存'; dlBtn.style.cssText=bs;
-    dlBtn.addEventListener('click',function(){
-      var blob=new Blob([JSON.stringify(collectState(),null,2)],{type:'application/json'});
-      var a=document.createElement('a');
-      a.href=URL.createObjectURL(blob);
-      a.download='bn-state-'+new Date().toISOString().slice(0,16).replace('T','_')+'.json';
-      a.click(); setTimeout(function(){URL.revokeObjectURL(a.href);},1000);
+    function downloadStateJson(ev){
+      if(ev){
+        ev.preventDefault();
+        ev.stopPropagation();
+        if(ev.stopImmediatePropagation) ev.stopImmediatePropagation();
+      }
+      /*
+       * 下載暫存只能「讀取目前狀態並產出 JSON」。
+       * 這裡不能再發 bn-product-layout-request、不能 applyState、不能 renderPreviews，
+       * 因為那些流程會重建 iframe / 商品 DOM，使用者會看到畫布被清空。
+       * 商品座標改由 layout-runtime 在拖曳/縮放當下即時回寫到 _bnProducts。
+       */
+      global._bnStateDownloading = true;
+      var snapshot = collectState();
+      /* 下載 JSON 不做任何全域重建/還原/刷新，也不寫 localStorage。
+         這個函式只能讀 state 並產出檔案；任何 postMessage / _bnSetBgStates 都可能清掉畫布。 */
+      var blob = new Blob([JSON.stringify(snapshot,null,2)], {type:'application/json'});
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = 'bn-state-' + new Date().toISOString().slice(0,16).replace('T','_') + '.json';
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(function(){ URL.revokeObjectURL(url); if(a.parentNode) a.parentNode.removeChild(a); global._bnStateDownloading = false; }, 1000);
       showToast('暫存已下載','ok');
-    });
+      return false;
+    }
+    dlBtn.addEventListener('mousedown', function(ev){ ev.stopPropagation(); }, true);
+    dlBtn.addEventListener('click', downloadStateJson, true);
 
     var ulWrap=document.createElement('label');
     ulWrap.style.cssText=bs+'cursor:pointer;display:block;';
@@ -368,8 +753,12 @@
       var reader=new FileReader();
       reader.onload=function(e){
         try{
-          applyState(JSON.parse(e.target.result));
-          autoSave();
+          var uploadedState = JSON.parse(e.target.result);
+          applyState(uploadedState);
+          /* applyState 會重建/推送 iframe，等它穩定後再寫本機暫存；
+             避免剛套用一半的輕量狀態把完整背景/商品覆蓋掉。 */
+          setTimeout(autoSave, 2300);
+          setTimeout(markDirty, 2400);
           showToast('暫存已載入','ok');
         }catch(_){ showToast('暫存格式錯誤','err'); }
       };
@@ -382,6 +771,7 @@
     var clrBar=document.createElement('div');
     clrBar.style.cssText='padding:0 14px 10px;flex-shrink:0;';
     var clrBtn=document.createElement('button');
+    clrBtn.type='button';
     clrBtn.textContent='🗑 清除本機暫存';
     clrBtn.style.cssText='width:100%;padding:7px 6px;background:transparent;border:1px solid var(--border,#30363d);border-radius:7px;color:#ef4444;font-size:11px;cursor:pointer;transition:.12s;text-align:center;';
     clrBtn.addEventListener('mouseenter',function(){ clrBtn.style.background='rgba(239,68,68,.08)'; });
@@ -389,9 +779,10 @@
     clrBtn.addEventListener('click',function(){
       if(!confirm('確定要清除本機暫存？畫面將回到預設值。')) return;
       try{
-        /* 1. 清除 localStorage */
+        /* 1. 清除 localStorage + IndexedDB 完整暫存 */
         Object.keys(localStorage).filter(function(k){ return k.startsWith('bn'); })
           .forEach(function(k){ localStorage.removeItem(k); });
+        idbClearState().catch(function(e){ console.warn('[BNState] IndexedDB clear 失敗', e); });
 
         /* 2. 文字輸入框還原預設 value，觸發 broadcastText */
         var defaults = {

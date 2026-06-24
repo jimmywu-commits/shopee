@@ -75,6 +75,20 @@
       });
     }
 
+    /* ── 讀 --canvas-bg 套用初始背景色（--layers DOM 建立後才做，.bg/.背景色 已存在）
+          init 時就設好，不依賴父層 bn-color；
+          避免 iframe reload 後背景色消失，或父層重新同步時閃回預設顏色。
+          父層之後發 bn-color 仍可覆蓋（同為 inline style）。── */
+    var canvasBgRaw = root.getPropertyValue('--canvas-bg').trim();
+    if (canvasBgRaw && canvasBgRaw !== 'none' && canvasBgRaw !== '') {
+      var _bgEl = canvas.querySelector('.背景色') || canvas.querySelector('.bg');
+      if (_bgEl) {
+        _bgEl.style.backgroundColor = canvasBgRaw;
+      } else {
+        canvas.style.background = canvasBgRaw;
+      }
+    }
+
     function fit() {
       if (window.parent !== window) {
         canvas.style.transform = 'none';
@@ -435,12 +449,22 @@
     /* 商品新增 */
     if (e.data.type === 'bn-product-add') {
       var pzone = getProductZone(); if(!pzone) return;
+      var oldBox = pzone.querySelector('.bn-prod-box[data-id="'+e.data.id+'"]');
+      if(oldBox) oldBox.remove();
       pzone.style.background = 'transparent'; pzone.style.opacity = '1';
       pzone.style.overflow = 'visible'; pzone.style.position = 'relative';
       var box = document.createElement('div');
       box.className = 'bn-prod-box'; box.dataset.id = e.data.id; box.dataset.ratio = e.data.ratio||1;
       box.dataset.sizeScale = e.data.sizeScale||1;
       box.dataset.position  = e.data.position !== undefined ? e.data.position : e.data.index || 0;
+      if(e.data.layoutById || e.data.layout){
+        var __bnid = getCurrentBnId();
+        var __lay = (e.data.layoutById && (__bnid in e.data.layoutById) ? e.data.layoutById[__bnid] : null) || e.data.layout || null;
+        if(__lay){
+          box.dataset.savedLayout = JSON.stringify(__lay);
+          box.dataset.manualLayout = '1';
+        }
+      }
       var pimg = document.createElement('img'); pimg.src = e.data.src;
       pimg.style.cssText = 'width:100%;height:100%;object-fit:contain;pointer-events:none;display:block;';
       box.appendChild(pimg);
@@ -558,6 +582,10 @@
       return;
     }
 
+    if (e.data.type === 'bn-product-layout-request') {
+      postAllProductLayouts();
+    }
+
     if (e.data.type === 'bn-capture') {
       var _cv = document.getElementById('canvas');
 
@@ -570,12 +598,101 @@
         });
       }
 
+      /* Search_Image1 下載補償：
+         html2canvas 下載圖的文字 baseline 會比 bn.html 預覽偏上。
+         這兩個常數只影響下載截圖，不影響畫布預覽。
+         之後要微調只改這裡：
+           SEARCH_IMAGE1_SUBTITLE_OFFSET：副標案型七字內
+           SEARCH_IMAGE1_STORE_OFFSET：官方旗艦店
+      */
+      var SEARCH_IMAGE1_SUBTITLE_OFFSET = 14;
+
+      /* 官方旗艦店下載補償：1/2/3 分開調
+         數值越大 = 下載圖越往下
+         數值越小 = 下載圖越往上
+      */
+      var SEARCH_IMAGE1_STORE_OFFSET = 6;
+      var SEARCH_IMAGE2_STORE_OFFSET = 6;
+      var SEARCH_IMAGE3_STORE_OFFSET = 6;
+
+      var _captureAdjustEls = [];
+      var _fnameLower = (fname || '').toLowerCase();
+      var _isSearchImage1 = _fnameLower.indexOf('search_image1') !== -1;
+      var _storeOffset = null;
+
+      if(_fnameLower.indexOf('search_image1') !== -1){
+        _storeOffset = SEARCH_IMAGE1_STORE_OFFSET;
+      } else if(_fnameLower.indexOf('search_image2') !== -1){
+        _storeOffset = SEARCH_IMAGE2_STORE_OFFSET;
+      } else if(_fnameLower.indexOf('search_image3') !== -1){
+        _storeOffset = SEARCH_IMAGE3_STORE_OFFSET;
+      }
+
+      if(_isSearchImage1 && _cv){
+        _cv.querySelectorAll('.副標案型七字內').forEach(function(el){
+          var oldTop = el.style.top || '';
+          var oldPriority = el.style.getPropertyPriority('top') || '';
+          var currentTop = parseFloat(window.getComputedStyle(el).top) || 0;
+          _captureAdjustEls.push({el:el, top:oldTop, priority:oldPriority});
+          el.style.setProperty('top', (currentTop + SEARCH_IMAGE1_SUBTITLE_OFFSET) + 'px', 'important');
+        });
+      }
+
+      if(_storeOffset !== null && _cv){
+        _cv.querySelectorAll('.官方旗艦店').forEach(function(el){
+          var oldTop = el.style.top || '';
+          var oldPriority = el.style.getPropertyPriority('top') || '';
+          var currentTop = parseFloat(window.getComputedStyle(el).top) || 0;
+          _captureAdjustEls.push({el:el, top:oldTop, priority:oldPriority});
+          el.style.setProperty('top', (currentTop + _storeOffset) + 'px', 'important');
+        });
+      }
+
       captureCanvas(function(dataUrl){
         _editEls.forEach(function(o){ o.el.style.display = o.disp; });
+        _captureAdjustEls.forEach(function(o){ o.el.style.setProperty('top', o.top, o.priority || ''); });
         window.parent.postMessage({type:'bn-snapshot',msgId:e.data.msgId,dataUrl:dataUrl},'*');
       });
     }
   });
+
+  function getCurrentBnId(){
+    try{ return String(new URLSearchParams(location.search||'').get('bnid') || ''); }
+    catch(_){ return ''; }
+  }
+
+  function postProductLayout(box){
+    try{
+      var zone = getProductZone(); if(!zone || !box) return;
+      var zr = zone.getBoundingClientRect();
+      var br = box.getBoundingClientRect();
+      var zw = zr.width || parseFloat(window.getComputedStyle(zone).width) || 1;
+      var zh = zr.height || parseFloat(window.getComputedStyle(zone).height) || 1;
+      var data = {
+        type:'bn-product-layout-update',
+        bnid:getCurrentBnId(),
+        id:box.dataset.id,
+        layout:{
+          left: br.left - zr.left,
+          top: br.top - zr.top,
+          width: br.width,
+          height: br.height,
+          leftPct: (br.left - zr.left) / zw,
+          topPct: (br.top - zr.top) / zh,
+          widthPct: br.width / zw,
+          heightPct: br.height / zh
+        }
+      };
+      window.parent && window.parent.postMessage(data, '*');
+    }catch(_){ }
+  }
+
+  function postAllProductLayouts(){
+    try{
+      var zone = getProductZone(); if(!zone) return;
+      Array.from(zone.querySelectorAll('.bn-prod-box')).forEach(postProductLayout);
+    }catch(_){ }
+  }
 
   /* 正三角排品（仿 freelyapp 邏輯）
      主品（第0張）居中最大，左配品（第1張）次之，右配品（第2張）最小
@@ -681,6 +798,33 @@
     }
 
     positions.forEach(function(p, i){
+      var saved = null;
+      if(p.box.dataset.savedLayout){
+        try{ saved = JSON.parse(p.box.dataset.savedLayout); }catch(_){ saved = null; }
+        delete p.box.dataset.savedLayout;
+      } else if(p.box.dataset.manualLayout === '1') {
+        /* 已套用過手動/暫存位置的商品，後續新增其他商品時不可再被自動排版覆蓋。 */
+        var curL = parseFloat(p.box.style.left);
+        var curT = parseFloat(p.box.style.top);
+        var curW = parseFloat(p.box.style.width);
+        var curH = parseFloat(p.box.style.height);
+        if(isFinite(curL) && isFinite(curT) && isFinite(curW) && isFinite(curH) && curW > 0 && curH > 0){
+          saved = {left:curL, top:curT, width:curW, height:curH};
+        }
+      }
+      if(saved){
+        var sx = saved.leftPct !== undefined ? saved.leftPct * zw : saved.left;
+        var sy = saved.topPct !== undefined ? saved.topPct * zh : saved.top;
+        var sw = saved.widthPct !== undefined ? saved.widthPct * zw : saved.width;
+        var sh = saved.heightPct !== undefined ? saved.heightPct * zh : saved.height;
+        if(isFinite(sx) && isFinite(sy) && isFinite(sw) && isFinite(sh) && sw > 0 && sh > 0){
+          p.x = Math.max(0, Math.min(zw - sw, sx));
+          p.y = Math.max(0, Math.min(zh - sh, sy));
+          p.w = Math.max(1, sw);
+          p.h = Math.max(1, sh);
+          p.box.dataset.manualLayout = '1';
+        }
+      }
       p.box.style.cssText = [
         'position:absolute;',
         'left:'+p.x+'px;top:'+p.y+'px;',
@@ -690,12 +834,22 @@
         'z-index:'+(15-i)+';',
       ].join('');
     });
+    setTimeout(postAllProductLayouts, 0);
   }
 
   function getProductZone(){
     var names=['商品範圍','商品圖範圍'];
     for(var i=0;i<names.length;i++){ var z=document.querySelector('.'+names[i]); if(z)return z; }
     return null;
+  }
+
+  function scheduleProductLayoutPost(box){
+    if(!box) return;
+    if(box._bnPostTimer) cancelAnimationFrame(box._bnPostTimer);
+    box._bnPostTimer = requestAnimationFrame(function(){
+      box._bnPostTimer = null;
+      postProductLayout(box);
+    });
   }
 
   function setupProdDrag(box,zone){
@@ -725,16 +879,24 @@
         if(c.includes('w')) l=drag.l+(drag.w-w);
         if(c.includes('n')) t=drag.t+(drag.h-bh);
         l=Math.max(0,Math.min(drag.zw-w,l)); t=Math.max(0,Math.min(drag.zh-bh,t));
+        box.dataset.manualLayout = '1';
         box.style.left=l+'px'; box.style.top=t+'px'; box.style.width=w+'px'; box.style.height=bh+'px';
+        scheduleProductLayoutPost(box);
       });
-      h.addEventListener('pointerup',function(){ drag=null; });
+      h.addEventListener('pointerup',function(){ postProductLayout(box); drag=null; });
+      h.addEventListener('pointercancel',function(){ postProductLayout(box); drag=null; });
+      h.addEventListener('lostpointercapture',function(){ postProductLayout(box); drag=null; });
     });
     box.addEventListener('pointermove',function(e){
       if(!drag||drag.type!=='move') return;
+      box.dataset.manualLayout = '1';
       box.style.left=Math.max(0,Math.min(drag.zw-drag.w,drag.l+e.clientX-drag.sx))+'px';
       box.style.top =Math.max(0,Math.min(drag.zh-drag.h,drag.t+e.clientY-drag.sy))+'px';
+      scheduleProductLayoutPost(box);
     });
-    box.addEventListener('pointerup',function(){ drag=null; box.style.outline='2px solid transparent'; });
+    box.addEventListener('pointerup',function(){ postProductLayout(box); drag=null; box.style.outline='2px solid transparent'; });
+    box.addEventListener('pointercancel',function(){ postProductLayout(box); drag=null; box.style.outline='2px solid transparent'; });
+    box.addEventListener('lostpointercapture',function(){ postProductLayout(box); drag=null; box.style.outline='2px solid transparent'; });
     box.addEventListener('wheel',function(e){
       e.preventDefault();
       var zr=zone.getBoundingClientRect(),br=box.getBoundingClientRect();
@@ -742,9 +904,11 @@
       var w=Math.max(40,Math.min(br.width*sc,zr.width*.95)),bh=w/r;
       if(bh<30){bh=30;w=bh*r;} if(bh>zr.height*.95){bh=zr.height*.95;w=bh*r;}
       var cx=(br.left-zr.left)+br.width/2,cy=(br.top-zr.top)+br.height/2;
+      box.dataset.manualLayout = '1';
       box.style.left=Math.max(0,Math.min(cx-w/2,zr.width-w))+'px';
       box.style.top =Math.max(0,Math.min(cy-bh/2,zr.height-bh))+'px';
       box.style.width=w+'px'; box.style.height=bh+'px';
+      postProductLayout(box);
     },{passive:false});
   }
 

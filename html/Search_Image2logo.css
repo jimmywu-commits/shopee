@@ -33,10 +33,10 @@
   border-style: solid;
   border-radius: 50%;
   position: absolute;
-  left: 1009px;
-  top: 42px;
-  width: 62.78px;
-  height: 62.78px;
+left: 1000px;
+  top: 44px;
+  width: 73.66px;
+  height: 73.66px;
   z-index: 220;
 }
 .cta圓底 {
@@ -84,7 +84,7 @@
   -ms-transform: matrix( 1.01124307693929,0,0,1.09451370414144,0,0);
   position: absolute;
   left: 75.897px;
-  top: 132.229px;
+  top: 128px;
   z-index: 216;
 }
 .蝦皮商城logo紅底 {

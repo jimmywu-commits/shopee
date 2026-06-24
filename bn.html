@@ -890,15 +890,24 @@ function broadcastColors() {
 }
 
 function getColorData() {
-  return {
+  var lockedCanvasBg = getCanvasBgHardLock();
+  var data = {
     mainText:  colorState.mainText,
     subText:   colorState.subText,
     dateText:  colorState.dateText,
     brandText: colorState.brandText,
-    canvasBg:  colorState.canvasBg,
+    canvasBg:  lockedCanvasBg || colorState.canvasBg,
     ctaText:   colorState.ctaText,
     ctaBg:     colorState.ctaBg
   };
+  /* ZIP 匯出期間或剛匯出後，以最後一次使用者實際色票為準，避免舊暫存預設藍回灌。 */
+  if (window._bnFrozenColorData) data = Object.assign(data, cloneColorDataSafe(window._bnFrozenColorData));
+  else if (isColorGuardActive() && window._bnLastUserColorState) data = Object.assign(data, cloneColorDataSafe(window._bnLastUserColorState));
+  lockedCanvasBg = getCanvasBgHardLock();
+  if (lockedCanvasBg) data.canvasBg = lockedCanvasBg;
+  var authoritativeCanvasBg = getAuthoritativeCanvasBg();
+  if (authoritativeCanvasBg) data.canvasBg = authoritativeCanvasBg;
+  return data;
 }
 
 /* 廣播文字給所有已勾選的 iframe */
@@ -948,6 +957,59 @@ var colorState = {
   ctaBg:     '#ffffff'
 };
 
+/* 使用者目前設定的背景色唯一權威來源。
+   多圖 ZIP 匯出、iframe ready、舊暫存回灌時，都不得用預設藍覆蓋它。 */
+window._bnAuthoritativeCanvasBg = window._bnAuthoritativeCanvasBg || null;
+
+function cloneColorDataSafe(data){
+  try { return JSON.parse(JSON.stringify(data || {})); }
+  catch(_) { return Object.assign({}, data || {}); }
+}
+function isColorGuardActive(){
+  return window._bnFrozenColorData || (window._bnBgColorExportGuardUntil && Date.now() < window._bnBgColorExportGuardUntil);
+}
+var BN_DEFAULT_CANVAS_BG = '#6bc0ec';
+function isHexCanvasBg(v){ return /^#[0-9a-fA-F]{6}$/.test(v || ''); }
+function isNonDefaultCanvasBg(v){ return isHexCanvasBg(v) && String(v).toLowerCase() !== BN_DEFAULT_CANVAS_BG; }
+function setAuthoritativeCanvasBg(v){
+  if(!isHexCanvasBg(v)) return;
+  window._bnAuthoritativeCanvasBg = v;
+  window._bnCanvasBgHardLock = v;
+  window._bnPersistentCanvasBg = v;
+  window._bnUserCanvasBgLocked = true;
+  window._bnBgColorExportGuardUntil = Date.now() + 30000;
+  if(colorState) colorState.canvasBg = v;
+  if(window._bnLastUserColorState) window._bnLastUserColorState.canvasBg = v;
+  if(window._bnFrozenColorData) window._bnFrozenColorData.canvasBg = v;
+}
+function getAuthoritativeCanvasBg(){
+  if(isHexCanvasBg(window._bnAuthoritativeCanvasBg) && (window._bnUserCanvasBgLocked || isNonDefaultCanvasBg(window._bnAuthoritativeCanvasBg))) return window._bnAuthoritativeCanvasBg;
+  return null;
+}
+window._bnSetAuthoritativeCanvasBg = setAuthoritativeCanvasBg;
+window._bnGetAuthoritativeCanvasBg = getAuthoritativeCanvasBg;
+function getCanvasBgHardLock(){
+  var authoritativeCanvasBg = getAuthoritativeCanvasBg();
+  if (authoritativeCanvasBg) return authoritativeCanvasBg;
+  /* 不讓初始化時的預設藍成為永久鎖。
+     多圖 ZIP 期間若舊暫存/iframe ready 回灌預設藍，這裡會優先保留目前使用者實際設定的背景色。 */
+  if (colorState && isHexCanvasBg(colorState.canvasBg) && (window._bnUserCanvasBgLocked || isNonDefaultCanvasBg(colorState.canvasBg))) {
+    return colorState.canvasBg;
+  }
+  if (window._bnCanvasBgHardLock && isHexCanvasBg(window._bnCanvasBgHardLock) && (window._bnUserCanvasBgLocked || isNonDefaultCanvasBg(window._bnCanvasBgHardLock))) return window._bnCanvasBgHardLock;
+  if (window._bnPersistentCanvasBg && isHexCanvasBg(window._bnPersistentCanvasBg) && (window._bnUserCanvasBgLocked || isNonDefaultCanvasBg(window._bnPersistentCanvasBg))) return window._bnPersistentCanvasBg;
+  return null;
+}
+function rememberCurrentColorState(){
+  window._bnLastUserColorState = cloneColorDataSafe(colorState);
+  if (colorState && isHexCanvasBg(colorState.canvasBg)) {
+    window._bnPersistentCanvasBg = colorState.canvasBg;
+    if (window.cpActiveKey === 'canvasBg' || isNonDefaultCanvasBg(colorState.canvasBg) || window._bnUserCanvasBgLocked) {
+      setAuthoritativeCanvasBg(colorState.canvasBg);
+    }
+  }
+}
+
 var COLOR_FIELDS = [
   { key: 'canvasBg',  label: '背景色（SCBN色塊 / IG畫布）' },
   { key: 'ctaText',   label: 'CTA 文字色' },
@@ -982,12 +1044,15 @@ function renderColorPickers() {
     wrap.appendChild(row);
   });
 
-  /* 初始化 inline 文字色 dot */
+  /* 初始化 inline 文字色 dot（bound 保護，避免 renderColorPickers 重複呼叫時累積多個 handler）*/
   TEXT_COLOR_KEYS.forEach(function(k) {
     var dot = document.getElementById('dot-' + k);
     if (!dot) return;
     dot.style.background = colorState[k];
-    dot.addEventListener('click', (function(key){ return function(e){ openPanel(key, e); }; })(k));
+    if(!dot.dataset.bound){
+      dot.dataset.bound = '1';
+      dot.addEventListener('click', (function(key){ return function(e){ openPanel(key, e); }; })(k));
+    }
   });
 
   /* 建快速色票（原有） */
@@ -1025,14 +1090,18 @@ function renderColorPickers() {
     });
   }
 
-  /* hex input 事件 */
-  document.getElementById('cp-hex-input').addEventListener('input', function() {
-    var v = this.value.trim();
-    if (!/^#/.test(v)) v = '#' + v;
-    var native = document.getElementById('cp-native');
-    if (native && /^#[0-9a-fA-F]{6}$/.test(v)) native.value = v;
-    if (/^#[0-9a-fA-F]{6}$/.test(v)) applyColor(v);
-  });
+  /* hex input 事件（只綁一次，避免 renderColorPickers 重複呼叫時累積多個 handler 造成閃色）*/
+  var hexInpEl = document.getElementById('cp-hex-input');
+  if(hexInpEl && !hexInpEl.dataset.bound){
+    hexInpEl.dataset.bound = '1';
+    hexInpEl.addEventListener('input', function() {
+      var v = this.value.trim();
+      if (!/^#/.test(v)) v = '#' + v;
+      var native = document.getElementById('cp-native');
+      if (native && /^#[0-9a-fA-F]{6}$/.test(v)) native.value = v;
+      if (/^#[0-9a-fA-F]{6}$/.test(v)) applyColor(v);
+    });
+  }
 
   /* cp-native 原生色彩選擇器事件（只綁一次） */
   var nativeEl = document.getElementById('cp-native');
@@ -1073,6 +1142,10 @@ function openPanel(key, e) {
 function applyColor(color) {
   if (!cpActiveKey) return;
   colorState[cpActiveKey] = color;
+  if (cpActiveKey === 'canvasBg' && /^#[0-9a-fA-F]{6}$/.test(color || '')) {
+    setAuthoritativeCanvasBg(color);
+  }
+  rememberCurrentColorState();
 
   /* 更新圓點（sidebar 和 inline 共用同一個 id） */
   var dot = document.getElementById('dot-' + cpActiveKey);
@@ -1091,6 +1164,11 @@ function applyColor(color) {
 
   /* 同步到所有 iframe */
   broadcastColors();
+
+  /* 顏色變更也要寫入本機暫存。
+     背景圖上傳後自動吸色會走 applyColor('canvasBg')，
+     若不標記 dirty，下載/重整後可能從舊暫存回到預設藍。 */
+  try { document.dispatchEvent(new CustomEvent('bn-state-dirty')); } catch(_) {}
 }
 
 /* 點面板外關閉 */
@@ -1141,11 +1219,27 @@ function showBanwordWarningInline(inp, msg){
 var _bgDataUrl = null;
 
 function broadcastBg(src){
+  _bgDataUrl = src || null;
+
+  /* 同步到新版 bn-editor-plugin 的完整背景狀態，讓本機暫存/下載暫存
+     都能包含背景圖、fit、scale、x、y，而不是只在 iframe 裡顯示。 */
+  if(window._bnSetBgStates){
+    var states = {};
+    document.querySelectorAll('.preview-block iframe').forEach(function(iframe){
+      var id = null;
+      try{ id = new URLSearchParams((iframe.src||'').split('?')[1]||'').get('bnid'); }catch(_){}
+      if(id) states[id] = {src:src||null, fit:'auto', scale:100, x:50, y:50, _initialized:true};
+    });
+    try{ window._bnSetBgStates(states, null); }catch(_){}
+  }
+
   document.querySelectorAll('.preview-block iframe').forEach(function(iframe){
     try{
-      iframe.contentWindow.postMessage({ type:'bn-bg', src: src||null }, '*');
+      iframe.contentWindow.postMessage({ type:'bn-bg', src: src||null, fit:'auto', scale:100, x:50, y:50 }, '*');
     }catch(_){}
   });
+
+  try{ document.dispatchEvent(new CustomEvent('bn-state-dirty')); }catch(_){}
 }
 
 function initBgUpload(){

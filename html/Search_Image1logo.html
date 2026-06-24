@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<title>排版預覽</title>
+<title>Search_Image1logo 排版預覽</title>
 <style>
 @font-face {
   font-family: "ShopeeNotoSans (content)";
@@ -73,7 +73,7 @@ svg.main-logo-auto-lines {
 /* 官方旗艦店：純文字，位置正確，不用 flex */
 .官方旗艦店 {
   position: absolute !important;
-  left: 75px !important;      /* 35px 容器左緣 + 30px 左線寬 + 6px gap ≈ 71px，取整 */
+  left: 69px !important;      /* 共用 Image1 左側官方旗艦店位置 */
   top: 96.4px !important;
   height: 30px !important;
 
@@ -123,5 +123,7 @@ svg.main-logo-auto-lines {
   </div>
 </div>
 <script src="../js/layout-runtime.js"></script>
+<!-- 共用左側紅底 Logo 最終覆蓋：放在 runtime 後面，手動改 Search_Image1logo_logo.css 才會生效 -->
+<link rel="stylesheet" href="Search_Image1logo_logo.css">
 </body>
 </html>

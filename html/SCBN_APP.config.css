@@ -107,3 +107,16 @@
    .文案保護底色 + 漸層 → 在背景色之上、所有其他物件之下
 ────────────────────────── */
 .背景色 { z-index: 2; }
+
+
+/* ── SCBN_APP 專用：最外層永遠透明，不吃背景圖 ──
+   背景圖只允許套在 .背景色 內，避免 1200x200 外框被背景圖壓到。
+*/
+#canvas {
+  background: transparent !important;
+}
+#底圖 {
+  display: none !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}

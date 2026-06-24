@@ -24,10 +24,10 @@
 .主logo橫線_左 {
   position: absolute;
   left: 35px;
-  top: 109px;
+  top: 110px;
   width: 30px;
   height: 0;
-  border-width: 2px;
+  border-width: 1px;
   border-color: rgb(255, 255, 255);
   border-style: solid;
   display: block;
@@ -39,7 +39,7 @@
   top: 109px;
   width: 30px;
   height: 0;
-  border-width: 2px;
+  border-width: 1px;
   border-color: rgb(255, 255, 255);
   border-style: solid;
   display: block;
@@ -66,7 +66,7 @@
 ════════════════════════════════════════════ */
 .官方旗艦店 {
   position: absolute !important;
-  left: 75px !important;
+  left: 69px !important;
   top: 96.4px !important;
   height: 30px !important;
 
@@ -151,8 +151,8 @@
   left: 1007px;
 }
 .cta白線 {
-  top: 46.6px;
-  left: 1015.6px;
+  top: 40px;
+  left: 1009.5px;
 }
 .cta三角箭頭 {
   background: transparent;
@@ -162,7 +162,7 @@
   border-bottom: 13px solid transparent;
   border-left:   23px solid rgb(255, 255, 255);
   position: absolute;
-  left: 1035.5px;
+  left: 1037px;
   top: 65px;
   box-sizing: content-box;
 }

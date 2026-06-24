@@ -16,7 +16,7 @@
   --bg-img:    img/ig用蝦皮logo卡片.png;
 
   /* 圖層清單：class名稱|預設文字，純佔位框留空 */
-  --layers: "bg|,上方保護|,漸層上|,LOGO範圍|,主標|滿$200享9折,副標|滿$2000折$200,日期|5/18 12:00 - 5/25 11:59 期間限定,商品圖範圍|";
+  --layers: "bg|,上方保護|,漸層上|,漸層下|,下保護|,LOGO範圍|,主標|滿$200享9折,副標|滿$2000折$200,日期|5/18 12:00 - 5/25 11:59 期間限定,商品圖範圍|";
 }
 
 /* ── transform-origin 全域修正 ──────────────────
@@ -26,6 +26,7 @@
    新增任何圖層都自動生效，不需要額外處理。
 ─────────────────────────────────────────────── */
 * { transform-origin: 0 0; }
+
 /* ── 文字圖層位置修正（top = PS 變形面板 Y，X 置中不改 left）── */
 .主標 { top: 483.63px; transform-origin: center top; white-space: normal; line-height: 1; }
 .副標 { top: 567.79px; transform-origin: center top; white-space: normal; line-height: 1; }
@@ -59,6 +60,32 @@
   z-index: 3;
   --grad-dir: to bottom;
 }
+
+/* ── 漸層下：起點 1350px ── */
+.漸層下 {
+  position: absolute;
+  left: 0;
+  top: 1350px;
+  width: 900px;
+  height: 70px;
+  background: linear-gradient(to top, #6ec6e8 0%, transparent 100%);
+  pointer-events: none;
+  z-index: 3;
+  --grad-dir: to top;
+}
+
+/* ── 下方保護色塊（漸層下端-2px 到底部）── */
+.下保護 {
+  position: absolute;
+  left: 0;
+  top: 1418px;
+  width: 900px;
+  height: 182px;
+  background: #6ec6e8;
+  pointer-events: none;
+  z-index: 3;
+}
+
 /* ── .bg：全畫布底色（背景圖容器）── */
 .bg {
   position: absolute;

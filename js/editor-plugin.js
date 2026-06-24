@@ -409,19 +409,64 @@
       });
     }
 
+    function getVisibleBoundsFromCanvas(srcCanvas, alphaThreshold){
+      const w = srcCanvas.width || 0, h = srcCanvas.height || 0;
+      if(!w || !h) return {x:0,y:0,w:0,h:0,right:0,bottom:0,empty:true};
+      const c = srcCanvas.getContext('2d', {willReadFrequently:true});
+      const d = c.getImageData(0,0,w,h).data;
+      const threshold = alphaThreshold == null ? 8 : alphaThreshold;
+      let minX=w, minY=h, maxX=-1, maxY=-1;
+      for(let y=0;y<h;y++){
+        for(let x=0;x<w;x++){
+          const a = d[(y*w+x)*4+3];
+          if(a > threshold){
+            if(x<minX) minX=x; if(y<minY) minY=y;
+            if(x>maxX) maxX=x; if(y>maxY) maxY=y;
+          }
+        }
+      }
+      if(maxX < 0 || maxY < 0) return {x:0,y:0,w:w,h:h,right:w,bottom:h,empty:true};
+      return {x:minX,y:minY,w:maxX-minX+1,h:maxY-minY+1,right:maxX+1,bottom:maxY+1,empty:false};
+    }
+
+    function trimCanvasToVisibleBounds(srcCanvas, pad){
+      const b = getVisibleBoundsFromCanvas(srcCanvas, 8);
+      if(b.empty) return srcCanvas;
+      const p = Math.max(0, pad == null ? 0 : pad);
+      const x = Math.max(0, b.x - p);
+      const y = Math.max(0, b.y - p);
+      const right = Math.min(srcCanvas.width, b.right + p);
+      const bottom = Math.min(srcCanvas.height, b.bottom + p);
+      const out = document.createElement('canvas');
+      out.width = Math.max(1, right - x);
+      out.height = Math.max(1, bottom - y);
+      out.getContext('2d').drawImage(srcCanvas, x, y, out.width, out.height, 0, 0, out.width, out.height);
+      out._trimX = x;
+      out._trimY = y;
+      out._visibleBounds = {x:x,y:y,w:out.width,h:out.height};
+      return out;
+    }
+
     function renderProductOnlyCanvas(){
       const out = document.createElement('canvas');
       out.width = canvas.width; out.height = canvas.height;
       out.getContext('2d').drawImage(canvas,0,0);
-      return out;
+      const trimmed = trimCanvasToVisibleBounds(out, 0);
+      trimmed._productOffsetX = 0;
+      trimmed._productOffsetY = 0;
+      trimmed._productW = trimmed.width;
+      trimmed._productH = trimmed.height;
+      trimmed._outputRatio = trimmed.width / Math.max(1, trimmed.height);
+      return trimmed;
     }
 
     function renderWithShadowCanvas(){
+      const productBounds = getVisibleImageBounds();
       const hasShadow = !!(shadowState && shadowLoaded);
-      const minX = hasShadow ? Math.min(0, shadowState.x) : 0;
-      const minY = hasShadow ? Math.min(0, shadowState.y) : 0;
-      const maxX = hasShadow ? Math.max(canvas.width, shadowState.x + shadowState.w) : canvas.width;
-      const maxY = hasShadow ? Math.max(canvas.height, shadowState.y + shadowState.h) : canvas.height;
+      const minX = hasShadow ? Math.min(productBounds.x, shadowState.x) : productBounds.x;
+      const minY = hasShadow ? Math.min(productBounds.y, shadowState.y) : productBounds.y;
+      const maxX = hasShadow ? Math.max(productBounds.x + productBounds.w, shadowState.x + shadowState.w) : (productBounds.x + productBounds.w);
+      const maxY = hasShadow ? Math.max(productBounds.y + productBounds.h, shadowState.y + shadowState.h) : (productBounds.y + productBounds.h);
 
       const out = document.createElement('canvas');
       out.width = Math.max(1, Math.ceil(maxX - minX));
@@ -433,12 +478,16 @@
       }
       o.drawImage(canvas, -minX, -minY);
 
-      // Metadata for applyToTarget(): product remains at this offset inside the expanded result.
-      out._productOffsetX = -minX;
-      out._productOffsetY = -minY;
-      out._productW = canvas.width;
-      out._productH = canvas.height;
-      return out;
+      const trimmed = trimCanvasToVisibleBounds(out, 0);
+      const trimX = trimmed._trimX || 0;
+      const trimY = trimmed._trimY || 0;
+      /* Metadata for applyToTarget(): visible product remains at this offset inside the expanded shadow result. */
+      trimmed._productOffsetX = (productBounds.x - minX) - trimX;
+      trimmed._productOffsetY = (productBounds.y - minY) - trimY;
+      trimmed._productW = productBounds.w;
+      trimmed._productH = productBounds.h;
+      trimmed._outputRatio = trimmed.width / Math.max(1, trimmed.height);
+      return trimmed;
     }
 
     function applyCrop(){
@@ -492,6 +541,8 @@
 
       if(boxRef && boxRef.dataset){
         boxRef.dataset.baseSrc = productUrl;
+        boxRef.dataset.outputRatio = String(final.width / Math.max(1, final.height));
+        boxRef.dataset.productOnlyRatio = String(productOnly.width / Math.max(1, productOnly.height));
         boxRef.dataset.shadowEnabled = shadowState ? '1' : '0';
         if(shadowState){
           boxRef.dataset.pluginShadowX = String(shadowState.x);

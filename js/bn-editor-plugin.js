@@ -107,6 +107,25 @@
     /* ── 廣播 ── */
     function broadcast(msg){document.querySelectorAll('.preview-block iframe').forEach(function(f){try{f.contentWindow.postMessage(msg,'*');}catch(e){}});}
     function broadcastTo(id,msg){var f=document.getElementById('iframe-'+id);if(f)try{f.contentWindow.postMessage(msg,'*');}catch(e){}}
+    function requestProductLayouts(){ broadcast({type:'bn-product-layout-request'}); }
+    function markStateDirty(){ try{ document.dispatchEvent(new CustomEvent('bn-state-dirty')); }catch(_){ } }
+    window.addEventListener('message', function(ev){
+      var d = ev.data || {};
+      if(d.type !== 'bn-product-layout-update' || !d.id || !d.layout) return;
+      /* 下載圖片/同步 iframe 期間，iframe 可能因重送商品而回傳 layout-update。
+         這些不是使用者拖曳，不能寫回 _bnProducts，也不能觸發本機暫存，
+         否則下載會反過來覆蓋背景色、底圖或商品排版。 */
+      if(window._bnSuppressProductLayoutWrite || window._bnExporting) return;
+      var p = (window._bnProducts || []).find(function(x){ return x.id === d.id; });
+      if(!p) return;
+      if(!p.layouts) p.layouts = {};
+      var key = d.bnid ? String(d.bnid) : 'default';
+      p.layouts[key] = d.layout;
+      /* 也保留最後一次實際畫布座標，方便舊版 JSON 或單版位還原 */
+      p.x = d.layout.left; p.y = d.layout.top; p.width = d.layout.width; p.height = d.layout.height;
+      p.layout = d.layout;
+      markStateDirty();
+    });
 
     /* ══ Logo 上傳 ══ */
     function insertLogoUI(){
@@ -422,10 +441,119 @@
       var _bgStates = {}; /* { layoutId: {src,fit,scale,x,y} } */
       var _bgActiveId = null; /* 目前編輯的版位 id */
 
+      function cloneBgStates(){
+        var out = {};
+        var hasSrc = false;
+        Object.keys(_bgStates).forEach(function(id){
+          var st = _bgStates[id] || {};
+          if(st.src && st.src !== '__BN_IDB__') hasSrc = true;
+          out[id] = {
+            src: (st.src && st.src !== '__BN_IDB__') ? st.src : null,
+            fit: st.fit || 'cover',
+            scale: st.scale !== undefined ? st.scale : 100,
+            x: st.x !== undefined ? st.x : 50,
+            y: st.y !== undefined ? st.y : 50,
+            _initialized: !!st._initialized
+          };
+        });
+
+        /* 舊版背景上傳流程只存在 window._bgDataUrl；若 _bgStates 尚未建立，
+           下載/本機暫存仍要把畫布上的背景圖完整帶走。 */
+        if(!hasSrc && window._bgDataUrl){
+          document.querySelectorAll('.preview-block iframe').forEach(function(ifrEl){
+            var id = getIfrBnid(ifrEl);
+            if(!id) return;
+            out[id] = out[id] || {fit:'auto',scale:100,x:50,y:50,_initialized:true};
+            out[id].src = window._bgDataUrl;
+            out[id].fit = out[id].fit || 'auto';
+            out[id].scale = out[id].scale !== undefined ? out[id].scale : 100;
+            out[id].x = out[id].x !== undefined ? out[id].x : 50;
+            out[id].y = out[id].y !== undefined ? out[id].y : 50;
+            out[id]._initialized = true;
+          });
+        }
+        return out;
+      }
+
+      function refreshBgPreviewFromStates(){
+        var first = null;
+        Object.keys(_bgStates).some(function(id){
+          if(_bgStates[id] && _bgStates[id].src){ first = _bgStates[id].src; return true; }
+          return false;
+        });
+        if(bgThumb) bgThumb.src = first || '';
+        if(bgPreview) bgPreview.style.display = first ? 'block' : 'none';
+        if(bgLabel) bgLabel.style.display = first ? 'none' : 'block';
+      }
+
+      function applyBgStates(nextStates, activeId){
+        var prevStates = _bgStates || {};
+        _bgStates = {};
+        var hasRealSrc = false;
+        if(nextStates && typeof nextStates === 'object'){
+          Object.keys(nextStates).forEach(function(id){
+            var st = nextStates[id] || {};
+            var prev = prevStates[id] || {};
+            /* __BN_IDB__ 是 localStorage 輕量備援的佔位符，不能當成 null 廣播，否則會洗掉畫布背景。 */
+            var src = st.src === '__BN_IDB__' ? (prev.src || window._bgDataUrl || null) : (st.src || null);
+            if(src) hasRealSrc = true;
+            _bgStates[id] = {
+              src: src,
+              fit: st.fit || prev.fit || 'cover',
+              scale: st.scale !== undefined ? parseInt(st.scale,10) : (prev.scale !== undefined ? prev.scale : 100),
+              x: st.x !== undefined ? parseInt(st.x,10) : (prev.x !== undefined ? prev.x : 50),
+              y: st.y !== undefined ? parseInt(st.y,10) : (prev.y !== undefined ? prev.y : 50),
+              _initialized: st._initialized !== false
+            };
+          });
+        }
+        /* 若載入的是舊版 JSON，只帶 legacySrc，補成每個 iframe 的背景狀態。 */
+        if(!hasRealSrc && window._bgDataUrl){
+          document.querySelectorAll('.preview-block iframe').forEach(function(ifrEl){
+            var id = getIfrBnid(ifrEl);
+            if(!id) return;
+            _bgStates[id] = _bgStates[id] || {fit:'auto',scale:100,x:50,y:50,_initialized:true};
+            _bgStates[id].src = window._bgDataUrl;
+          });
+        }
+        _bgActiveId = activeId || _bgActiveId || null;
+        refreshBgPreviewFromStates();
+        /* 上傳暫存後 iframe 可能尚未 ready，連續補送確保右側畫布也吃到背景圖。 */
+        [0, 120, 350, 800, 1500].forEach(function(delay){
+          setTimeout(function(){ buildBgPanels(); bgBroadcastAll(); }, delay);
+        });
+      }
+
       function getBgState(id){
         if(!_bgStates[id]) _bgStates[id] = {src:null,fit:'cover',scale:100,x:50,y:50};
         return _bgStates[id];
       }
+
+      /* 暴露給 bn-state-plugin：讓下載/上傳暫存能完整包含背景圖與各版位設定 */
+      window._bnGetBgStates = function(){ return cloneBgStates(); };
+      window._bnSetBgStates = function(states, activeId){ applyBgStates(states, activeId); };
+      window._bnGetBgActiveId = function(){ return _bgActiveId; };
+      window._bnRefreshCanvasBackgrounds = function(){
+        if(window._bgDataUrl){
+          document.querySelectorAll('.preview-block iframe').forEach(function(ifrEl){
+            var id = getIfrBnid(ifrEl);
+            if(!id) return;
+            var st = getBgState(id);
+            if(!st.src) st.src = window._bgDataUrl;
+          });
+        }
+        bgBroadcastAll();
+      };
+      /* 精準同步單一 iframe 背景。下載圖片會用這個，避免廣播全部版位時
+         把尚未 ready 或 id 取不到的 iframe 送成 null 背景。 */
+      window._bnSendBgToIframe = function(ifrEl, id){
+        if(!ifrEl || !id) return;
+        bgSendToIframe(ifrEl, String(id));
+      };
+      window._bnGetBgStateForId = function(id){
+        if(!id) return null;
+        try{ return JSON.parse(JSON.stringify(getBgState(String(id)))); }catch(_){ return getBgState(String(id)); }
+      };
 
       function getIfrBnid(ifrEl){
         try{
@@ -458,10 +586,10 @@
           var id = getIfrBnid(ifrEl);
           /* id 取不到時，用 _bgActiveId 的狀態廣播給所有 iframe */
           var st = id ? getBgState(id) : (_bgActiveId ? getBgState(_bgActiveId) : null);
-          if(!st || !st.src) return;
+          if(!st) return;
           try{
             ifrEl.contentWindow.postMessage({
-              type:'bn-bg', src:st.src, fit:st.fit, scale:st.scale, x:st.x, y:st.y
+              type:'bn-bg', src:st.src || null, fit:st.fit, scale:st.scale, x:st.x, y:st.y
             }, '*');
           }catch(_){}
         });
@@ -569,7 +697,10 @@
       function buildBgPanels(){
         document.querySelectorAll('.preview-block').forEach(function(block){
           if(block.querySelector('.bn-bg-panel')) {
-            /* 背景圖上傳後，更新面板顯示條件 */
+            /* 背景圖上傳/暫存載入後，面板已存在時仍要補送目前背景到 iframe。 */
+            var existedIframe = block.querySelector('iframe');
+            var existedId = existedIframe ? getIfrBnid(existedIframe) : null;
+            if(existedIframe && existedId) bgSendToIframe(existedIframe, existedId);
             return;
           }
           var ifrEl = block.querySelector('iframe');
@@ -647,6 +778,7 @@
               updateFitBtns(panel, btn.dataset.fit);
               updateSliderState(btn.dataset.fit);
               bgBroadcastOne(id);
+              markStateDirty();
             });
           });
           panel.querySelector('.bg-scale').addEventListener('input', function(){
@@ -654,14 +786,17 @@
             getBgState(id).scale = v;
             panel.querySelector('.bg-scale-val').textContent = v + '%';
             bgBroadcastOne(id);
+            markStateDirty();
           });
           panel.querySelector('.bg-x').addEventListener('input', function(){
             getBgState(id).x = parseInt(this.value);
             bgBroadcastOne(id);
+            markStateDirty();
           });
           panel.querySelector('.bg-y').addEventListener('input', function(){
             getBgState(id).y = parseInt(this.value);
             bgBroadcastOne(id);
+            markStateDirty();
           });
 
           /* 初始 fit 樣式（預設原尺寸）*/
@@ -698,6 +833,7 @@
           var reader = new FileReader();
           reader.onload = function(e){
             var dataUrl = e.target.result;
+            window._bgDataUrl = dataUrl;
             /* 把所有版位的 src 都設成這張圖，各自保留自己的 scale/x/y/fit */
             document.querySelectorAll('.preview-block iframe').forEach(function(ifrEl){
               var id = getIfrBnid(ifrEl);
@@ -715,18 +851,23 @@
             bgLabel.style.display = 'none';
             /* 立即廣播給所有版位 */
             bgBroadcastAll();
+            markStateDirty();
             /* 建立/更新版位右側控制面板 */
             setTimeout(buildBgPanels, 100);
             /* 吸左上角顏色→自動套用背景色 */
             sampleTopLeftColor(dataUrl, function(hex){
               if(window.colorState && window.applyColor){
                 window.colorState.canvasBg = hex;
+                window._bnCanvasBgHardLock = hex;
+                window._bnPersistentCanvasBg = hex;
+                window._bnUserCanvasBgLocked = true;
                 window.applyColor && (function(){
                   /* 直接觸發 canvasBg 更新 */
                   var prevKey = window.cpActiveKey;
                   window.cpActiveKey = 'canvasBg';
                   if(typeof window.applyColor === 'function') window.applyColor(hex);
                   window.cpActiveKey = prevKey;
+                  markStateDirty();
                 })();
               }
             });
@@ -738,10 +879,12 @@
         bgClear.addEventListener('click', function(){
           /* 清除所有版位的背景圖 */
           Object.keys(_bgStates).forEach(function(id){ _bgStates[id].src = null; });
+          window._bgDataUrl = null;
           bgThumb.src = '';
           bgPreview.style.display = 'none';
           bgLabel.style.display = 'block';
           bgBroadcastAll();
+          markStateDirty();
           /* 隱藏所有控制面板 */
           document.querySelectorAll('.bn-bg-panel').forEach(function(p){ p.style.display='none'; });
         });
@@ -818,7 +961,7 @@
     }
 
     function openModal(){
-      staged=window._bnProducts.map(function(p){return{src:p.src,name:p.name,ratio:p.ratio,fromExisting:true,id:p.id};});
+      staged=window._bnProducts.map(function(p){return{src:p.src,name:p.name,ratio:p.ratio,fromExisting:true,id:p.id,baseSrc:p.baseSrc,meta:p.meta?JSON.parse(JSON.stringify(p.meta)):undefined};});
       heroIdx=0; rankOrder=null; currentStep=1;
       renderPreview(); updateLimit(); showStep(1);
       modal.classList.add('show');
@@ -968,11 +1111,15 @@
         /* position: 0=主品(中), 1=左配, 2=右配 */
         var positionMap = [0, 1, 2];
         var pos = positionMap[i] !== undefined ? positionMap[i] : i;
-        window._bnProducts.push({id:id,src:src,ratio:item.ratio||1,name:item.name,sizeScale:sizeScale,position:pos,zOrder:i});
-        broadcast({type:'bn-product-add',id:id,src:src,ratio:item.ratio||1,name:item.name,index:i,sizeScale:sizeScale,position:pos});
+        var prod = {id:id,src:src,ratio:item.ratio||1,name:item.name,sizeScale:sizeScale,position:pos,zOrder:i};
+        if(item.baseSrc) prod.baseSrc = item.baseSrc;
+        if(item.meta) prod.meta = JSON.parse(JSON.stringify(item.meta));
+        window._bnProducts.push(prod);
+        broadcast({type:'bn-product-add',id:id,src:src,ratio:item.ratio||1,name:item.name,index:i,sizeScale:sizeScale,position:pos,layoutById:item.layouts||null,layout:item.layout||null});
         await new Promise(function(r){setTimeout(r,50);});
       }
       renderProdList();
+      markStateDirty();
     }
 
     /* 大中小位置標籤 */
@@ -1028,7 +1175,7 @@
         var rmBtn=document.createElement('button');rmBtn.textContent='移除';rmBtn.className='rm';
         rmBtn.addEventListener('click',function(){
           window._bnProducts=window._bnProducts.filter(function(x){return x.id!==p.id;});
-          renderProdList();broadcast({type:'bn-product-remove',id:p.id});
+          renderProdList();broadcast({type:'bn-product-remove',id:p.id});markStateDirty();
         });
 
         /* 上移/下移：調整 position 值 */
@@ -1052,6 +1199,7 @@
           var tmp = a.zOrder; a.zOrder = b.zOrder; b.zOrder = tmp;
           renderProdList();
           broadcastZOrder();
+          markStateDirty();
         };})(p.id, sortedIdx));
 
         downBtn.addEventListener('click',(function(pid, si){ return function(){
@@ -1062,6 +1210,7 @@
           var tmp = a.zOrder; a.zOrder = b.zOrder; b.zOrder = tmp;
           renderProdList();
           broadcastZOrder();
+          markStateDirty();
         };})(p.id, sortedIdx));
 
         moveWrap.appendChild(upBtn);
@@ -1113,7 +1262,17 @@
       wrap.innerHTML='';
       var box=document.createElement('div');
       box.className='editor-item';
-      box.dataset.baseSrc=p.src;
+      var editMeta = p.meta || {};
+      var shadowMeta = editMeta.shadow || null;
+      var baseSrc = p.baseSrc || editMeta.baseSrc || p.src;
+      box.dataset.baseSrc = baseSrc;
+      if(shadowMeta && shadowMeta.enabled){
+        box.dataset.shadowEnabled = '1';
+        box.dataset.pluginShadowX = String(shadowMeta.x || 0);
+        box.dataset.pluginShadowY = String(shadowMeta.y || 0);
+        box.dataset.pluginShadowW = String(shadowMeta.w || 0);
+        box.dataset.pluginShadowH = String(shadowMeta.h || 0);
+      }
       box.style.cssText='position:relative;width:400px;height:400px;';
       var img=document.createElement('img');
       img.src=p.src;
@@ -1128,6 +1287,31 @@
           observer.disconnect();
           /* 更新狀態 */
           p.src=img.src;
+          p.baseSrc = (box.dataset && box.dataset.baseSrc) ? box.dataset.baseSrc : p.src;
+          p.meta = p.meta || {};
+          p.meta.baseSrc = p.baseSrc;
+          p.meta.productOnlyRatio = box.dataset && box.dataset.productOnlyRatio ? parseFloat(box.dataset.productOnlyRatio) : undefined;
+          if(box.dataset && box.dataset.shadowEnabled === '1'){
+            p.meta.shadow = {
+              enabled:true,
+              x:parseFloat(box.dataset.pluginShadowX || '0'),
+              y:parseFloat(box.dataset.pluginShadowY || '0'),
+              w:parseFloat(box.dataset.pluginShadowW || '0'),
+              h:parseFloat(box.dataset.pluginShadowH || '0')
+            };
+          } else {
+            p.meta.shadow = {enabled:false};
+          }
+          var editedRatio = box.dataset && box.dataset.outputRatio ? parseFloat(box.dataset.outputRatio) : NaN;
+          if(isFinite(editedRatio) && editedRatio > 0){
+            p.ratio = editedRatio;
+          } else if(img.naturalWidth && img.naturalHeight){
+            p.ratio = img.naturalWidth / img.naturalHeight;
+          }
+          if(p.layout){ delete p.layout; }
+          if(p.layouts){ delete p.layouts; }
+          p.width = p.height = p.x = p.y = undefined;
+          markStateDirty();
           /* 更新左側預覽縮圖 */
           var listImg=document.querySelector('#bn-prod-list .bn-prod-item img[src]');
           document.querySelectorAll('#bn-prod-list .bn-prod-item').forEach(function(row){
@@ -1139,7 +1323,7 @@
           broadcast({type:'bn-product-remove',id:p.id});
           setTimeout(function(){
             var idx = window._bnProducts.indexOf(p);
-            broadcast({type:'bn-product-add',id:p.id,src:p.src,ratio:p.ratio,name:p.name,index:idx,sizeScale:p.sizeScale||1,position:p.position||0});
+            broadcast({type:'bn-product-add',id:p.id,src:p.src,ratio:p.ratio,name:p.name,index:idx,sizeScale:p.sizeScale||1,position:p.position||0,layoutById:p.layouts||null,layout:p.layout||null});
           },50);
         }
       });
@@ -1161,8 +1345,107 @@
       document.getElementById('bn-dl-all').addEventListener('click',downloadAll);
     }
 
+    function _bnClone(obj){
+      try { return JSON.parse(JSON.stringify(obj)); }
+      catch(_) { return obj; }
+    }
+
+    function _bnIsUsableColor(v){
+      return typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v.trim());
+    }
+
+    var BN_DEFAULT_CANVAS_BG = '#6bc0ec';
+    function _bnIsDefaultCanvasBg(v){ return _bnIsUsableColor(v) && String(v).toLowerCase() === BN_DEFAULT_CANVAS_BG; }
+    function _bnIsUserCanvasBg(v){ return _bnIsUsableColor(v) && (window._bnUserCanvasBgLocked || !_bnIsDefaultCanvasBg(v)); }
+
+    function _bnGetAuthoritativeCanvasBg(){
+      /* 關鍵：多圖 ZIP 前，以父層 colorState 的目前值為最高優先。
+         舊版會先吃 _bnCanvasBgHardLock/_bnPersistentCanvasBg；若它們仍是初始化預設藍，
+         就會把使用者吸色後的背景覆蓋回藍色。 */
+      if(window.colorState && _bnIsUserCanvasBg(window.colorState.canvasBg)) return window.colorState.canvasBg;
+      if(_bnIsUserCanvasBg(window._bnCanvasBgHardLock)) return window._bnCanvasBgHardLock;
+      if(_bnIsUserCanvasBg(window._bnPersistentCanvasBg)) return window._bnPersistentCanvasBg;
+      if(window._bnLastUserColorState && _bnIsUserCanvasBg(window._bnLastUserColorState.canvasBg)) return window._bnLastUserColorState.canvasBg;
+      if(window.colorState && _bnIsUsableColor(window.colorState.canvasBg)) return window.colorState.canvasBg;
+      return null;
+    }
+
+    function _bnLockCanvasBg(hex){
+      if(!_bnIsUsableColor(hex)) return;
+      window._bnCanvasBgHardLock = hex;
+      window._bnPersistentCanvasBg = hex;
+      window._bnUserCanvasBgLocked = true;
+      window._bnBgColorExportGuardUntil = Date.now() + 30000;
+      if(window.colorState) window.colorState.canvasBg = hex;
+      if(window._bnLastUserColorState) window._bnLastUserColorState.canvasBg = hex;
+    }
+
+    function _bnRgbToHex(rgb){
+      if(!rgb || rgb === 'transparent') return null;
+      var m = String(rgb).match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)(?:\s*,\s*([\d.]+))?\s*\)/i);
+      if(!m) return null;
+      if(m[4] !== undefined && parseFloat(m[4]) === 0) return null;
+      function h(n){ n=Math.max(0,Math.min(255,parseInt(n,10)||0)); return n.toString(16).padStart(2,'0'); }
+      return '#'+h(m[1])+h(m[2])+h(m[3]);
+    }
+
+    function _bnGetLiveCanvasBgColor(){
+      var found = null;
+      document.querySelectorAll('.preview-block iframe').forEach(function(ifr){
+        if(found) return;
+        try{
+          var doc = ifr.contentDocument || (ifr.contentWindow && ifr.contentWindow.document);
+          if(!doc) return;
+          var candidates = [
+            doc.querySelector('.背景色'),
+            doc.querySelector('.bg'),
+            doc.getElementById('canvas'),
+            doc.body
+          ];
+          candidates.forEach(function(el){
+            if(found || !el) return;
+            var cs = doc.defaultView.getComputedStyle(el);
+            var hex = _bnRgbToHex(cs.backgroundColor);
+            if(hex) found = hex;
+          });
+        }catch(_){ }
+      });
+      return found;
+    }
+
+    function _bnBuildExportColorData(){
+      var data = (typeof window.getColorData === 'function')
+        ? window.getColorData()
+        : (window.colorState ? _bnClone(window.colorState) : null);
+      data = data ? _bnClone(data) : {};
+
+      /* 多張 ZIP 匯出時，iframe 可能還沒同步完而回報預設藍。
+         因此背景色一律以父層最後一次使用者設定值為最高優先，
+         不再讓 iframe 的 live background 反向覆蓋父層狀態。 */
+      var authoritativeBg = _bnGetAuthoritativeCanvasBg();
+      if(_bnIsUsableColor(authoritativeBg)) data.canvasBg = authoritativeBg;
+      else {
+        var liveBg = _bnGetLiveCanvasBgColor();
+        if(_bnIsUsableColor(liveBg)) data.canvasBg = liveBg;
+      }
+      return data;
+    }
+
+    function _bnFreezeExportColors(colorData){
+      if(!colorData) return;
+      var frozen = _bnClone(colorData);
+      if(_bnIsUsableColor(frozen.canvasBg)) _bnLockCanvasBg(frozen.canvasBg);
+      window._bnFrozenColorData = frozen;
+      window._bnLastUserColorState = _bnClone(frozen);
+      window._bnBgColorExportGuardUntil = Date.now() + 30000;
+      if(window.colorState){ try{ Object.assign(window.colorState, frozen); }catch(_){} }
+      if(_bnIsUsableColor(window._bnCanvasBgHardLock) && window.colorState) window.colorState.canvasBg = window._bnCanvasBgHardLock;
+      if(typeof window.renderColorPickers === 'function') window.renderColorPickers();
+      if(typeof window.broadcastColors === 'function') window.broadcastColors();
+    }
+
     function downloadAll(){
-      /* 1張直接 PNG；2張以上先收集成功截圖，逾時跳過，最後一定打 ZIP */
+      /* 多圖恢復 ZIP：1 張直接 PNG；2 張以上先逐張截圖，最後打包 ZIP。 */
       var iframes=Array.from(document.querySelectorAll('.preview-block iframe'));
       if(!iframes.length){setProgress('沒有版位可下載');return;}
 
@@ -1172,8 +1455,71 @@
       var total=iframes.length;
       var done=0, ok=0, fail=0;
       var files=[];
+      window._bnExporting = true;
+      window._bnSuppressProductLayoutWrite = true;
+      var _exportUnlockTimer = null;
+
+      /* 下載前先凍結父層目前狀態，避免截圖期間 iframe 收到舊的 ready/autoload
+         或重繪訊息，造成背景色/文字色被還原成預設值。 */
+      var exportTextData = (typeof window.getTextData === 'function') ? window.getTextData() : null;
+      var exportColorData = _bnBuildExportColorData();
+      _bnFreezeExportColors(exportColorData);
+      var exportLogos = window._bnLogos ? JSON.parse(JSON.stringify(window._bnLogos)) : [];
+      var exportProducts = window._bnProducts ? JSON.parse(JSON.stringify(window._bnProducts)) : [];
+      var exportZOrder = exportProducts.slice().sort(function(a,b){ return (a.zOrder||0)-(b.zOrder||0); }).map(function(p){ return p.id; });
 
       setProgress(total===1 ? '準備下載 1 個版位…' : '準備打包 '+total+' 個版位…');
+
+      function sendToIframe(iframeEl, msg){
+        try{ iframeEl && iframeEl.contentWindow && iframeEl.contentWindow.postMessage(msg, '*'); }catch(_){ }
+      }
+
+      function syncIframeForExport(iframeEl, cb){
+        if(!iframeEl){ cb && cb(); return; }
+        var id = getIfrBnidForExport(iframeEl);
+        if(exportTextData) sendToIframe(iframeEl, {type:'bn-text', data:exportTextData});
+        if(exportColorData) sendToIframe(iframeEl, {type:'bn-color', data:(window._bnFrozenColorData || exportColorData)});
+        if(exportLogos && exportLogos.length) sendToIframe(iframeEl, {type:'bn-logos', logos:exportLogos});
+
+        exportProducts.forEach(function(p, idx){
+          sendToIframe(iframeEl, {
+            type:'bn-product-add', id:p.id, src:p.src, ratio:p.ratio, name:p.name,
+            index:idx, sizeScale:p.sizeScale||1, position:p.position||0, zOrder:p.zOrder||0,
+            layoutById:p.layouts||null, layout:p.layout||null
+          });
+        });
+        if(exportZOrder.length) sendToIframe(iframeEl, {type:'bn-product-zorder', order:exportZOrder});
+
+        /* 背景圖精準同步到目標 iframe。不要用全域刷新，避免下載某一張時
+           把其他尚未 ready 的 iframe 背景/底色送成空值。 */
+        if(typeof window._bnSendBgToIframe === 'function' && id){
+          window._bnSendBgToIframe(iframeEl, id);
+        } else if(typeof window._bnRefreshCanvasBackgrounds === 'function') {
+          window._bnRefreshCanvasBackgrounds();
+        }
+
+        /* 給 iframe 一點時間套用 style / 圖片 / 背景後再截圖。 */
+        setTimeout(function(){ cb && cb(); }, 260);
+      }
+
+      function resyncAllAfterExport(){
+        document.querySelectorAll('.preview-block iframe').forEach(function(iframeEl){
+          var id = getIfrBnidForExport(iframeEl);
+          if(exportTextData) sendToIframe(iframeEl, {type:'bn-text', data:exportTextData});
+          if(exportColorData) sendToIframe(iframeEl, {type:'bn-color', data:(window._bnFrozenColorData || exportColorData)});
+          if(exportLogos && exportLogos.length) sendToIframe(iframeEl, {type:'bn-logos', logos:exportLogos});
+          if(typeof window._bnSendBgToIframe === 'function' && id) window._bnSendBgToIframe(iframeEl, id);
+        });
+      }
+
+      function getIfrBnidForExport(ifrEl){
+        try{
+          var qs = (ifrEl.src||'').split('?')[1]||'';
+          var id = new URLSearchParams(qs).get('bnid');
+          if(id) return String(id);
+        }catch(_){ }
+        return null;
+      }
 
       function safeName(name){
         return String(name||'layout').trim().replace(/[\/\\:*?"<>|]/g,'_') || 'layout';
@@ -1201,9 +1547,41 @@
         return String(dataUrl||'').split(',')[1] || '';
       }
 
+      function finishExport(){
+        /* 匯出完成後用凍結色反覆還原；ZIP 下載會載入 JSZip 並造成部分 iframe/ready 流程重播舊狀態，
+           這裡保護 15 秒，避免背景色被預設藍覆蓋。 */
+        var safeColorData = window._bnFrozenColorData || exportColorData;
+        function restoreExportColors(){
+          if(safeColorData && window.colorState){
+            try{ Object.assign(window.colorState, safeColorData); }catch(_){}
+            if(_bnIsUsableColor(window._bnCanvasBgHardLock)) window.colorState.canvasBg = window._bnCanvasBgHardLock;
+            else if(_bnIsUsableColor(safeColorData.canvasBg)) _bnLockCanvasBg(safeColorData.canvasBg);
+            window._bnLastUserColorState = _bnClone(window.colorState);
+            window._bnPersistentCanvasBg = window.colorState.canvasBg;
+            window._bnBgColorExportGuardUntil = Date.now() + 30000;
+            if(typeof window.renderColorPickers === 'function') window.renderColorPickers();
+            if(typeof window.broadcastColors === 'function') window.broadcastColors();
+          }
+          resyncAllAfterExport();
+        }
+        restoreExportColors();
+        [150, 500, 1200, 2500, 5000].forEach(function(delay){ setTimeout(restoreExportColors, delay); });
+        clearTimeout(_exportUnlockTimer);
+        _exportUnlockTimer = setTimeout(function(){
+          window._bnExporting = false;
+          window._bnSuppressProductLayoutWrite = false;
+          try{ document.dispatchEvent(new CustomEvent('bn-state-dirty')); }catch(_){ }
+          setTimeout(function(){
+            delete window._bnFrozenColorData;
+            try{ if(window._bnStatePlugin && typeof window._bnStatePlugin.save === 'function') window._bnStatePlugin.save(); }catch(_){ }
+          }, 6000);
+        }, 1500);
+      }
+
       function makeZip(){
         if(total===1){
           btn.disabled=false;
+          finishExport();
           if(ok){ setTimeout(function(){setProgress('');},2500); }
           else { setProgress('下載失敗：截圖逾時或回傳空白'); }
           return;
@@ -1211,6 +1589,7 @@
 
         if(!files.length){
           btn.disabled=false;
+          finishExport();
           setProgress('ZIP 未產生：全部截圖都失敗或逾時');
           return;
         }
@@ -1220,6 +1599,7 @@
         loadJSZip(function(err){
           if(err || !window.JSZip){
             btn.disabled=false;
+            finishExport();
             setProgress('ZIP 失敗：JSZip 載入失敗');
             return;
           }
@@ -1232,13 +1612,16 @@
             zip.generateAsync({type:'blob'}).then(function(blob){
               triggerBlobDownload(blob,'BN_Export.zip');
               btn.disabled=false;
-              setProgress('ZIP下載完成：成功 '+ok+' / '+total+(fail ? '，失敗 '+fail+' 個已跳過' : ''));
+              finishExport();
+              setProgress('ZIP下載完成：成功 '+ok+' / '+total+(fail ? '，失敗 '+fail+' 個已跳過' : '')); 
             }).catch(function(){
               btn.disabled=false;
+              finishExport();
               setProgress('ZIP 產生失敗');
             });
           }catch(e){
             btn.disabled=false;
+            finishExport();
             setProgress('ZIP 產生失敗：'+e.message);
           }
         });
@@ -1285,28 +1668,30 @@
         var blockEl=iframe.closest('.preview-block');
         var baseName=safeName(blockEl ? ((blockEl.querySelector('.pname')||{}).textContent||'layout') : 'layout');
 
-        captureOne(iframe, baseName+'.png', function(dataUrl){
-          done++;
+        syncIframeForExport(iframe, function(){
+          captureOne(iframe, baseName+'.png', function(dataUrl){
+            done++;
 
-          if(dataUrl){
-            ok++;
-            if(total===1){
-              triggerDownload(dataUrl, baseName+'.png');
+            if(dataUrl){
+              ok++;
+              if(total===1){
+                triggerDownload(dataUrl, baseName+'.png');
+              }else{
+                files.push({name:baseName+'.png', dataUrl:dataUrl});
+              }
             }else{
-              files.push({name:baseName+'.png', dataUrl:dataUrl});
+              fail++;
             }
-          }else{
-            fail++;
-          }
 
-          if(total===1){
-            setProgress(dataUrl ? '已下載 1 / 1' : '下載失敗：截圖逾時或回傳空白');
-          }else{
-            setProgress('打包中 '+done+' / '+total+'（成功 '+ok+'，失敗 '+fail+'）');
-          }
+            if(total===1){
+              setProgress(dataUrl ? '已下載 1 / 1' : '下載失敗：截圖逾時或回傳空白');
+            }else{
+              setProgress('打包中 '+done+' / '+total+'（成功 '+ok+'，失敗 '+fail+'）');
+            }
 
-          /* 稍微讓瀏覽器釋放資源，避免連續截圖卡住 */
-          setTimeout(function(){ next(idx+1); },250);
+            /* 稍微讓瀏覽器釋放資源，避免連續截圖卡住 */
+            setTimeout(function(){ next(idx+1); },250);
+          });
         });
       }
 
@@ -1327,7 +1712,7 @@
           broadcastTo(id,{type:'bn-logo',dataUrl:window._bnLogoDataUrl});
         }
         /* 先送 product-add，再送 zorder */
-        window._bnProducts.forEach(function(p,idx){broadcastTo(id,{type:'bn-product-add',id:p.id,src:p.src,ratio:p.ratio,name:p.name,index:idx,sizeScale:p.sizeScale,position:p.position||0,zOrder:p.zOrder||0});});
+        window._bnProducts.forEach(function(p,idx){broadcastTo(id,{type:'bn-product-add',id:p.id,src:p.src,ratio:p.ratio,name:p.name,index:idx,sizeScale:p.sizeScale,position:p.position||0,zOrder:p.zOrder||0,layoutById:p.layouts||null,layout:p.layout||null});});
         setTimeout(function(){
           var order=window._bnProducts.slice().sort(function(a,b){return (a.zOrder||0)-(b.zOrder||0);}).map(function(p){return p.id;});
           broadcastTo(id,{type:'bn-product-zorder',order:order});
@@ -1350,6 +1735,7 @@
       }
     };
     window._bnRenderProdList = function(){ renderProdList(); };
+    window._bnRequestProductLayouts = requestProductLayouts;
     window._bnRebroadcastProducts = function(){
       var ids = (window._bnProducts||[]).map(function(p){ return p.id; });
       ids.forEach(function(id){ broadcast({type:'bn-product-remove', id:id}); });
@@ -1360,7 +1746,7 @@
         reordered.forEach(function(p, idx){
           broadcast({type:'bn-product-add', id:p.id, src:p.src, ratio:p.ratio,
             name:p.name, index:idx, sizeScale:p.sizeScale||1,
-            position:p.position||0, zOrder:p.zOrder||0});
+            position:p.position||0, zOrder:p.zOrder||0, layoutById:p.layouts||null, layout:p.layout||null});
         });
         /* z-index */
         var order = (window._bnProducts||[]).slice().sort(function(a,b){
