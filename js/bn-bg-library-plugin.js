@@ -1,3 +1,14 @@
+
+  function resolveBgImgUrl(src){
+    src = String(src || '').trim();
+    if(!src) return '';
+    if(/^data:/i.test(src) || /^https?:\/\//i.test(src)) return src;
+    src = src.replace(/^\.?\/*/, '');
+    src = src.replace(/^bgimgn\//i, '');
+    src = src.replace(/^bgimg\//i, '');
+    return IMG_BASE_URL.replace(/\/?$/, '/') + src;
+  }
+
 /* BN Background Library Plugin
    支援 HBN 同款 bgimg/index.json 圖庫結構：
    bgimg/
@@ -18,6 +29,7 @@
   var CFG = window.BN_BG_LIBRARY_CONFIG || {};
   var MANIFEST_URL = CFG.manifestUrl || 'bgimg/index.json';
   var BRAND_URL = CFG.brandUrl || 'bgimg/brand.json';
+  var IMG_BASE_URL = CFG.imgBaseUrl || 'https://cdn.jsdelivr.net/gh/jimmywu-commits/rd@main/bgimg/';
   var CATEGORIES = CFG.categories || ['EL','Fashion','FMCG','Lifestyle'];
   var DEFAULT_IMAGES = CFG.images || [];
 
@@ -65,7 +77,7 @@
         }catch(_){ resolve(null); }
       };
       img.onerror = function(){ resolve(null); };
-      img.src = src;
+      img.src = resolveBgImgUrl(src);
     });
   }
 
@@ -316,8 +328,8 @@
           name: cleanFileName(file),
           fileName: file,
           cat: cat,
-          horizontalSrc: 'bgimg/' + cat + '/HBN/' + file,
-          verticalSrc: dd ? 'bgimg/' + cat + '/DDCARD/' + dd : null,
+          horizontalSrc: IMG_BASE_URL + cat + '/HBN/' + file,
+          verticalSrc: dd ? IMG_BASE_URL + cat + '/DDCARD/' + dd : null,
           num: num
         });
       });
@@ -350,7 +362,7 @@
     if(!item) return;
     if(typeof item === 'string'){
       if(!isImageFile(item)) return;
-      var src = item.indexOf('/') >= 0 ? item : 'bgimg/' + cat + '/' + item;
+      var src = item.indexOf('/') >= 0 ? item : IMG_BASE_URL + cat + '/' + item;
       out.push({ name: cleanFileName(item), fileName:item, cat:cat, horizontalSrc:src, verticalSrc:null, num:extractNum(item) });
       return;
     }
@@ -537,8 +549,8 @@
           var info = getLayoutInfoForIframe(iframe);
           var src = chooseSrcForLayout(info, img, dataH, dataV);
           if(!src) return;
-          if(info.id) states[info.id] = {src:src, fit:'auto', scale:100, x:50, y:50, _initialized:true};
-          try{ iframe.contentWindow.postMessage({ type:'bn-bg', src:src, fit:'auto', scale:100, x:50, y:50 }, '*'); }catch(_){ }
+          if(info.id) states[info.id] = {src:resolveBgImgUrl(src), fit:'auto', scale:100, x:50, y:50, _initialized:true};
+          try{ iframe.contentWindow.postMessage({ type:'bn-bg', src:resolveBgImgUrl(src), fit:'auto', scale:100, x:50, y:50 }, '*'); }catch(_){ }
         });
         if(window._bnSetBgStates){
           try{ window._bnSetBgStates(states, null); }catch(_){ }
