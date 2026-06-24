@@ -1,0 +1,179 @@
+/* ================================================
+   Search_Image1logo.config.css
+   ★ 系統設定檔，不要貼 PS 的 CSS 進來
+   ================================================ */
+:root {
+  --canvas-w:  1125px;
+  --canvas-h:  156px;
+  --canvas-bg: rgb(84, 84, 84);
+  --bg-img:    ;
+
+  /* 圖層清單：依 z-index 由低到高 */
+  --layers: "底色|,蝦皮商城logo紅底|,蝦皮商城logo圖|,主logo橫線_左|,主logo橫線_右|,官方旗艦店|官方旗艦店,logo範圍|,副標案型七字內|副標$500折起,cta圓底|,cta白線|,cta三角箭頭|";
+}
+
+/* ── transform-origin 全域修正 ── */
+* { transform-origin: 0 0; }
+
+
+/* ════════════════════════════════════════════
+   主 Logo 橫線
+   真實 DOM 元素，html2canvas 可以正確截到
+   左線：x35~65，右線：x223~253，垂直對齊文字中線 top:109
+════════════════════════════════════════════ */
+.主logo橫線_左 {
+  position: absolute;
+  left: 35px;
+  top: 110px;
+  width: 30px;
+  height: 1.5px;
+  background: #fff;
+  border: none;
+  display: block;
+  z-index: 201;
+}
+.主logo橫線_右 {
+  position: absolute;
+  left: 223px;
+  top: 109px;
+  width: 30px;
+  height: 1.5px;
+  background: #fff;
+  border: none;
+  display: block;
+  z-index: 202;
+}
+
+/* PS CSS 的同名舊橫線關掉 */
+.主logo橫線 {
+  display: none !important;
+}
+
+/* 紅底 fallback 也關掉，避免重複 */
+.蝦皮商城logo紅底::before,
+.蝦皮商城logo紅底::after {
+  content: none !important;
+  display: none !important;
+}
+
+
+/* ════════════════════════════════════════════
+   官方旗艦店
+   純文字定位，不用 flex
+   橫線由 主logo橫線_左/_右 真實 DOM 負責
+════════════════════════════════════════════ */
+.官方旗艦店 {
+  position: absolute !important;
+  left: 69px !important;
+  top: 96.4px !important;
+  height: 30px !important;
+
+  display: block !important;
+  line-height: 30px !important;
+  white-space: nowrap !important;
+  text-align: center !important;
+
+  font-family: "ShopeeNotoSans (content)" !important;
+  font-weight: 300 !important;
+  font-size: 29.63px !important;
+  color: #fff !important;
+
+  transform: none !important;
+  -moz-transform: none !important;
+  -webkit-transform: none !important;
+  -ms-transform: none !important;
+
+  z-index: 999 !important;
+}
+
+.官方旗艦店::before,
+.官方旗艦店::after {
+  content: none !important;
+  display: none !important;
+}
+
+
+/* ════════════════════════════════════════════
+   副標案型七字內
+   拿掉 PS matrix，改用等效字號
+   73.573px × 0.8167 ≈ 60.08px
+   top 由 siLayout() 動態置中後覆蓋
+════════════════════════════════════════════ */
+.副標案型七字內 {
+  transform: none !important;
+  -moz-transform: none !important;
+  -webkit-transform: none !important;
+  -ms-transform: none !important;
+  font-size: 60.08px !important;
+  font-family: "ShopeeNotoSans (content)" !important;
+  font-weight: bold !important;
+  line-height: 1 !important;
+  white-space: nowrap !important;
+  color: rgb(255, 255, 255) !important;
+}
+
+
+/* ════════════════════════════════════════════
+   logo 範圍
+════════════════════════════════════════════ */
+.logo範圍 {
+  background-color: rgba(235, 104, 119, 0.4);
+  opacity: 1;
+}
+
+
+/* ════════════════════════════════════════════
+   蝦皮商城 logo 圖片
+════════════════════════════════════════════ */
+.蝦皮商城logo圖 {
+  position: absolute;
+  left: 39px;
+  top: 37px;
+  width: 219px;
+  height: 50px;
+  background-image: url('img/蝦皮商城logo.png');
+  background-size: 219px 50px;
+  background-repeat: no-repeat;
+  pointer-events: none;
+  z-index: 196;
+}
+
+
+/* ════════════════════════════════════════════
+   CTA
+════════════════════════════════════════════ */
+.cta圓底 {
+  background-color: #d0021b !important;
+  background-image: none !important;
+  top: 38px;
+  left: 1007px;
+}
+.cta白線 {
+  position: absolute;
+  left: 1010px;
+  top: 41px;
+  width: 74px;
+  height: 74px;
+  z-index: 300;
+
+  border: none !important;
+  border-radius: 0 !important;
+
+  background:
+    transparent url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='74' height='74' viewBox='0 0 74 74'%3E%3Ccircle cx='37' cy='37' r='34' fill='none' stroke='%23fff' stroke-width='6'/%3E%3C/svg%3E")
+    center center / 74px 74px no-repeat !important;
+
+  overflow: visible;
+}
+.cta三角箭頭 {
+  background: transparent;
+  width: 0;
+  height: 0;
+  border-top:    13px solid transparent;
+  border-bottom: 13px solid transparent;
+  border-left:   23px solid rgb(255, 255, 255);
+  position: absolute;
+  left: 1037px;
+  top: 65px;
+  box-sizing: content-box;
+}
