@@ -73,6 +73,23 @@
         } else { if(txt) el.textContent = txt; }
         canvas.appendChild(el);
       });
+
+      /* IG logo card：固定壓在背景色/背景圖/保護色塊上方，但低於主要文字與 logo */
+      var bgLayer = canvas.querySelector('.bg');
+      var isIGLayout = /^IG/i.test(fname);
+      if (isIGLayout && bgLayer) {
+        var card = document.getElementById('ig-shopee-logo-card');
+        if (!card) {
+          card = document.createElement('img');
+          card.id = 'ig-shopee-logo-card';
+          card.alt = '';
+          card.src = 'img/ig-shopee-logo-card.png';
+        }
+        card.style.cssText =
+          'position:absolute;left:0;top:0;width:100%;height:100%;' +
+          'object-fit:cover;pointer-events:none;z-index:4;';
+        bgLayer.insertAdjacentElement('afterend', card);
+      }
     }
 
     /* ── 讀 --canvas-bg 套用初始背景色（--layers DOM 建立後才做，.bg/.背景色 已存在）
@@ -557,6 +574,18 @@
       } else if(bgFit === 'contain'){
         bgSize = 'contain';
         bgPos  = bgX + '% ' + bgY + '%';
+      } else if(bgFit === 'height100'){
+        /* 橫版畫布預設：背景圖高度放滿，寬度等比例 auto */
+        bgSize = 'auto ' + bgScale + '%';
+        var offsetXH = bgX - 50;
+        var offsetYH = bgY - 50;
+        bgPos = 'calc(50% + ' + offsetXH + '%) calc(50% + ' + offsetYH + '%)';
+      } else if(bgFit === 'width100'){
+        /* 直版/方版畫布預設：背景圖寬度放滿，高度等比例 auto */
+        bgSize = bgScale + '% auto';
+        var offsetXW = bgX - 50;
+        var offsetYW = bgY - 50;
+        bgPos = 'calc(50% + ' + offsetXW + '%) calc(50% + ' + offsetYW + '%)';
       } else {
         /* 原尺寸（auto）：用 background-size 百分比，從中心縮放
            技巧：position 設 50% 50%，size 設 scale%，
@@ -579,7 +608,7 @@
           if(bimg2){
             bimg2.src = bgSrc;
             bimg2.style.display = 'block';
-            bimg2.style.objectFit = bgFit === 'auto' ? 'none' : bgFit;
+            bimg2.style.objectFit = (bgFit === 'auto' || bgFit === 'height100' || bgFit === 'width100') ? 'none' : bgFit;
             bimg2.style.objectPosition = bgPos;
             if(bgFit === 'auto') bimg2.style.transform = 'scale(' + bgScale/100 + ')';
           }
