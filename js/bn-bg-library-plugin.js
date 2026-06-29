@@ -526,6 +526,11 @@
     return {id:id, w:w, h:h};
   }
 
+
+  function getDefaultBgFitForLibraryLayout(info){
+    return (info && Number(info.w) > Number(info.h)) ? 'height100' : 'width100';
+  }
+
   function chooseSrcForLayout(info, img, dataH, dataV){
     if(dataH && dataV){
       // 寬高比判斷：橫式吃 HBN，方/直式吃 DDCARD。
@@ -549,8 +554,8 @@
           var info = getLayoutInfoForIframe(iframe);
           var src = chooseSrcForLayout(info, img, dataH, dataV);
           if(!src) return;
-          if(info.id) states[info.id] = {src:resolveBgImgUrl(src), fit:'auto', scale:100, x:50, y:50, _initialized:true};
-          try{ iframe.contentWindow.postMessage({ type:'bn-bg', src:resolveBgImgUrl(src), fit:'auto', scale:100, x:50, y:50 }, '*'); }catch(_){ }
+          if(info.id) states[info.id] = {src:resolveBgImgUrl(src), fit:getDefaultBgFitForLibraryLayout(info), scale:100, x:50, y:50, _initialized:true};
+          try{ iframe.contentWindow.postMessage({ type:'bn-bg', src:resolveBgImgUrl(src), fit:getDefaultBgFitForLibraryLayout(info), scale:100, x:50, y:50 }, '*'); }catch(_){ }
         });
         if(window._bnSetBgStates){
           try{ window._bnSetBgStates(states, null); }catch(_){ }

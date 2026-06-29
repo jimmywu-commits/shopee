@@ -518,7 +518,7 @@
           document.querySelectorAll('.preview-block iframe').forEach(function(ifrEl){
             var id = getIfrBnid(ifrEl);
             if(!id) return;
-            out[id] = out[id] || {fit:'auto',scale:100,x:50,y:50,_initialized:true};
+            out[id] = out[id] || {fit:getDefaultBgFitForLayout(id, ifrEl),scale:100,x:50,y:50,_initialized:true};
             out[id].src = window._bgDataUrl;
             out[id].fit = out[id].fit || 'auto';
             out[id].scale = out[id].scale !== undefined ? out[id].scale : 100;
@@ -567,7 +567,7 @@
           document.querySelectorAll('.preview-block iframe').forEach(function(ifrEl){
             var id = getIfrBnid(ifrEl);
             if(!id) return;
-            _bgStates[id] = _bgStates[id] || {fit:'auto',scale:100,x:50,y:50,_initialized:true};
+            _bgStates[id] = _bgStates[id] || {fit:getDefaultBgFitForLayout(id, ifrEl),scale:100,x:50,y:50,_initialized:true};
             _bgStates[id].src = window._bgDataUrl;
           });
         }
@@ -931,6 +931,11 @@
         return 'vertical';
       }
 
+
+      function getDefaultBgFitForLayout(id, ifrEl){
+        return getBgLayoutOrientation(id, ifrEl) === 'horizontal' ? 'height100' : 'width100';
+      }
+
       function applyBgByOrientation(horizontalSrc, verticalSrc){
         var h = horizontalSrc || null;
         var v = verticalSrc || null;
@@ -944,7 +949,7 @@
           var nextSrc = single || (getBgLayoutOrientation(id, ifrEl) === 'vertical' ? v : h) || h || v;
           st.src = nextSrc;
           if(!st._initialized){
-            st.scale = 100; st.x = 50; st.y = 50; st.fit = 'auto';
+            st.scale = 100; st.x = 50; st.y = 50; st.fit = getDefaultBgFitForLayout(id, ifrEl);
             st._initialized = true;
           }
         });
@@ -1058,7 +1063,7 @@
               st.src = dataUrl;
               /* 只有第一次上傳才重設位置，已有設定則保留 */
               if(!st._initialized){
-                st.scale = 100; st.x = 50; st.y = 50; st.fit = 'auto';
+                st.scale = 100; st.x = 50; st.y = 50; st.fit = getDefaultBgFitForLayout(id, ifrEl);
                 st._initialized = true;
               }
             });
