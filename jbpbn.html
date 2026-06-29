@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<title>JBP單店 BN編輯器 v1</title>
+<title>BN 編輯器</title>
 <style>
 /* ════════════════════════════════
    Reset & Base
@@ -656,7 +656,8 @@ function renderChecks() {
   }
   wrap.innerHTML = layouts.map(function(l) {
     /* 預設全部勾選：checked 裡沒記錄的視為 true */
-    var isChecked = (l.id in checked) ? !!checked[l.id] : true;
+    var defaultChecked = !/^LPBN_/i.test(l.file);
+    var isChecked = (l.id in checked) ? !!checked[l.id] : defaultChecked;
     return '<label class="layout-check-item">' +
       '<input type="checkbox" ' + (isChecked ? 'checked' : '') +
         ' onchange="onCheck(' + l.id + ', this.checked)">' +
@@ -1406,5 +1407,19 @@ window.loadChecked        = function(){ var checked={}; loadLayouts().forEach(fu
 <script src="js/bn-state-plugin.js"></script>
 <script src="js/bn-workorder-upload-plugin.js"></script>
 <script src="js/bn-bg-library-plugin.js"></script>
+
+<!-- IG Shopee Logo Card Overlay -->
+<img id="ig-shopee-logo-card"
+     src="img/ig-shopee-logo-card.png"
+     style="position:fixed;left:0;top:0;width:100vw;height:100vh;pointer-events:none;display:none;z-index:9998;">
+
+<script>
+window.addEventListener('message', function(e){
+  if(e.data && e.data.type==='bn-ig-layout-show'){
+    document.getElementById('ig-shopee-logo-card').style.display = e.data.show ? 'block' : 'none';
+  }
+});
+</script>
 </body>
+
 </html>
