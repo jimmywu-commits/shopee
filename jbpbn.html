@@ -1055,6 +1055,16 @@ function applyTagColor(mode) {
     dot.classList.toggle('active', dot.dataset.tagColor === mode);
   });
   broadcastColors();
+  document.querySelectorAll('.preview-block iframe').forEach(function(iframe) {
+    try {
+      if (iframe.contentWindow && typeof iframe.contentWindow._bnSetTagColor === 'function') {
+        iframe.contentWindow._bnSetTagColor(mode);
+      } else if (iframe.contentWindow && typeof iframe.contentWindow._bnApplyTag === 'function') {
+        iframe.contentWindow._bnTagColor = mode;
+        iframe.contentWindow._bnApplyTag();
+      }
+    } catch(_) {}
+  });
   try { document.dispatchEvent(new CustomEvent('bn-state-dirty')); } catch(_) {}
 }
 
