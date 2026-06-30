@@ -38,7 +38,7 @@
 .日期 {
   font-size: 36px;
   font-family: "ShopeeNotoSans (content)";
-  font-weight: 400;
+  font-weight: 300;
   color: rgb(255, 255, 255);
   line-height: 1.2;
   text-align: left;
@@ -81,7 +81,7 @@
 }
 .逛逛去 {
   font-size: 36px;
-  font-family: "Noto Sans CJK TC";
+  font-family: "ShopeeNotoSans (content)";
   color: rgb(201, 230, 36);
   line-height: 1.116;
   text-align: center;

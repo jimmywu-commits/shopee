@@ -43,7 +43,9 @@
 ──────────────────────────────────────────── */
 .主標        { left: 51px;     top: 279.84px; line-height: 1; white-space: nowrap; }
 .副標        { left: 51px;     top: 341.73px; line-height: 1; white-space: nowrap; }
-.日期        { left: 51px;     top: 414.59px; line-height: 1; white-space: nowrap; }
+.日期        { left: 51px;     top: 414.59px; line-height: 1; white-space: nowrap;   font-family: "ShopeeNotoSans (content)";
+  font-weight: 300;
+}
 
 /* ── 左側保護色塊 ── */
 .左側保護 {

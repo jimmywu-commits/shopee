@@ -55,7 +55,9 @@
      PS 改版後若有移動文字，重新查 X/Y 更新這裡
 ──────────────────────────────────────────── */
 .副標        { left: 162px;     top: 168.77px; line-height: 1; white-space: nowrap; }
-.日期        { left: 162px;     top: 241.76px; line-height: 1; white-space: nowrap; }
+.日期        { left: 162px;     top: 241.76px; line-height: 1; white-space: nowrap;   font-family: "ShopeeNotoSans (content)";
+  font-weight: 300;
+}
 .主標        { left: 162px;     top: 124.75px; line-height: 1; white-space: nowrap; }
 .放心買_安心退 { left: 953.62px; top: 296px; line-height: 1; white-space: nowrap; letter-spacing: 0.05em; }
 

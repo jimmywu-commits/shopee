@@ -30,7 +30,9 @@
 /* ── 文字圖層位置修正（top = PS 變形面板 Y，X 置中不改 left）── */
 .主標 { top: 483.63px; transform-origin: center top; white-space: normal; line-height: 1; }
 .副標 { top: 567.79px; transform-origin: center top; white-space: normal; line-height: 1; }
-.日期 { top: 664.67px; transform-origin: center top; white-space: normal; line-height: 1; }
+.日期 { top: 664.67px; transform-origin: center top; white-space: normal; line-height: 1;   font-family: "ShopeeNotoSans (content)";
+  font-weight: 300;
+}
 
 /* ── 商品圖範圍、LOGO範圍：避免 opacity 影響子元素 ── */
 .商品圖範圍 { background-color: rgba(235, 104, 119, 0.4); opacity: 1; }
