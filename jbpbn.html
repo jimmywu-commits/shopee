@@ -931,6 +931,8 @@ function getColorData() {
   /* ZIP 匯出期間或剛匯出後，以最後一次使用者實際色票為準，避免舊暫存預設藍回灌。 */
   if (window._bnFrozenColorData) data = Object.assign(data, cloneColorDataSafe(window._bnFrozenColorData));
   else if (isColorGuardActive() && window._bnLastUserColorState) data = Object.assign(data, cloneColorDataSafe(window._bnLastUserColorState));
+  /* 掛標顏色必須以目前工具列狀態為準，不讓色彩 guard 的舊暫存值覆蓋，避免畫布先閃一下又跳回紅色。 */
+  data.tagColor = (colorState && colorState.tagColor === 'white') ? 'white' : 'red';
   lockedCanvasBg = getCanvasBgHardLock();
   if (lockedCanvasBg) data.canvasBg = lockedCanvasBg;
   var authoritativeCanvasBg = getAuthoritativeCanvasBg();
@@ -1051,6 +1053,8 @@ function applyTagColor(mode) {
   mode = (mode === 'white') ? 'white' : 'red';
   colorState.tagColor = mode;
   window._bnTagColor = mode;
+  /* 先更新最後使用者色彩快照，避免 broadcastColors() 被舊快照回灌成預設紅色。 */
+  try { window._bnLastUserColorState = cloneColorDataSafe(colorState); } catch(_) {}
   document.querySelectorAll('.tag-color-dot').forEach(function(dot) {
     dot.classList.toggle('active', dot.dataset.tagColor === mode);
   });
@@ -1064,6 +1068,18 @@ function applyTagColor(mode) {
         iframe.contentWindow._bnApplyTag();
       }
     } catch(_) {}
+  });
+  /* 有些 iframe 會在收到 bn-color 後再做一次 layout/init，延遲補套用一次，避免只閃一下沒有真正切換。 */
+  [50, 250].forEach(function(delay) {
+    setTimeout(function() {
+      document.querySelectorAll('.preview-block iframe').forEach(function(iframe) {
+        try {
+          if (iframe.contentWindow && typeof iframe.contentWindow._bnSetTagColor === 'function') {
+            iframe.contentWindow._bnSetTagColor(mode);
+          }
+        } catch(_) {}
+      });
+    }, delay);
   });
   try { document.dispatchEvent(new CustomEvent('bn-state-dirty')); } catch(_) {}
 }
