@@ -925,7 +925,8 @@ function getColorData() {
     canvasBg:  lockedCanvasBg || colorState.canvasBg,
     ctaText:   colorState.ctaText,
     ctaBg:     colorState.ctaBg,
-    searchImageCtaBg: colorState.searchImageCtaBg
+    searchImageCtaBg: colorState.searchImageCtaBg,
+    tagColor: colorState.tagColor || 'red'
   };
   /* ZIP 匯出期間或剛匯出後，以最後一次使用者實際色票為準，避免舊暫存預設藍回灌。 */
   if (window._bnFrozenColorData) data = Object.assign(data, cloneColorDataSafe(window._bnFrozenColorData));
@@ -982,7 +983,8 @@ var colorState = {
   canvasBg:  '#6bc0ec',
   ctaText:   '#6bc0ec',
   ctaBg:     '#ffffff',
-  searchImageCtaBg: '#d0021b'
+  searchImageCtaBg: '#d0021b',
+  tagColor: 'red'
 };
 
 /* 使用者目前設定的背景色唯一權威來源。
@@ -1045,6 +1047,52 @@ var COLOR_FIELDS = [
   { key: 'searchImageCtaBg', label: 'Search Image CTA 底色' }
 ];
 
+function applyTagColor(mode) {
+  mode = (mode === 'white') ? 'white' : 'red';
+  colorState.tagColor = mode;
+  window._bnTagColor = mode;
+  document.querySelectorAll('.tag-color-dot').forEach(function(dot) {
+    dot.classList.toggle('active', dot.dataset.tagColor === mode);
+  });
+  broadcastColors();
+  try { document.dispatchEvent(new CustomEvent('bn-state-dirty')); } catch(_) {}
+}
+
+function renderTagColorRow(afterRow) {
+  if (!afterRow || document.getElementById('tag-color-row')) return;
+  var row = document.createElement('div');
+  row.className = 'color-row';
+  row.id = 'tag-color-row';
+
+  var lbl = document.createElement('label');
+  lbl.textContent = '掛標顏色';
+  row.appendChild(lbl);
+
+  var box = document.createElement('div');
+  box.style.cssText = 'display:flex;gap:8px;align-items:center;';
+
+  [
+    {mode:'red', color:'#d0021b', title:'紅色掛標'},
+    {mode:'white', color:'#ffffff', title:'白色掛標'}
+  ].forEach(function(item){
+    var dot = document.createElement('div');
+    dot.className = 'color-dot tag-color-dot';
+    dot.dataset.tagColor = item.mode;
+    dot.title = item.title;
+    dot.style.background = item.color;
+    dot.style.boxShadow = item.mode === 'white' ? 'inset 0 0 0 1px rgba(0,0,0,.35)' : '';
+    dot.addEventListener('click', function(e){
+      e.stopPropagation();
+      applyTagColor(item.mode);
+    });
+    box.appendChild(dot);
+  });
+
+  row.appendChild(box);
+  afterRow.parentNode.insertBefore(row, afterRow.nextSibling);
+  applyTagColor(colorState.tagColor || 'red');
+}
+
 /* 文字色 dot（inline，和輸入框同行） */
 var TEXT_COLOR_KEYS = ['brandText','mainText','subText','dateText'];
 
@@ -1071,6 +1119,7 @@ function renderColorPickers() {
     row.appendChild(dot);
 
     wrap.appendChild(row);
+    if (f.key === 'searchImageCtaBg') renderTagColorRow(row);
   });
 
   /* 初始化 inline 文字色 dot（bound 保護，避免 renderColorPickers 重複呼叫時累積多個 handler）*/
