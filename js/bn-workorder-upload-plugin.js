@@ -77,6 +77,23 @@
       .replace(/[()（）\[\]【】_\-\/\\:：,，.。]/g, '');
   }
 
+
+  var BLOCKED_WORKORDER_SHEET_NAMES = [
+    '包套表',
+    '對照表',
+    '發單前請詳閱規範',
+    'jbp做圖公版參考'
+  ];
+
+  function isBlockedWorkorderSheetName(sheetName){
+    var name = norm(sheetName);
+    if(!name) return false;
+    return BLOCKED_WORKORDER_SHEET_NAMES.some(function(blocked){
+      var key = norm(blocked);
+      return key && (name.indexOf(key) !== -1 || key.indexOf(name) !== -1);
+    });
+  }
+
   function findHeader(rows, keyword){
     var key = norm(keyword);
     for(var r = 0; r < rows.length; r++){
@@ -316,7 +333,12 @@
 
   function rowsFromWorkbook(wb){
     if(!wb.SheetNames || !wb.SheetNames.length) throw new Error('找不到工作表');
-    var candidates = wb.SheetNames.map(function(sheetName, idx){
+    var readableSheetNames = wb.SheetNames.filter(function(sheetName){
+      return !isBlockedWorkorderSheetName(sheetName);
+    });
+    if(!readableSheetNames.length) throw new Error('找不到可讀取的工作表：所有頁籤都被排除');
+
+    var candidates = readableSheetNames.map(function(sheetName, idx){
       var sheet = wb.Sheets[sheetName];
       var rows = global.XLSX.utils.sheet_to_json(sheet, {header:1, defval:'', raw:false});
       return scoreSheetCandidate({sheetName:sheetName, rows:rows}, idx);
@@ -328,7 +350,7 @@
 
     /* 若所有分頁都沒有明確欄位，才退回第一個分頁。 */
     if(best.score < 10){
-      best = candidates.sort(function(a,b){ return wb.SheetNames.indexOf(a.sheetName) - wb.SheetNames.indexOf(b.sheetName); })[0];
+      best = candidates.sort(function(a,b){ return readableSheetNames.indexOf(a.sheetName) - readableSheetNames.indexOf(b.sheetName); })[0];
     }
     return best;
   }
