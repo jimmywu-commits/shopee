@@ -331,28 +331,28 @@ html, body { height: 100%; background: var(--bg0); color: var(--text);
         <div class="s-field-inline">
           <label>品牌名</label>
           <div class="s-field-row">
-            <input type="text" id="txt-brand" placeholder="品牌名稱" value="品牌名不放圖$9字折內" oninput="broadcastText()">
+            <input type="text" id="txt-brand" data-limit="9" placeholder="品牌名稱" value="品牌名不放圖$9字折內" oninput="broadcastText()">
             <span class="char-count-badge" id="badge-品牌名"></span><div class="color-dot" id="dot-brandText" title="品牌名文字色"></div>
           </div>
         </div>
         <div class="s-field-inline">
           <label>主標</label>
           <div class="s-field-row">
-            <input type="text" id="txt-main" placeholder="主標文字" value="滿$200享9折" oninput="broadcastText()">
+            <input type="text" id="txt-main" data-limit="8" placeholder="主標文字" value="滿$200享9折" oninput="broadcastText()">
             <span class="char-count-badge" id="badge-主標"></span><div class="color-dot" id="dot-mainText" title="主標文字色"></div>
           </div>
         </div>
         <div class="s-field-inline">
           <label>副標</label>
           <div class="s-field-row">
-            <input type="text" id="txt-sub" placeholder="副標文字" value="副標$500折起" oninput="broadcastText()">
+            <input type="text" id="txt-sub" data-limit="7" placeholder="副標文字" value="副標$500折起" oninput="broadcastText()">
             <span class="char-count-badge" id="badge-副標"></span><div class="color-dot" id="dot-subText" title="副標文字色"></div>
           </div>
         </div>
         <div class="s-field-inline">
           <label>日期</label>
           <div class="s-field-row">
-            <input type="text" id="txt-date" placeholder="日期文字" value="5/18 12:00 - 5/25 11:59 期間限定" oninput="broadcastText()">
+            <input type="text" id="txt-date" data-limit="14" placeholder="日期文字" value="5/18 12:00 - 5/25 11:59 期間限定" oninput="broadcastText()">
             <span class="char-count-badge" id="badge-日期"></span><div class="color-dot" id="dot-dateText" title="日期文字色"></div>
           </div>
         </div>
@@ -733,6 +733,27 @@ function onIframeLoad(id) {
   /* 尺寸由 iframe 內部透過 bn-iframe-ready message 傳回 */
 }
 
+
+function bnCalcTextUnits(text){
+  var units=0, str=String(text||'');
+  for(var i=0;i<str.length;i++) units += (str.charCodeAt(i)>0x2E7F) ? 1 : 0.5;
+  return Math.round(units*10)/10;
+}
+function bnTrimTextToLimit(text, limit){
+  if(!limit || !isFinite(limit)) return String(text||'');
+  var out='', sum=0, str=String(text||'');
+  for(var i=0;i<str.length;i++){
+    var w=(str.charCodeAt(i)>0x2E7F) ? 1 : 0.5;
+    if(sum+w>limit) break;
+    out+=str[i]; sum+=w;
+  }
+  return out;
+}
+function bnFieldLimitByInputId(inputId){
+  var el=document.getElementById(inputId);
+  return el ? parseFloat(el.dataset.limit||'') : 0;
+}
+
 /* 接收 iframe 傳回的尺寸與就緒通知 */
 window.addEventListener('message', function (e) {
   if (!e.data) return;
@@ -780,6 +801,10 @@ window.addEventListener('message', function (e) {
           if(bwResult && bwResult.message && window._bnStatePlugin && window._bnStatePlugin.toast){
             window._bnStatePlugin.toast(bwResult.message,'err',bwResult.duration||4000);
           }
+        }
+        var limit = bnFieldLimitByInputId(inputId);
+        if(limit && bnCalcTextUnits(rawVal) > limit){
+          rawVal = bnTrimTextToLimit(rawVal, limit);
         }
         if(inp.value !== rawVal){
           inp.value = rawVal;
@@ -1418,6 +1443,97 @@ window.addEventListener('message', function(e){
   if(e.data && e.data.type==='bn-ig-layout-show'){
     document.getElementById('ig-shopee-logo-card').style.display = e.data.show ? 'block' : 'none';
   }
+});
+</script>
+
+<script>
+/* 左側文字工具列：依照版位字數規則限制輸入（中文/全形 1 字，其餘 0.5 字） */
+document.addEventListener('DOMContentLoaded',function(){
+  var fields=[
+    ['txt-brand','badge-品牌名'],
+    ['txt-main','badge-主標'],
+    ['txt-sub','badge-副標'],
+    ['txt-date','badge-日期']
+  ];
+
+  function calcUnits(text){
+    var units=0, str=String(text||'');
+    for(var i=0;i<str.length;i++){
+      units += (str.charCodeAt(i)>0x2E7F) ? 1 : 0.5;
+    }
+    return Math.round(units*10)/10;
+  }
+  function trimToLimit(text, limit){
+    var out='', sum=0, str=String(text||'');
+    for(var i=0;i<str.length;i++){
+      var w=(str.charCodeAt(i)>0x2E7F) ? 1 : 0.5;
+      if(sum+w>limit) break;
+      out+=str[i]; sum+=w;
+    }
+    return out;
+  }
+  function setCaretToEnd(input){
+    try{ input.setSelectionRange(input.value.length,input.value.length); }catch(_){}
+  }
+  function nextValue(input, insertText){
+    var start=input.selectionStart==null ? input.value.length : input.selectionStart;
+    var end=input.selectionEnd==null ? input.value.length : input.selectionEnd;
+    return input.value.slice(0,start)+String(insertText||'')+input.value.slice(end);
+  }
+  function flashLimit(input, badge){
+    if(badge) badge.title='已達輸入上限';
+    var row=input.closest('.s-field-row');
+    if(row) row.classList.add('over-limit');
+    clearTimeout(input._bnLimitTimer);
+    input._bnLimitTimer=setTimeout(function(){ if(row) row.classList.remove('over-limit'); },450);
+  }
+
+  fields.forEach(function(a){
+    var input=document.getElementById(a[0]);
+    var badge=document.getElementById(a[1]);
+    if(!input) return;
+    var limit=parseFloat(input.dataset.limit||'');
+    if(!limit) return;
+
+    input.addEventListener('beforeinput',function(e){
+      if(e.inputType && e.inputType.indexOf('delete')===0) return;
+      if(e.isComposing) return;
+      var insert=e.data||'';
+      if(!insert && e.inputType!=='insertText') return;
+      if(calcUnits(nextValue(input, insert))>limit){
+        e.preventDefault();
+        flashLimit(input,badge);
+      }
+    });
+
+    input.addEventListener('paste',function(e){
+      var text=(e.clipboardData||window.clipboardData).getData('text')||'';
+      if(calcUnits(nextValue(input,text))<=limit) return;
+      e.preventDefault();
+      var start=input.selectionStart==null ? input.value.length : input.selectionStart;
+      var end=input.selectionEnd==null ? input.value.length : input.selectionEnd;
+      var prefix=input.value.slice(0,start);
+      var suffix=input.value.slice(end);
+      var remaining=limit-calcUnits(prefix+suffix);
+      var safe=trimToLimit(text,remaining);
+      if(safe){
+        input.value=prefix+safe+suffix;
+        setCaretToEnd(input);
+        broadcastText();
+      }
+      flashLimit(input,badge);
+    });
+
+    input.addEventListener('input',function(){
+      if(calcUnits(input.value)>limit){
+        input.value=trimToLimit(input.value,limit);
+        setCaretToEnd(input);
+        broadcastText();
+        flashLimit(input,badge);
+      }
+      if(calcUnits(input.value)>=limit && badge) badge.title='已達輸入上限';
+    });
+  });
 });
 </script>
 </body>
