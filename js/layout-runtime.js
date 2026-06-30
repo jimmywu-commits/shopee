@@ -742,9 +742,26 @@
         });
       }
 
+      /* 下載截圖專用：LOGO 尚未上傳時，不把預設粉紅色 logo 範圍一起截進圖片。
+         只在 capture 當下暫時清掉沒有 bn-logo-img 的 logo 區背景；編輯畫面維持原本粉紅提示色。 */
+      var _logoPlaceholderEls = [];
+      if(_cv){
+        _cv.querySelectorAll('.logo範圍,.LOGO範圍,.logo範圍_左,.logo範圍_中,.logo範圍_右').forEach(function(el){
+          if(el.querySelector('img.bn-logo-img')) return;
+          _logoPlaceholderEls.push({el:el, style:el.getAttribute('style')});
+          el.style.setProperty('background', 'transparent', 'important');
+          el.style.setProperty('background-color', 'transparent', 'important');
+          el.style.setProperty('opacity', '1', 'important');
+        });
+      }
+
       captureCanvas(function(dataUrl){
         _editEls.forEach(function(o){ o.el.style.display = o.disp; });
         _captureAdjustEls.forEach(function(o){ o.el.style.setProperty('top', o.top, o.priority || ''); });
+        _logoPlaceholderEls.forEach(function(o){
+          if(o.style === null) o.el.removeAttribute('style');
+          else o.el.setAttribute('style', o.style);
+        });
         window.parent.postMessage({type:'bn-snapshot',msgId:e.data.msgId,dataUrl:dataUrl},'*');
       });
     }
