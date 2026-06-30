@@ -1768,6 +1768,98 @@
         return String(dataUrl||'').split(',')[1] || '';
       }
 
+      /* 下載 JPG KB 限制：依版位名稱自動套用目標大小。
+         先用 JPEG quality 二分搜尋；若最低 quality 仍超過目標，才逐步縮小尺寸，確保檔案真的低於指定 KB。 */
+      var BN_DOWNLOAD_KB_LIMITS = [
+        {keys:['dd card','ddcard','dd card','dd-card'], kb:245},
+        {keys:['hbn'], kb:145},
+        {keys:['fb','facebook'], kb:450},
+        {keys:['ig','instagram'], kb:450},
+        {keys:['scbn'], kb:60}
+      ];
+
+      function getDownloadKbLimitByName(name){
+        var n = String(name||'').toLowerCase().replace(/\s+/g,'');
+        for(var i=0;i<BN_DOWNLOAD_KB_LIMITS.length;i++){
+          var item = BN_DOWNLOAD_KB_LIMITS[i];
+          for(var j=0;j<item.keys.length;j++){
+            var k = String(item.keys[j]).toLowerCase().replace(/\s+/g,'');
+            if(k && n.indexOf(k) !== -1) return item.kb;
+          }
+        }
+        return null;
+      }
+
+      function dataUrlByteSize(dataUrl){
+        var b64 = String(dataUrl||'').split(',')[1] || '';
+        if(!b64) return 0;
+        var pad = (b64.slice(-2)==='==' ? 2 : (b64.slice(-1)==='=' ? 1 : 0));
+        return Math.max(0, Math.floor(b64.length * 3 / 4) - pad);
+      }
+
+      function canvasToJpegDataUrl(canvas, quality){
+        try{ return canvas.toDataURL('image/jpeg', Math.max(0.05, Math.min(0.98, quality))); }catch(_){ return null; }
+      }
+
+      function compressDataUrlToTargetKb(dataUrl, targetKb, cb){
+        targetKb = parseInt(targetKb,10) || 0;
+        if(!targetKb || !dataUrl){ cb(dataUrl); return; }
+        var maxBytes = targetKb * 1024;
+        var img = new Image();
+        img.onload = function(){
+          try{
+            var srcW = img.naturalWidth || img.width;
+            var srcH = img.naturalHeight || img.height;
+            var scale = 1;
+            var best = null;
+
+            function drawCanvas(){
+              var c = document.createElement('canvas');
+              c.width = Math.max(1, Math.round(srcW * scale));
+              c.height = Math.max(1, Math.round(srcH * scale));
+              var ctx = c.getContext('2d');
+              /* JPG 沒有透明度，先補白底避免透明區轉黑。 */
+              ctx.fillStyle = '#fff';
+              ctx.fillRect(0,0,c.width,c.height);
+              ctx.drawImage(img,0,0,c.width,c.height);
+              return c;
+            }
+
+            function tryQuality(canvas){
+              var low = 0.05, high = 0.95;
+              var localBest = canvasToJpegDataUrl(canvas, low);
+              if(localBest && dataUrlByteSize(localBest) <= maxBytes) best = localBest;
+
+              for(var i=0;i<9;i++){
+                var q = (low + high) / 2;
+                var out = canvasToJpegDataUrl(canvas, q);
+                if(!out){ high = q; continue; }
+                var size = dataUrlByteSize(out);
+                if(size <= maxBytes){
+                  best = out;
+                  localBest = out;
+                  low = q;
+                }else{
+                  high = q;
+                }
+              }
+              return localBest;
+            }
+
+            for(var step=0; step<12; step++){
+              var canvas = drawCanvas();
+              var out = tryQuality(canvas);
+              if(out && dataUrlByteSize(out) <= maxBytes){ cb(out); return; }
+              scale *= 0.9;
+            }
+
+            cb(best || canvasToJpegDataUrl(drawCanvas(), 0.05) || dataUrl);
+          }catch(e){ cb(dataUrl); }
+        };
+        img.onerror = function(){ cb(dataUrl); };
+        img.src = dataUrl;
+      }
+
       function finishExport(){
         /* 匯出完成後用凍結色反覆還原；ZIP 下載會載入 JSZip 並造成部分 iframe/ready 流程重播舊狀態，
            這裡保護 15 秒，避免背景色被預設藍覆蓋。 */
@@ -1893,25 +1985,42 @@
           captureOne(iframe, baseName+'.png', function(dataUrl){
             done++;
 
-            if(dataUrl){
-              ok++;
-              if(total===1){
-                triggerDownload(dataUrl, baseName+'.png');
+            function afterCompress(outUrl, outName){
+              if(outUrl){
+                ok++;
+                if(total===1){
+                  triggerDownload(outUrl, outName);
+                }else{
+                  files.push({name:outName, dataUrl:outUrl});
+                }
               }else{
-                files.push({name:baseName+'.png', dataUrl:dataUrl});
+                fail++;
+              }
+
+              if(total===1){
+                setProgress(outUrl ? '已下載 1 / 1' : '下載失敗：截圖逾時或回傳空白');
+              }else{
+                setProgress('打包中 '+done+' / '+total+'（成功 '+ok+'，失敗 '+fail+'）');
+              }
+
+              /* 稍微讓瀏覽器釋放資源，避免連續截圖卡住 */
+              setTimeout(function(){ next(idx+1); },250);
+            }
+
+            if(dataUrl){
+              var kbLimit = getDownloadKbLimitByName(baseName);
+              var outName = baseName + (kbLimit ? '.jpg' : '.png');
+              if(kbLimit){
+                setProgress('壓縮 '+baseName+' 至 '+kbLimit+'KB 以下…');
+                compressDataUrlToTargetKb(dataUrl, kbLimit, function(jpgUrl){
+                  afterCompress(jpgUrl, outName);
+                });
+              }else{
+                afterCompress(dataUrl, outName);
               }
             }else{
-              fail++;
+              afterCompress(null, baseName+'.png');
             }
-
-            if(total===1){
-              setProgress(dataUrl ? '已下載 1 / 1' : '下載失敗：截圖逾時或回傳空白');
-            }else{
-              setProgress('打包中 '+done+' / '+total+'（成功 '+ok+'，失敗 '+fail+'）');
-            }
-
-            /* 稍微讓瀏覽器釋放資源，避免連續截圖卡住 */
-            setTimeout(function(){ next(idx+1); },250);
           });
         });
       }
