@@ -125,11 +125,13 @@
       window.parent.postMessage({type:'bn-iframe-ready',id:urlId,w:W,h:H},'*');
 
     /* 掛標：自動依目前版位檔名讀 html/img/tag/版位名_r 或 _w，預設紅色。
-       呈現方式參考 IG 的 ig-shopee-logo-card.png：作為畫布上的整張透明 PNG 疊圖。
-       檔名支援：原始版位名、#Uxxxx 轉中文、URL encode、空白轉 %20。 */
+       修正版：同時建立紅/白兩張疊圖，切換時只控制 display，避免 iframe postMessage 時機與瀏覽器快取造成不切換。 */
     var _bnTagColor = 'red';
-    var _bnTagImg = null;
+    var _bnTagWrap = null;
+    var _bnTagImgs = { red: null, white: null };
+    var _bnTagSrcs = { red: '', white: '' };
     var _bnTagSeq = 0;
+
     function _bnDecodeSharpU(str){
       return String(str || '').replace(/#U([0-9a-fA-F]{4,6})/g, function(_, hex){
         try { return String.fromCodePoint(parseInt(hex, 16)); } catch(e) { return _; }
@@ -157,6 +159,7 @@
       try { arr.push(_bnDecodeSharpU(v)); } catch(_) {}
       try { arr.push(encodeURIComponent(v)); } catch(_) {}
       try { arr.push(v.replace(/ /g, '%20')); } catch(_) {}
+      arr.push(v.toLowerCase());
     }
     function _bnTagBases(){
       var base = fname || '';
@@ -167,89 +170,112 @@
       var norm = _bnNormalizeTagName(zhPath || zhBase || base);
       var arr = [];
 
-      /* 先嘗試「版位原檔名」系列 */
       [base, decodedPath, zhBase, zhPath, norm].forEach(function(v){ _bnPushTagBase(arr, v); });
 
-      /* 掛標資料夾目前用的是較短的命名，這裡補上版位別名。
-         例：Coin_pageBN_APP方LOGO / Coin_pageBN_APP橫LOGO -> Coinpage_r.png
-             ddcard方logo / ddcard橫logo -> ddcard_r.png */
       var aliases = [];
       if(/coin/i.test(norm)) aliases.push('Coinpage','coinpage','Coin_pageBN_APP','Coin_pageBN');
       if(/ddcard/i.test(norm)) aliases.push('ddcard','DDCard','DD Card');
-      if(/hbn/i.test(norm)) aliases.push('HBN');
-      if(/fbpost|facebook|^fb/i.test(norm)) aliases.push('FB_POST','FB');
-      if(/ig|instagram/i.test(norm)) aliases.push('IG');
-      if(/lpbnapp/i.test(norm)) aliases.push('LPBN_APP');
-      if(/lpbnpc/i.test(norm)) aliases.push('LPBN_PC');
-      if(/scbn/i.test(norm)) aliases.push('SCBN_APP','SCBN');
-      if(/searchimage1/i.test(norm)) aliases.push('Search_Image1logo','Search_Image1');
-      if(/searchimage2/i.test(norm)) aliases.push('Search_Image2logo','Search_Image2');
-      if(/searchimage3/i.test(norm)) aliases.push('Search_Image3logo','Search_Image3');
+      if(/hbn/i.test(norm)) aliases.push('HBN','hbn');
+      if(/fbpost|facebook|^fb/i.test(norm)) aliases.push('fbpost','FB_POST','FB','facebook');
+      if(/ig|instagram/i.test(norm)) aliases.push('IG','ig','instagram');
+      if(/lpbnapp/i.test(norm)) aliases.push('LPBN_APP','lpbn_app');
+      if(/lpbnpc/i.test(norm)) aliases.push('LPBN_PC','lpbn_pc');
+      if(/scbn/i.test(norm)) aliases.push('SCBN_APP','SCBN','scbn');
+      if(/searchimage1/i.test(norm)) aliases.push('Search_Image1logo','Search_Image1','searchimage1');
+      if(/searchimage2/i.test(norm)) aliases.push('Search_Image2logo','Search_Image2','searchimage2');
+      if(/searchimage3/i.test(norm)) aliases.push('Search_Image3logo','Search_Image3','searchimage3');
       aliases.forEach(function(v){ _bnPushTagBase(arr, v); });
       return _bnUnique(arr);
     }
-    function _bnTryTagSrcs(srcs, done){
-      var seq = ++_bnTagSeq;
-      var idx = 0;
-      function next(){
-        if(seq !== _bnTagSeq) return;
-        if(idx >= srcs.length){ done(''); return; }
-        var src = srcs[idx++];
-        var probe = new Image();
-        probe.onload = function(){ if(seq === _bnTagSeq) done(src); };
-        probe.onerror = next;
-        probe.src = src + (src.indexOf('?') === -1 ? '?v=' : '&v=') + Date.now();
-      }
-      next();
-    }
-    function _bnEnsureTagImg(){
-      if(_bnTagImg && _bnTagImg.parentNode) return _bnTagImg;
-      _bnTagImg = document.getElementById('bn-auto-tag');
-      if(!_bnTagImg){
-        _bnTagImg = document.createElement('img');
-        _bnTagImg.id = 'bn-auto-tag';
-        _bnTagImg.alt = '';
-      }
-      _bnTagImg.style.cssText =
-        'position:absolute;left:0;top:0;width:100%;height:100%;' +
-        'object-fit:fill;pointer-events:none;z-index:9997;display:none;';
-      var bgLayer = canvas.querySelector('.bg') || canvas.querySelector('.背景色') || canvas.querySelector('.底色');
-      if(bgLayer && bgLayer.parentNode === canvas){
-        bgLayer.insertAdjacentElement('afterend', _bnTagImg);
-      }else{
-        var firstText = canvas.querySelector('.主標,.副標,.日期,.品牌名,.logo範圍');
-        if(firstText && firstText.parentNode === canvas) canvas.insertBefore(_bnTagImg, firstText);
-        else canvas.appendChild(_bnTagImg);
-      }
-      return _bnTagImg;
-    }
-    function _bnApplyTag(){
-      var suffix = _bnTagColor === 'white' ? 'w' : 'r';
+    function _bnBuildTagCandidates(color){
+      var suffix = color === 'white' ? 'w' : 'r';
       var candidates = [];
       _bnTagBases().forEach(function(base){
         ['png','jpg','jpeg','webp','gif','svg'].forEach(function(ext){
-          /* 版位 HTML 位於 html/ 內，正常路徑是 img/tag/。
-             另保留 ../html/img/tag/ 與 html/img/tag/ 作為本機/特殊開啟方式 fallback。 */
           candidates.push('img/tag/' + base + '_' + suffix + '.' + ext);
           candidates.push('../html/img/tag/' + base + '_' + suffix + '.' + ext);
           candidates.push('html/img/tag/' + base + '_' + suffix + '.' + ext);
         });
       });
-      _bnTryTagSrcs(candidates, function(src){
-        var img = _bnEnsureTagImg();
-        if(!src){
-          img.removeAttribute('src');
-          img.style.display = 'none';
-          return;
+      return _bnUnique(candidates);
+    }
+    function _bnFindFirstImage(srcs, cb){
+      var idx = 0;
+      function next(){
+        if(idx >= srcs.length){ cb(''); return; }
+        var src = srcs[idx++];
+        var probe = new Image();
+        probe.onload = function(){ cb(src); };
+        probe.onerror = next;
+        probe.src = src + (src.indexOf('?') === -1 ? '?v=' : '&v=') + Date.now();
+      }
+      next();
+    }
+    function _bnEnsureTagLayers(){
+      if(!_bnTagWrap){
+        _bnTagWrap = document.getElementById('bn-auto-tag-wrap');
+      }
+      if(!_bnTagWrap){
+        _bnTagWrap = document.createElement('div');
+        _bnTagWrap.id = 'bn-auto-tag-wrap';
+      }
+      _bnTagWrap.style.cssText = 'position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none;z-index:9998;display:none;';
+
+      ['red','white'].forEach(function(color){
+        var img = _bnTagImgs[color] || document.getElementById('bn-auto-tag-' + color);
+        if(!img){
+          img = document.createElement('img');
+          img.id = 'bn-auto-tag-' + color;
+          img.alt = '';
         }
-        img.onload = function(){ img.style.display = 'block'; };
-        img.onerror = function(){ img.style.display = 'none'; };
-        img.style.display = 'block';
-        img.src = src;
+        img.style.cssText = 'position:absolute;left:0;top:0;width:100%;height:100%;object-fit:fill;pointer-events:none;display:none;';
+        if(img.parentNode !== _bnTagWrap) _bnTagWrap.appendChild(img);
+        _bnTagImgs[color] = img;
+      });
+
+      if(_bnTagWrap.parentNode !== canvas){
+        var bgLayer = canvas.querySelector('.bg') || canvas.querySelector('.背景色') || canvas.querySelector('.底色');
+        if(bgLayer && bgLayer.parentNode === canvas) bgLayer.insertAdjacentElement('afterend', _bnTagWrap);
+        else canvas.appendChild(_bnTagWrap);
+      }
+      return _bnTagWrap;
+    }
+    function _bnRefreshTagVisibility(){
+      _bnEnsureTagLayers();
+      var visible = false;
+      ['red','white'].forEach(function(color){
+        var img = _bnTagImgs[color];
+        var show = color === _bnTagColor && !!_bnTagSrcs[color];
+        if(img) img.style.display = show ? 'block' : 'none';
+        if(show) visible = true;
+      });
+      _bnTagWrap.style.display = visible ? 'block' : 'none';
+    }
+    function _bnLoadTagLayers(){
+      var seq = ++_bnTagSeq;
+      _bnEnsureTagLayers();
+      ['red','white'].forEach(function(color){
+        _bnFindFirstImage(_bnBuildTagCandidates(color), function(src){
+          if(seq !== _bnTagSeq) return;
+          _bnTagSrcs[color] = src || '';
+          var img = _bnTagImgs[color];
+          if(src && img){
+            img.onload = function(){ _bnRefreshTagVisibility(); };
+            img.onerror = function(){ _bnTagSrcs[color] = ''; _bnRefreshTagVisibility(); };
+            img.src = src + (src.indexOf('?') === -1 ? '?v=' : '&v=') + Date.now();
+          }
+          _bnRefreshTagVisibility();
+        });
       });
     }
-    window._bnApplyTag = _bnApplyTag;
-    _bnApplyTag();
+    function _bnSetTagColor(color){
+      _bnTagColor = (color === 'white') ? 'white' : 'red';
+      _bnRefreshTagVisibility();
+      if(!_bnTagSrcs.red && !_bnTagSrcs.white) _bnLoadTagLayers();
+    }
+    window._bnSetTagColor = _bnSetTagColor;
+    window._bnApplyTag = _bnLoadTagLayers;
+    _bnLoadTagLayers();
 
 
     /* Search_Image：動態置中 */
@@ -435,8 +461,11 @@
       /* Search Image CTA 底色：只影響 Search_Image 版型的圓形 CTA */
       document.querySelectorAll('.cta圓底').forEach(function(el){ if(c.searchImageCtaBg) el.style.setProperty('background-color', c.searchImageCtaBg, 'important'); });
       if(c.tagColor){
-        _bnTagColor = (c.tagColor === 'white') ? 'white' : 'red';
-        if(typeof window._bnApplyTag === 'function') window._bnApplyTag();
+        if(typeof window._bnSetTagColor === 'function') window._bnSetTagColor(c.tagColor);
+        else {
+          _bnTagColor = (c.tagColor === 'white') ? 'white' : 'red';
+          if(typeof window._bnApplyTag === 'function') window._bnApplyTag();
+        }
       }
       /* CTA 文字色：.放心買_安心退 / .逛逛去 */
       document.querySelectorAll('.放心買_安心退,.逛逛去').forEach(function(el){ if(c.ctaText) el.style.color=c.ctaText; });
@@ -516,7 +545,58 @@
       /* 不覆蓋 position，保持 CSS 的 absolute 定位 */
       zone.style.overflow   = 'hidden';
 
-      /* HBN：absolute 多張；IG方/ddcard方：單張 contain 正方；IG橫/ddcard橫：flex 並排 */
+      function _fitHorizontalLogos(logosToPlace, alignMode){
+        var gap = 15;
+        var zoneW = parseFloat(window.getComputedStyle(zone).width) || 490;
+        var zoneH = parseFloat(window.getComputedStyle(zone).height) || 50;
+        var maxTotal = Math.min(490, zoneW);
+        var imgs = [];
+        zone.style.position = zone.style.position || 'relative';
+        zone.style.overflow = 'visible';
+        zone.style.display = 'block';
+        zone.style.alignItems = '';
+        zone.style.justifyContent = '';
+        zone.style.gap = '';
+        zone.style.transformOrigin = '';
+        function relayout(){
+          var widths = imgs.map(function(img){
+            var ratio = img.naturalWidth && img.naturalHeight ? img.naturalWidth / img.naturalHeight : 1;
+            return Math.min(200, Math.max(1, Math.round(zoneH * ratio)));
+          });
+          var total = widths.reduce(function(a,b){ return a + b; }, 0) + gap * Math.max(0, widths.length - 1);
+          var scale = total > maxTotal ? (maxTotal - gap * Math.max(0, widths.length - 1)) / Math.max(1, widths.reduce(function(a,b){ return a + b; }, 0)) : 1;
+          if(scale < 0) scale = maxTotal / Math.max(1, total);
+          widths = widths.map(function(w){ return Math.max(1, Math.floor(w * Math.min(1, scale))); });
+          total = widths.reduce(function(a,b){ return a + b; }, 0) + gap * Math.max(0, widths.length - 1);
+          var x = alignMode === 'center' ? Math.max(0, (zoneW - total) / 2) : 0;
+          imgs.forEach(function(img, i){
+            img.style.position = 'absolute';
+            img.style.left = Math.round(x) + 'px';
+            img.style.top = '50%';
+            img.style.transform = 'translateY(-50%)';
+            img.style.width = widths[i] + 'px';
+            img.style.height = 'auto';
+            img.style.maxWidth = '200px';
+            img.style.maxHeight = '100%';
+            img.style.objectFit = 'contain';
+            img.style.objectPosition = alignMode === 'center' ? 'center center' : 'left center';
+            img.style.pointerEvents = 'none';
+            img.style.display = 'block';
+            x += widths[i] + gap;
+          });
+        }
+        logosToPlace.forEach(function(lg){
+          var img = new Image(); img.className = 'bn-logo-img';
+          if(lg.round) img.style.borderRadius = '10px';
+          img.onload = relayout;
+          img.src = lg.src;
+          imgs.push(img);
+          zone.appendChild(img);
+        });
+        relayout();
+      }
+
+      /* HBN：absolute 多張；IG方/ddcard方：單張 contain 正方；IG橫/ddcard橫：受限並排 */
       if(isSquareLogoLayout){
         /* 方 Logo 系列：若上傳的是橫向 logo，改以寬度為主、高度 auto，並上下左右置中，避免被裁切。 */
         zone.style.display = 'flex';
@@ -552,49 +632,11 @@
         sqImg.src = sqLg.src;
         zone.appendChild(sqImg);
       } else if(isHBN){
-        /* HBN：每個 logo 用 absolute 定位，從左往右排，間距 15px */
-        zone.style.display = '';
-        var hbnX = 0;
-        logos.forEach(function(lg, i){
-          var img = new Image(); img.className = 'bn-logo-img';
-          var roundCss = lg.round ? 'border-radius:10px;' : '';
-          /* 先 load 再設寬，預設給個高度撐著 */
-          img.style.cssText = 'position:absolute;top:0;left:'+hbnX+'px;height:100%;width:auto;max-width:none;object-fit:contain;object-position:left center;pointer-events:none;'+roundCss;
-          img.src = lg.src;
-          zone.appendChild(img);
-          /* load 後更新下一張的 x 位置（預估寬度） */
-          img.onload = (function(imgEl, startX, idx){
-            return function(){
-              var naturalRatio = imgEl.naturalWidth / (imgEl.naturalHeight || 1);
-              var zoneH = parseFloat(window.getComputedStyle(zone).height) || 50;
-              var imgW = Math.round(zoneH * naturalRatio);
-              /* 更新這張圖和後面的圖位置 */
-              imgEl.style.width = imgW + 'px';
-              /* 重排所有 logo */
-              var allImgs = Array.from(zone.querySelectorAll('img.bn-logo-img'));
-              var x = 0;
-              allImgs.forEach(function(el){
-                el.style.left = x + 'px';
-                x += (parseFloat(el.style.width) || 0) + 15;
-              });
-            };
-          })(img, hbnX, i);
-          hbnX += 60; /* 先佔位，onload 後重排 */
-        });
+        /* 橫式左齊：單張最多 200px；多 LOGO 含 15px 間距總寬最多 490px，且不超過 logo 範圍，避免裁切。 */
+        _fitHorizontalLogos(logos, 'left');
       } else if(isMultiCenter){
-        /* 多張置中並排（ddcard橫、IG橫等）：flex 置中，高度 fit logo範圍 */
-        zone.style.display        = 'flex';
-        zone.style.alignItems     = 'center';
-        zone.style.justifyContent = 'center';
-        zone.style.gap            = '15px';
-        zone.style.transformOrigin = '';
-        logos.forEach(function(lg){
-          var img = new Image(); img.className = 'bn-logo-img';
-          var roundCss = lg.round ? 'border-radius:10px;' : '';
-          img.style.cssText = 'height:100%;width:auto;max-width:none;object-fit:contain;pointer-events:none;flex-shrink:0;'+roundCss;
-          img.src = lg.src;
-          zone.appendChild(img);
-        });
+        /* 橫式置中：單張最多 200px；多 LOGO 含 15px 間距總寬最多 490px，且不超過 logo 範圍，避免裁切。 */
+        _fitHorizontalLogos(logos, 'center');
       } else if(isIGSquare){
         /* IG方：單張，依較大邊 contain 縮放，置中不裁切 */
         zone.style.display = 'flex';
@@ -618,21 +660,9 @@
         };
         zone.appendChild(img0);
       } else {
-        /* IG橫：flex 置中並排，間距 15px */
-        zone.style.display         = 'flex';
-        zone.style.alignItems      = 'center';
-        zone.style.justifyContent  = 'center';
-        zone.style.gap             = '15px';
-        zone.style.transformOrigin = '';
-        logos.forEach(function(lg){
-          var img = new Image(); img.className = 'bn-logo-img';
-          var roundCss = lg.round ? 'border-radius:10px;' : '';
-          img.style.cssText = 'height:100%;width:auto;max-width:none;object-fit:contain;pointer-events:none;flex-shrink:0;'+roundCss;
-          img.src = lg.src;
-          zone.appendChild(img);
-        });
-      }
-    }
+        /* 其他橫式：單張最多 200px；多 LOGO 含 15px 間距總寬最多 490px，且不超過 logo 範圍，避免裁切。 */
+        _fitHorizontalLogos(logos, 'center');
+      }    }
 
     /* 商品新增 */
     if (e.data.type === 'bn-product-add') {
