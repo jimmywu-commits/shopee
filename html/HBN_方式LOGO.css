@@ -28,7 +28,7 @@
 }
 .副標 {
   font-size: 80.344px;
-  font-family: "ShopeeNotoSans";
+  font-family: "ShopeeNotoSans (content)";
   color: rgb(37, 64, 181);
   font-weight: bold;
   line-height: 1.2;
@@ -43,7 +43,7 @@
 }
 .日期 {
   font-size: 36px;
-  font-family: "ShopeeNotoSans";
+  font-family: "ShopeeNotoSans (content)";
   color: rgb(255, 0, 0);
   line-height: 1.2;
   text-align: left;
@@ -57,7 +57,7 @@
 }
 .主標 {
   font-size: 39.311px;
-  font-family: "ShopeeNotoSans";
+  font-family: "ShopeeNotoSans (content)";
   color: rgb(37, 112, 190);
   line-height: 1.2;
   text-align: left;

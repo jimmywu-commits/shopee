@@ -20,7 +20,7 @@
 }
 .副標 {
   font-size: 75.323px;
-  font-family: "ShopeeNotoSans";
+  font-family: "ShopeeNotoSans (content)";
   color: rgb(37, 64, 181);
   font-weight: bold;
   line-height: 1.2;
@@ -35,7 +35,7 @@
 }
 .日期 {
   font-size: 36px;
-  font-family: "ShopeeNotoSans";
+  font-family: "ShopeeNotoSans (content)";
   color: rgb(255, 255, 255);
   line-height: 1.2;
   text-align: left;
@@ -49,7 +49,7 @@
 }
 .主標 {
   font-size: 39.311px;
-  font-family: "ShopeeNotoSans";
+  font-family: "ShopeeNotoSans (content)";
   color: rgb(37, 112, 190);
   line-height: 1.2;
   text-align: left;
@@ -63,7 +63,7 @@
 }
 .放心買_安心退 {
   font-size: 36px;
-  font-family: "ShopeeNotoSans";
+  font-family: "ShopeeNotoSans (content)";
   color: rgb(201, 230, 36);
   line-height: 1.2;
   text-align: center;
