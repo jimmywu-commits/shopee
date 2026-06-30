@@ -106,6 +106,38 @@
     return null;
   }
 
+  function rowHasAnyHeader(row, keywords){
+    row = row || [];
+    return keywords.some(function(keyword){
+      var key = norm(keyword);
+      return row.some(function(cell){
+        var n = norm(cell);
+        return n === key || n.indexOf(key) !== -1;
+      });
+    });
+  }
+
+  function findLayoutHeader(rows){
+    var candidates = [];
+    for(var r = 0; r < rows.length; r++){
+      var row = rows[r] || [];
+      for(var c = 0; c < row.length; c++){
+        var n = norm(row[c]);
+        if(n === '版位'){
+          var score = 100;
+          if(rowHasAnyHeader(row, ['張數','尺寸','檔案格式','規範字數','內容','CTA','Check'])) score += 40;
+          if(rowHasAnyHeader(rows[r + 1] || [], ['主標','副標','LOGO','公版編號'])) score += 10;
+          candidates.push({row:r, col:c, score:score});
+        }
+      }
+    }
+    if(candidates.length){
+      candidates.sort(function(a,b){ return b.score - a.score; });
+      return {row:candidates[0].row, col:candidates[0].col};
+    }
+    return null;
+  }
+
   function detectLayoutType(text){
     var n = norm(text);
     if(!n) return null;
@@ -116,7 +148,7 @@
   }
 
   function scanAppearedLayoutTypes(rows){
-    var header = findHeader(rows, '版位');
+    var header = findLayoutHeader(rows);
     var found = {ddcard:false, hbn:false, scbn:false};
     var raw = [];
     if(!header){
