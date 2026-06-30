@@ -924,7 +924,8 @@ function getColorData() {
     brandText: colorState.brandText,
     canvasBg:  lockedCanvasBg || colorState.canvasBg,
     ctaText:   colorState.ctaText,
-    ctaBg:     colorState.ctaBg
+    ctaBg:     colorState.ctaBg,
+    searchImageCtaBg: colorState.searchImageCtaBg
   };
   /* ZIP 匯出期間或剛匯出後，以最後一次使用者實際色票為準，避免舊暫存預設藍回灌。 */
   if (window._bnFrozenColorData) data = Object.assign(data, cloneColorDataSafe(window._bnFrozenColorData));
@@ -980,7 +981,8 @@ var colorState = {
   brandText: '#ffffff',
   canvasBg:  '#6bc0ec',
   ctaText:   '#6bc0ec',
-  ctaBg:     '#ffffff'
+  ctaBg:     '#ffffff',
+  searchImageCtaBg: '#d0021b'
 };
 
 /* 使用者目前設定的背景色唯一權威來源。
@@ -1039,7 +1041,8 @@ function rememberCurrentColorState(){
 var COLOR_FIELDS = [
   { key: 'canvasBg',  label: '背景色（SCBN色塊 / IG畫布）' },
   { key: 'ctaText',   label: 'CTA 文字色' },
-  { key: 'ctaBg',     label: 'CTA 底色' }
+  { key: 'ctaBg',     label: 'CTA 底色' },
+  { key: 'searchImageCtaBg', label: 'Search Image CTA 底色' }
 ];
 
 /* 文字色 dot（inline，和輸入框同行） */
