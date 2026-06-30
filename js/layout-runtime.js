@@ -124,6 +124,134 @@
     if (window.parent !== window && urlId)
       window.parent.postMessage({type:'bn-iframe-ready',id:urlId,w:W,h:H},'*');
 
+    /* 掛標：自動依目前版位檔名讀 html/img/tag/版位名_r 或 _w，預設紅色。
+       呈現方式參考 IG 的 ig-shopee-logo-card.png：作為畫布上的整張透明 PNG 疊圖。
+       檔名支援：原始版位名、#Uxxxx 轉中文、URL encode、空白轉 %20。 */
+    var _bnTagColor = 'red';
+    var _bnTagImg = null;
+    var _bnTagSeq = 0;
+    function _bnDecodeSharpU(str){
+      return String(str || '').replace(/#U([0-9a-fA-F]{4,6})/g, function(_, hex){
+        try { return String.fromCodePoint(parseInt(hex, 16)); } catch(e) { return _; }
+      });
+    }
+    function _bnUnique(arr){
+      var out = [];
+      arr.forEach(function(v){
+        v = String(v || '').trim();
+        if(v && out.indexOf(v) === -1) out.push(v);
+      });
+      return out;
+    }
+    function _bnNormalizeTagName(str){
+      return _bnDecodeSharpU(String(str || ''))
+        .toLowerCase()
+        .replace(/\.html$/i, '')
+        .replace(/[_\-\s]/g, '')
+        .replace(/(方logo|橫logo|方式logo|橫式logo|方標|橫標|方版|橫版|排版|logo)/g, '');
+    }
+    function _bnPushTagBase(arr, v){
+      v = String(v || '').trim();
+      if(!v) return;
+      arr.push(v);
+      try { arr.push(_bnDecodeSharpU(v)); } catch(_) {}
+      try { arr.push(encodeURIComponent(v)); } catch(_) {}
+      try { arr.push(v.replace(/ /g, '%20')); } catch(_) {}
+    }
+    function _bnTagBases(){
+      var base = fname || '';
+      var decodedPath = '';
+      try { decodedPath = decodeURIComponent(location.pathname.split('/').pop().replace(/\.html$/i, '')); } catch(_) {}
+      var zhBase = _bnDecodeSharpU(base);
+      var zhPath = _bnDecodeSharpU(decodedPath || base);
+      var norm = _bnNormalizeTagName(zhPath || zhBase || base);
+      var arr = [];
+
+      /* 先嘗試「版位原檔名」系列 */
+      [base, decodedPath, zhBase, zhPath, norm].forEach(function(v){ _bnPushTagBase(arr, v); });
+
+      /* 掛標資料夾目前用的是較短的命名，這裡補上版位別名。
+         例：Coin_pageBN_APP方LOGO / Coin_pageBN_APP橫LOGO -> Coinpage_r.png
+             ddcard方logo / ddcard橫logo -> ddcard_r.png */
+      var aliases = [];
+      if(/coin/i.test(norm)) aliases.push('Coinpage','coinpage','Coin_pageBN_APP','Coin_pageBN');
+      if(/ddcard/i.test(norm)) aliases.push('ddcard','DDCard','DD Card');
+      if(/hbn/i.test(norm)) aliases.push('HBN');
+      if(/fbpost|facebook|^fb/i.test(norm)) aliases.push('FB_POST','FB');
+      if(/ig|instagram/i.test(norm)) aliases.push('IG');
+      if(/lpbnapp/i.test(norm)) aliases.push('LPBN_APP');
+      if(/lpbnpc/i.test(norm)) aliases.push('LPBN_PC');
+      if(/scbn/i.test(norm)) aliases.push('SCBN_APP','SCBN');
+      if(/searchimage1/i.test(norm)) aliases.push('Search_Image1logo','Search_Image1');
+      if(/searchimage2/i.test(norm)) aliases.push('Search_Image2logo','Search_Image2');
+      if(/searchimage3/i.test(norm)) aliases.push('Search_Image3logo','Search_Image3');
+      aliases.forEach(function(v){ _bnPushTagBase(arr, v); });
+      return _bnUnique(arr);
+    }
+    function _bnTryTagSrcs(srcs, done){
+      var seq = ++_bnTagSeq;
+      var idx = 0;
+      function next(){
+        if(seq !== _bnTagSeq) return;
+        if(idx >= srcs.length){ done(''); return; }
+        var src = srcs[idx++];
+        var probe = new Image();
+        probe.onload = function(){ if(seq === _bnTagSeq) done(src); };
+        probe.onerror = next;
+        probe.src = src + (src.indexOf('?') === -1 ? '?v=' : '&v=') + Date.now();
+      }
+      next();
+    }
+    function _bnEnsureTagImg(){
+      if(_bnTagImg && _bnTagImg.parentNode) return _bnTagImg;
+      _bnTagImg = document.getElementById('bn-auto-tag');
+      if(!_bnTagImg){
+        _bnTagImg = document.createElement('img');
+        _bnTagImg.id = 'bn-auto-tag';
+        _bnTagImg.alt = '';
+      }
+      _bnTagImg.style.cssText =
+        'position:absolute;left:0;top:0;width:100%;height:100%;' +
+        'object-fit:fill;pointer-events:none;z-index:9997;display:none;';
+      var bgLayer = canvas.querySelector('.bg') || canvas.querySelector('.背景色') || canvas.querySelector('.底色');
+      if(bgLayer && bgLayer.parentNode === canvas){
+        bgLayer.insertAdjacentElement('afterend', _bnTagImg);
+      }else{
+        var firstText = canvas.querySelector('.主標,.副標,.日期,.品牌名,.logo範圍');
+        if(firstText && firstText.parentNode === canvas) canvas.insertBefore(_bnTagImg, firstText);
+        else canvas.appendChild(_bnTagImg);
+      }
+      return _bnTagImg;
+    }
+    function _bnApplyTag(){
+      var suffix = _bnTagColor === 'white' ? 'w' : 'r';
+      var candidates = [];
+      _bnTagBases().forEach(function(base){
+        ['png','jpg','jpeg','webp','gif','svg'].forEach(function(ext){
+          /* 版位 HTML 位於 html/ 內，正常路徑是 img/tag/。
+             另保留 ../html/img/tag/ 與 html/img/tag/ 作為本機/特殊開啟方式 fallback。 */
+          candidates.push('img/tag/' + base + '_' + suffix + '.' + ext);
+          candidates.push('../html/img/tag/' + base + '_' + suffix + '.' + ext);
+          candidates.push('html/img/tag/' + base + '_' + suffix + '.' + ext);
+        });
+      });
+      _bnTryTagSrcs(candidates, function(src){
+        var img = _bnEnsureTagImg();
+        if(!src){
+          img.removeAttribute('src');
+          img.style.display = 'none';
+          return;
+        }
+        img.onload = function(){ img.style.display = 'block'; };
+        img.onerror = function(){ img.style.display = 'none'; };
+        img.style.display = 'block';
+        img.src = src;
+      });
+    }
+    window._bnApplyTag = _bnApplyTag;
+    _bnApplyTag();
+
+
     /* Search_Image：動態置中 */
     if(fname.toLowerCase().indexOf('search_image') !== -1){
       /* Search_Image2：兩個 logo 各自垂直置中，水平位置由 PS CSS 決定 */
@@ -209,6 +337,7 @@
         runSiLayout();
       }
     } /* end search_image */
+
 
     /* 啟用畫布文字直接編輯 */
     attachEditableToAll();
@@ -305,6 +434,10 @@
       document.querySelectorAll('.逛逛去按鈕,.cta底,.逛逛去底').forEach(function(el){ if(c.ctaBg) el.style.backgroundColor=c.ctaBg; });
       /* Search Image CTA 底色：只影響 Search_Image 版型的圓形 CTA */
       document.querySelectorAll('.cta圓底').forEach(function(el){ if(c.searchImageCtaBg) el.style.setProperty('background-color', c.searchImageCtaBg, 'important'); });
+      if(c.tagColor){
+        _bnTagColor = (c.tagColor === 'white') ? 'white' : 'red';
+        if(typeof window._bnApplyTag === 'function') window._bnApplyTag();
+      }
       /* CTA 文字色：.放心買_安心退 / .逛逛去 */
       document.querySelectorAll('.放心買_安心退,.逛逛去').forEach(function(el){ if(c.ctaText) el.style.color=c.ctaText; });
       /* CTA 三角色：.cta三角標 / .逛逛去三角標 */
@@ -372,55 +505,11 @@
       if (e.data.type === 'bn-logos') logos = e.data.logos || [];
       else if (e.data.dataUrl) logos = [{id:'single', src:e.data.dataUrl}];
 
-      /* 橫式多 Logo 共用限制：單張顯示寬度最多 200px；多張合計含間距最多 490px。 */
-      var LOGO_MAX_W = 200;
-      var LOGO_TOTAL_MAX_W = 490;
-      var LOGO_GAP_W = 15;
-      function _bnApplyHorizontalLogoWidthLimit(imgs, opts){
-        opts = opts || {};
-        var gap = typeof opts.gap === 'number' ? opts.gap : LOGO_GAP_W;
-        var zoneH = parseFloat(window.getComputedStyle(zone).height) || 50;
-        var items = imgs.filter(function(img){ return img && img.naturalWidth && img.naturalHeight; });
-        if(!items.length) return;
-        var widths = items.map(function(img){
-          var ratio = img.naturalWidth / (img.naturalHeight || 1);
-          return Math.min(LOGO_MAX_W, Math.max(1, Math.round(zoneH * ratio)));
-        });
-        var gapsW = gap * Math.max(0, widths.length - 1);
-        var zoneW = parseFloat(window.getComputedStyle(zone).width) || LOGO_TOTAL_MAX_W;
-        /* 不只限制總寬 490px，也用實際 logo 範圍寬度當硬上限，避免任何橫 LOGO 版位被裁切。 */
-        var totalMaxW = Math.max(1, Math.min(LOGO_TOTAL_MAX_W, zoneW));
-        var total = widths.reduce(function(a,b){ return a + b; }, 0) + gapsW;
-        if(total > totalMaxW){
-          var available = Math.max(1, totalMaxW - gapsW);
-          var sum = widths.reduce(function(a,b){ return a + b; }, 0) || 1;
-          var scale = available / sum;
-          widths = widths.map(function(w){ return Math.max(1, Math.floor(w * scale)); });
-        }
-        var x = 0;
-        items.forEach(function(img, i){
-          img.style.width = widths[i] + 'px';
-          img.style.height = 'auto';
-          img.style.maxWidth = LOGO_MAX_W + 'px';
-          img.style.maxHeight = '100%';
-          if(opts.absolute){
-            img.style.left = x + 'px';
-            x += widths[i] + gap;
-          }
-        });
-      }
-      function _bnBindHorizontalLogoLimit(imgs, opts){
-        imgs.forEach(function(img){
-          img.addEventListener('load', function(){ _bnApplyHorizontalLogoWidthLimit(imgs, opts); });
-        });
-        setTimeout(function(){ _bnApplyHorizontalLogoWidthLimit(imgs, opts); }, 80);
-      }
-
       if (!logos.length) { zone.style.opacity=''; zone.style.background=''; return; }
 
       /* IG方 / 方 Logo 系列：只取第一張，避免方版 logo 區多張擠壓或裁切。 */
       if (isIGSquare || isSquareLogoLayout) logos = logos.slice(0, 1);
-      /* ddcard橫：isMultiCenter → 多張並套用 200px/490px 限制；ddcard方（isIGSquare）→ 單張 */
+      /* ddcard橫：isMultiCenter → 多張，不限制；ddcard方（isIGSquare）→ 單張 */
 
       zone.style.background = 'transparent';
       zone.style.opacity    = '1';
@@ -463,24 +552,35 @@
         sqImg.src = sqLg.src;
         zone.appendChild(sqImg);
       } else if(isHBN){
-        /* 橫 LOGO 左齊版位（HBN / Coin / FB_POST / LPBN）：
-           LOGO 群組在 logo 範圍內上下置中、水平左齊；
-           單張最多 200px，總寬含 15px 間距最多 490px，超過時全部等比例 auto 縮小。 */
-        zone.style.display        = 'flex';
-        zone.style.alignItems     = 'center';
-        zone.style.justifyContent = 'flex-start';
-        zone.style.gap            = '15px';
-        zone.style.transformOrigin = '';
-        var hbnImgs = [];
-        logos.forEach(function(lg){
+        /* HBN：每個 logo 用 absolute 定位，從左往右排，間距 15px */
+        zone.style.display = '';
+        var hbnX = 0;
+        logos.forEach(function(lg, i){
           var img = new Image(); img.className = 'bn-logo-img';
           var roundCss = lg.round ? 'border-radius:10px;' : '';
-          img.style.cssText = 'height:100%;width:auto;max-width:200px;object-fit:contain;object-position:center center;pointer-events:none;flex-shrink:0;display:block;'+roundCss;
-          hbnImgs.push(img);
+          /* 先 load 再設寬，預設給個高度撐著 */
+          img.style.cssText = 'position:absolute;top:0;left:'+hbnX+'px;height:100%;width:auto;max-width:none;object-fit:contain;object-position:left center;pointer-events:none;'+roundCss;
           img.src = lg.src;
           zone.appendChild(img);
+          /* load 後更新下一張的 x 位置（預估寬度） */
+          img.onload = (function(imgEl, startX, idx){
+            return function(){
+              var naturalRatio = imgEl.naturalWidth / (imgEl.naturalHeight || 1);
+              var zoneH = parseFloat(window.getComputedStyle(zone).height) || 50;
+              var imgW = Math.round(zoneH * naturalRatio);
+              /* 更新這張圖和後面的圖位置 */
+              imgEl.style.width = imgW + 'px';
+              /* 重排所有 logo */
+              var allImgs = Array.from(zone.querySelectorAll('img.bn-logo-img'));
+              var x = 0;
+              allImgs.forEach(function(el){
+                el.style.left = x + 'px';
+                x += (parseFloat(el.style.width) || 0) + 15;
+              });
+            };
+          })(img, hbnX, i);
+          hbnX += 60; /* 先佔位，onload 後重排 */
         });
-        _bnBindHorizontalLogoLimit(hbnImgs, {gap:LOGO_GAP_W});
       } else if(isMultiCenter){
         /* 多張置中並排（ddcard橫、IG橫等）：flex 置中，高度 fit logo範圍 */
         zone.style.display        = 'flex';
@@ -488,16 +588,13 @@
         zone.style.justifyContent = 'center';
         zone.style.gap            = '15px';
         zone.style.transformOrigin = '';
-        var centerImgs = [];
         logos.forEach(function(lg){
           var img = new Image(); img.className = 'bn-logo-img';
           var roundCss = lg.round ? 'border-radius:10px;' : '';
-          img.style.cssText = 'height:100%;width:auto;max-width:200px;object-fit:contain;pointer-events:none;flex-shrink:0;'+roundCss;
-          centerImgs.push(img);
+          img.style.cssText = 'height:100%;width:auto;max-width:none;object-fit:contain;pointer-events:none;flex-shrink:0;'+roundCss;
           img.src = lg.src;
           zone.appendChild(img);
         });
-        _bnBindHorizontalLogoLimit(centerImgs, {gap:LOGO_GAP_W});
       } else if(isIGSquare){
         /* IG方：單張，依較大邊 contain 縮放，置中不裁切 */
         zone.style.display = 'flex';
@@ -527,16 +624,13 @@
         zone.style.justifyContent  = 'center';
         zone.style.gap             = '15px';
         zone.style.transformOrigin = '';
-        var igWideImgs = [];
         logos.forEach(function(lg){
           var img = new Image(); img.className = 'bn-logo-img';
           var roundCss = lg.round ? 'border-radius:10px;' : '';
-          img.style.cssText = 'height:100%;width:auto;max-width:200px;object-fit:contain;pointer-events:none;flex-shrink:0;'+roundCss;
-          igWideImgs.push(img);
+          img.style.cssText = 'height:100%;width:auto;max-width:none;object-fit:contain;pointer-events:none;flex-shrink:0;'+roundCss;
           img.src = lg.src;
           zone.appendChild(img);
         });
-        _bnBindHorizontalLogoLimit(igWideImgs, {gap:LOGO_GAP_W});
       }
     }
 
@@ -781,26 +875,9 @@
         });
       }
 
-      /* 下載截圖專用：LOGO 尚未上傳時，不把預設粉紅色 logo 範圍一起截進圖片。
-         只在 capture 當下暫時清掉沒有 bn-logo-img 的 logo 區背景；編輯畫面維持原本粉紅提示色。 */
-      var _logoPlaceholderEls = [];
-      if(_cv){
-        _cv.querySelectorAll('.logo範圍,.LOGO範圍,.logo範圍_左,.logo範圍_中,.logo範圍_右').forEach(function(el){
-          if(el.querySelector('img.bn-logo-img')) return;
-          _logoPlaceholderEls.push({el:el, style:el.getAttribute('style')});
-          el.style.setProperty('background', 'transparent', 'important');
-          el.style.setProperty('background-color', 'transparent', 'important');
-          el.style.setProperty('opacity', '1', 'important');
-        });
-      }
-
       captureCanvas(function(dataUrl){
         _editEls.forEach(function(o){ o.el.style.display = o.disp; });
         _captureAdjustEls.forEach(function(o){ o.el.style.setProperty('top', o.top, o.priority || ''); });
-        _logoPlaceholderEls.forEach(function(o){
-          if(o.style === null) o.el.removeAttribute('style');
-          else o.el.setAttribute('style', o.style);
-        });
         window.parent.postMessage({type:'bn-snapshot',msgId:e.data.msgId,dataUrl:dataUrl},'*');
       });
     }
