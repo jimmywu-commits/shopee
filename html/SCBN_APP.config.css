@@ -19,9 +19,9 @@
      值 = PS 變形面板的 X/Y（基準點左上角）
      PS 改版後若有移動文字，重新查 X/Y 更新這裡
 ──────────────────────────────────────── */
-.品牌名  { left: 88.19px;  top: 71.75px;  line-height: 1; }
+.品牌名  { left: 88.19px;  top: 70px;  line-height: 1; }
 .副標    { left: 85.07px;  top: 114px; line-height: 1; }
-.逛逛去  { left: 967.43px; top: 106.2px;  line-height: 1; letter-spacing: 0.05em; }
+.逛逛去  { left: 966px; top: 105px;  line-height: 1; letter-spacing: 0.02em; }
 
 /* ══ PS 不會輸出的樣式（設定一次，之後不用動）══ */
 
@@ -41,8 +41,8 @@
   border-top:    10px solid transparent;
   border-bottom: 10px solid transparent;
   border-left:   17px solid rgb(107, 192, 236);
-  left: 1084.8px;  /* 逛逛去文字右邊緣(1081.8) + 3px 間距 */
-  top: 115.5px;
+  left: 1083px;  /* 逛逛去文字右邊緣(1081.8) + 3px 間距 */
+  top: 116px;
 }
 
 /* ── 色塊底（文案保護）：背景圖之上，所有物件之下 ──
