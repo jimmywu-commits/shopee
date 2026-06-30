@@ -1051,15 +1051,10 @@
     }
   }
 
-  function enforceLimit(el, cls){
-    var limit = CHAR_LIMITS[cls];
-    if(!limit) return;
-    var text = el.textContent;
-    var units = calcUnits(text);
-    if(units <= limit) return;
-    /* 截斷到限制 */
+  function trimToLimit(text, limit){
     var out = '';
     var sum = 0;
+    text = String(text || '');
     for(var i=0; i<text.length; i++){
       var c = text.charCodeAt(i);
       var w = (c > 0x2E7F) ? 1 : 0.5;
@@ -1067,15 +1062,58 @@
       out += text[i];
       sum += w;
     }
-    /* 保留游標位置 */
+    return out;
+  }
+
+  function enforceLimit(el, cls){
+    var limit = CHAR_LIMITS[cls];
+    if(!limit) return;
+    var text = el.textContent;
+    var units = calcUnits(text);
+    if(units <= limit) return;
+    var out = trimToLimit(text, limit);
     var sel = window.getSelection();
     el.textContent = out;
-    /* 游標移到尾端 */
     var r = document.createRange();
     r.selectNodeContents(el);
     r.collapse(false);
     sel.removeAllRanges();
     sel.addRange(r);
+  }
+
+  function getEditableSelectionOffsets(el){
+    var sel = window.getSelection();
+    var len = el.textContent.length;
+    if(!sel || sel.rangeCount === 0) return {start:len,end:len};
+    var range = sel.getRangeAt(0);
+    if(!el.contains(range.startContainer) || !el.contains(range.endContainer)) return {start:len,end:len};
+    var pre = document.createRange();
+    pre.selectNodeContents(el);
+    pre.setEnd(range.startContainer, range.startOffset);
+    var start = pre.toString().length;
+    var preEnd = document.createRange();
+    preEnd.selectNodeContents(el);
+    preEnd.setEnd(range.endContainer, range.endOffset);
+    var end = preEnd.toString().length;
+    if(start > end){ var t=start; start=end; end=t; }
+    return {start:start,end:end};
+  }
+
+  function wouldExceedLimit(el, cls, insertText){
+    var limit = CHAR_LIMITS[cls];
+    if(!limit) return false;
+    var text = el.textContent || '';
+    var pos = getEditableSelectionOffsets(el);
+    var next = text.slice(0,pos.start) + String(insertText || '') + text.slice(pos.end);
+    return calcUnits(next) > limit;
+  }
+
+  function flashEditLimit(el){
+    el.style.outline = '1.5px solid #ef4444';
+    clearTimeout(el._bnLimitTimer);
+    el._bnLimitTimer = setTimeout(function(){
+      el.style.outline = '1.5px solid rgba(74,144,226,.55)';
+    }, 400);
   }
 
   /* ── makeEditable ── */
@@ -1114,6 +1152,38 @@
       if(e.button === 2) return; /* 右鍵由 contextmenu 處理 */
       e.stopPropagation();
       startEditing(e.clientX, e.clientY);
+    });
+
+    el.addEventListener('beforeinput', function(e){
+      if(e.inputType && e.inputType.indexOf('delete') === 0) return;
+      if(e.isComposing) return;
+      var insert = e.data || '';
+      if(!insert && e.inputType !== 'insertText') return;
+      if(wouldExceedLimit(el, cls, insert)){
+        e.preventDefault();
+        flashEditLimit(el);
+        showCounter(el, cls);
+      }
+    });
+
+    el.addEventListener('paste', function(e){
+      var text = (e.clipboardData || window.clipboardData).getData('text') || '';
+      if(!wouldExceedLimit(el, cls, text)) return;
+      e.preventDefault();
+      var limit = CHAR_LIMITS[cls];
+      var cur = el.textContent || '';
+      var pos = getEditableSelectionOffsets(el);
+      var prefix = cur.slice(0, pos.start);
+      var suffix = cur.slice(pos.end);
+      var remaining = limit - calcUnits(prefix + suffix);
+      var safe = trimToLimit(text, remaining);
+      if(safe){
+        try{ document.execCommand('insertText', false, safe); }
+        catch(_){ el.textContent = prefix + safe + suffix; }
+      }
+      flashEditLimit(el);
+      updateCharCounter(el, cls);
+      showCounter(el, cls);
     });
 
     el.addEventListener('input', function(){
