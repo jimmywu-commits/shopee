@@ -168,10 +168,9 @@
       var zhBase = _bnDecodeSharpU(base);
       var zhPath = _bnDecodeSharpU(decodedPath || base);
       var norm = _bnNormalizeTagName(zhPath || zhBase || base);
-      var arr = [];
 
-      [base, decodedPath, zhBase, zhPath, norm].forEach(function(v){ _bnPushTagBase(arr, v); });
-
+      // 已知的固定命名別名優先嘗試（img/tag 資料夾裡實際存在的檔名多是這種命名），
+      // 這樣通常第 1～2 次就能找到圖，不會浪費一堆請求去試不存在的檔名組合。
       var aliases = [];
       if(/coin/i.test(norm)) aliases.push('Coinpage','coinpage','Coin_pageBN_APP','Coin_pageBN');
       if(/ddcard/i.test(norm)) aliases.push('ddcard','DDCard','DD Card');
@@ -184,20 +183,28 @@
       if(/searchimage1/i.test(norm)) aliases.push('Search_Image1logo','Search_Image1','searchimage1');
       if(/searchimage2/i.test(norm)) aliases.push('Search_Image2logo','Search_Image2','searchimage2');
       if(/searchimage3/i.test(norm)) aliases.push('Search_Image3logo','Search_Image3','searchimage3');
+
+      var arr = [];
       aliases.forEach(function(v){ _bnPushTagBase(arr, v); });
+      [base, decodedPath, zhBase, zhPath, norm].forEach(function(v){ _bnPushTagBase(arr, v); });
       return _bnUnique(arr);
     }
     function _bnBuildTagCandidates(color){
       var suffix = color === 'white' ? 'w' : 'r';
       var candidates = [];
-      _bnTagBases().forEach(function(base){
-        ['png','jpg','jpeg','webp','gif','svg'].forEach(function(ext){
+      // 只嘗試實際會用到的副檔名（png 為主，jpg/webp 備用），避免每個檔名都要試 6 種副檔名
+      // 造成組合爆炸（過多無效請求容易被 GitHub Pages 判定為 429 太多請求）。
+      ['png','jpg','webp'].forEach(function(ext){
+        _bnTagBases().forEach(function(base){
           candidates.push('img/tag/' + base + '_' + suffix + '.' + ext);
-          candidates.push('../html/img/tag/' + base + '_' + suffix + '.' + ext);
           candidates.push('html/img/tag/' + base + '_' + suffix + '.' + ext);
         });
       });
-      return _bnUnique(candidates);
+      // 安全上限：最多只嘗試前 40 個候選網址，找不到就放棄，不繼續往下試。
+      return _bnUnique(candidates).slice(0, 40);
+    }
+    function _bnTagCacheKey(color){
+      return 'bnTag:' + (fname || '') + ':' + color;
     }
     function _bnFindFirstImage(srcs, cb){
       var idx = 0;
@@ -207,10 +214,13 @@
         var probe = new Image();
         probe.onload = function(){ cb(src); };
         probe.onerror = next;
-        probe.src = src + (src.indexOf('?') === -1 ? '?v=' : '&v=') + Date.now();
+        // 探測階段不加時間戳記，讓瀏覽器對重複探測的失敗結果保有快取的機會，
+        // 避免同一批候選網址在多個 iframe / 多次重新排版時被重複打好幾次。
+        probe.src = src;
       }
       next();
     }
+
     function _bnEnsureTagLayers(){
       if(!_bnTagWrap){
         _bnTagWrap = document.getElementById('bn-auto-tag-wrap');
@@ -255,7 +265,24 @@
       var seq = ++_bnTagSeq;
       _bnEnsureTagLayers();
       ['red','white'].forEach(function(color){
+        var cacheKey = _bnTagCacheKey(color);
+        var cached = null;
+        try { cached = window.sessionStorage.getItem(cacheKey); } catch(_) {}
+        if(cached !== null){
+          // 曾經探測過的結果（找到的網址，或空字串代表確認找不到），直接沿用，不用再打一輪請求。
+          if(seq !== _bnTagSeq) return;
+          _bnTagSrcs[color] = cached || '';
+          var cimg = _bnTagImgs[color];
+          if(cached && cimg){
+            cimg.onload = function(){ _bnRefreshTagVisibility(); };
+            cimg.onerror = function(){ _bnTagSrcs[color] = ''; _bnRefreshTagVisibility(); };
+            cimg.src = cached + (cached.indexOf('?') === -1 ? '?v=' : '&v=') + Date.now();
+          }
+          _bnRefreshTagVisibility();
+          return;
+        }
         _bnFindFirstImage(_bnBuildTagCandidates(color), function(src){
+          try { window.sessionStorage.setItem(cacheKey, src || ''); } catch(_) {}
           if(seq !== _bnTagSeq) return;
           _bnTagSrcs[color] = src || '';
           var img = _bnTagImgs[color];
