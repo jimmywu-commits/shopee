@@ -21,7 +21,9 @@
 ──────────────────────────────────────── */
 .品牌名  { left: 88.19px;  top: 70px;  line-height: 1; }
 .副標    { left: 85.07px;  top: 114px; line-height: 1; }
-.逛逛去  { left: 966px; top: 105px;  line-height: 1; letter-spacing: 0.02em; }
+.逛逛去  {
+  font-family: "ShopeeNotoSans (content)";
+  font-weight: 300; left: 966px; top: 105px;  line-height: 1; letter-spacing: 0.02em; }
 
 /* ══ PS 不會輸出的樣式（設定一次，之後不用動）══ */
 

@@ -59,7 +59,9 @@
 .日期        { left: 90px;     top: 298.76px; line-height: 1; white-space: nowrap;   font-family: "ShopeeNotoSans (content)";
   font-weight: 300;
 }
-.逛逛去 { left: 1064.52px; top: 346.73px; line-height: 1; white-space: nowrap; letter-spacing: 0.05em; }
+.逛逛去 {
+  font-family: "ShopeeNotoSans (content)";
+  font-weight: 300; left: 1064.52px; top: 346.73px; line-height: 1; white-space: nowrap; letter-spacing: 0.05em; }
 
 /* ── 左側保護色塊 ── */
 .左側保護 {
