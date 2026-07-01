@@ -18,6 +18,11 @@ var BN_LAYOUTS = [
   "FB_POST_方LOGO.html",
   "FB_POST_橫LOGO.html",
 
+  "LPBN_APP方LOGO.html",
+  "LPBN_PC方LOGO.html",
+  "LPBN_APP橫LOGO.html",
+  "LPBN_PC橫LOGO.html",
+
   "SCBN_APP.html",
 
   "Search_Image1logo.html",

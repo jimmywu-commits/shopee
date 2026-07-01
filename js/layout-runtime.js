@@ -1602,3 +1602,14 @@
 })();
 
 })();
+
+/* BN_FORCE_CTA_REGULAR_20260701 */
+(function(){
+  try {
+    var css = '.放心買_安心退,.逛逛去,.cta-text{font-family:"ShopeeNotoSans (content)" !important;font-weight:300 !important;font-style:normal !important;}';
+    var style = document.createElement('style');
+    style.setAttribute('data-bn-cta-regular','1');
+    style.appendChild(document.createTextNode(css));
+    (document.head || document.documentElement).appendChild(style);
+  } catch(e) {}
+})();
