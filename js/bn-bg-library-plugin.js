@@ -29,7 +29,7 @@
   var CFG = window.BN_BG_LIBRARY_CONFIG || {};
   var MANIFEST_URL = CFG.manifestUrl || 'bgimg/index.json';
   var BRAND_URL = CFG.brandUrl || 'bgimg/brand.json';
-  var IMG_BASE_URL = CFG.imgBaseUrl || 'https://cdn.jsdelivr.net/gh/jimmywu-commits/rd@main/bgimg/';
+  var IMG_BASE_URL = CFG.imgBaseUrl || 'bgimg/';
   var CATEGORIES = CFG.categories || ['EL','Fashion','FMCG','Lifestyle'];
   var DEFAULT_IMAGES = CFG.images || [];
 
