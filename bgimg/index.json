@@ -1,0 +1,130 @@
+{
+    "EL": {
+        "hbn": [
+            "EL_1.jpg",
+            "EL_2.jpg",
+            "EL_3.jpg",
+            "EL_4.jpg",
+            "EL_5.jpg",
+            "EL_6.jpg",
+            "EL_7.jpg",
+            "EL_8.jpg",
+            "EL_9.jpg",
+            "EL_10.jpg",
+            "EL_11.jpg",
+            "EL_12.jpg"
+        ],
+        "ddcard": [
+            "EL_1.jpg",
+            "EL_2.jpg",
+            "EL_3.jpg",
+            "EL_4.jpg",
+            "EL_5.jpg",
+            "EL_6.jpg",
+            "EL_7.jpg",
+            "EL_8.jpg",
+            "EL_9.jpg",
+            "EL_10.jpg",
+            "EL_11.jpg",
+            "EL_12.jpg"
+        ]
+    },
+    "Lifestyle": {
+        "hbn": [
+            "Lifestyle_1.jpg",
+            "Lifestyle_2.jpg",
+            "Lifestyle_3.jpg",
+            "Lifestyle_4.jpg",
+            "Lifestyle_5.jpg",
+            "Lifestyle_6.jpg",
+            "Lifestyle_7.jpg",
+            "Lifestyle_8.jpg",
+            "Lifestyle_9.jpg",
+            "Lifestyle_10.jpg",
+            "Lifestyle_11.jpg",
+            "Lifestyle_12.jpg",
+            "Lifestyle_13.jpg"
+        ],
+        "ddcard": [
+            "Lifestyle_1.jpg",
+            "Lifestyle_2.jpg",
+            "Lifestyle_3.jpg",
+            "Lifestyle_4.jpg",
+            "Lifestyle_5.jpg",
+            "Lifestyle_6.jpg",
+            "Lifestyle_7.jpg",
+            "Lifestyle_8.jpg",
+            "Lifestyle_9.jpg",
+            "Lifestyle_10.jpg",
+            "Lifestyle_11.jpg",
+            "Lifestyle_12.jpg",
+            "Lifestyle_13.jpg"
+        ]
+    },
+    "Fashion": {
+        "hbn": [
+            "Fashion_1.jpg",
+            "Fashion_2.jpg",
+            "Fashion_3.jpg",
+            "Fashion_4.jpg",
+            "Fashion_5.jpg",
+            "Fashion_6.jpg",
+            "Fashion_7.jpg",
+            "Fashion_8.jpg",
+            "Fashion_9.jpg",
+            "Fashion_10.jpg",
+            "Fashion_11.jpg",
+            "Fashion_12.jpg",
+            "Fashion_13.jpg"
+        ],
+        "ddcard": [
+            "Fashion_1.jpg",
+            "Fashion_2.jpg",
+            "Fashion_3.jpg",
+            "Fashion_4.jpg",
+            "Fashion_5.jpg",
+            "Fashion_6.jpg",
+            "Fashion_7.jpg",
+            "Fashion_8.jpg",
+            "Fashion_9.jpg",
+            "Fashion_10.jpg",
+            "Fashion_11.jpg",
+            "Fashion_12.jpg",
+            "Fashion_13.jpg"
+        ]
+    },
+    "FMCG": {
+        "hbn": [
+            "FMCG_1.jpg",
+            "FMCG_2.jpg",
+            "FMCG_3.jpg",
+            "FMCG_4.jpg",
+            "FMCG_5.jpg",
+            "FMCG_6.jpg",
+            "FMCG_7.jpg",
+            "FMCG_8.jpg",
+            "FMCG_9.jpg",
+            "FMCG_10.jpg",
+            "FMCG_11.jpg",
+            "FMCG_12.jpg",
+            "FMCG_13.jpg",
+            "FMCG_14.jpg"
+        ],
+        "ddcard": [
+            "FMCG_1.jpg",
+            "FMCG_2.jpg",
+            "FMCG_3.jpg",
+            "FMCG_4.jpg",
+            "FMCG_5.jpg",
+            "FMCG_6.jpg",
+            "FMCG_7.jpg",
+            "FMCG_8.jpg",
+            "FMCG_9.jpg",
+            "FMCG_10.jpg",
+            "FMCG_11.jpg",
+            "FMCG_12.jpg",
+            "FMCG_13.jpg",
+            "FMCG_14.jpg"
+        ]
+    }
+}
