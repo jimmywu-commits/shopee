@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+好<!DOCTYPE html>
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
@@ -180,6 +180,37 @@ html, body { height: 100%; background: var(--bg0); color: var(--text);
   margin: auto; text-align: center; color: var(--text3); font-size: 13px;
 }
 #preview-empty .icon { font-size: 36px; margin-bottom: 8px; }
+
+/* 預覽載入遮罩：等待各版型 iframe 完成 CSS + 字型載入後才顯示 */
+#bn-loading-overlay {
+  position: fixed; inset: 44px 0 0 260px;
+  z-index: 100000; display: none; align-items: center; justify-content: center;
+  background: rgba(13,17,23,.82); backdrop-filter: blur(5px);
+}
+#bn-loading-overlay.show { display: flex; }
+.bn-loading-card {
+  width: min(420px, 86vw); background: #161b22; border: 1px solid #30363d;
+  border-radius: 14px; box-shadow: 0 22px 70px rgba(0,0,0,.55);
+  padding: 24px 26px; text-align: center;
+}
+.bn-loading-spinner {
+  width: 44px; height: 44px; border-radius: 50%; margin: 0 auto 16px;
+  border: 4px solid rgba(139,148,158,.22); border-top-color: var(--accent2);
+  animation: bnSpin .85s linear infinite;
+}
+@keyframes bnSpin { to { transform: rotate(360deg); } }
+.bn-loading-title { font-size: 15px; font-weight: 800; margin-bottom: 6px; color: var(--text); }
+.bn-loading-desc { font-size: 12px; color: var(--text2); line-height: 1.6; margin-bottom: 14px; }
+.bn-loading-bar { height: 7px; border-radius: 999px; background: #21262d; overflow: hidden; }
+#bn-loading-progress { width: 0%; height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--accent), var(--accent2)); transition: width .18s ease; }
+#bn-loading-count { margin-top: 9px; font-size: 11px; color: var(--text3); }
+#bn-loading-note { margin-top: 8px; font-size: 11px; color: #f0b72f; display: none; }
+#bn-loading-overlay.slow #bn-loading-note { display: block; }
+#bn-loading-close {
+  margin-top: 12px; display: none; border: 1px solid var(--border); background: var(--bg2);
+  color: var(--text2); border-radius: 6px; padding: 5px 12px; font-size: 11px; cursor: pointer;
+}
+#bn-loading-overlay.slow #bn-loading-close { display: inline-block; }
 
 /* 單一排版預覽 */
 .preview-block {
@@ -387,6 +418,19 @@ html, body { height: 100%; background: var(--bg0); color: var(--text);
   </div>
 </div>
 
+<!-- 預覽載入中：等待所有 iframe 的 CSS 與字體完成後自動關閉 -->
+<div id="bn-loading-overlay" aria-live="polite">
+  <div class="bn-loading-card">
+    <div class="bn-loading-spinner"></div>
+    <div class="bn-loading-title">畫布與字體載入中…</div>
+    <div class="bn-loading-desc">正在等待所有已勾選版型完成 CSS、字體與畫布初始化，完成後會自動顯示預覽。</div>
+    <div class="bn-loading-bar"><div id="bn-loading-progress"></div></div>
+    <div id="bn-loading-count">0 / 0</div>
+    <div id="bn-loading-note">這台電腦載入字體較久，若長時間停住請確認字體檔案路徑是否正確。</div>
+    <button id="bn-loading-close" onclick="bnHidePreviewLoading(true)">先關閉等待畫面</button>
+  </div>
+</div>
+
 <!-- 浮動色票面板 -->
 <div id="cp-panel">
   <div id="cp-hex-row">
@@ -424,6 +468,7 @@ function switchTab(name) {
     p.classList.toggle('active', p.id === name);
   });
   if (name === 'frontend') { renderChecks(); setTimeout(applyBgCheckers, 500); }
+  else if (typeof bnHidePreviewLoading === 'function') { bnHidePreviewLoading(true); }
 }
 
 /* ════════════════════════════════════════
@@ -684,6 +729,57 @@ function checkAll(val) {
 ════════════════════════════════════════ */
 var PREVIEW_MAX = 800;   /* 寬或高最多 Npx，可在後台調整 */
 
+/* 預覽載入狀態：bn-iframe-ready 會在 iframe 內 CSS + 字型 ready 後才回報 */
+var bnPreviewLoading = { expected: {}, ready: {}, total: 0, timer: null };
+
+function bnStartPreviewLoading(layouts) {
+  var overlay = document.getElementById('bn-loading-overlay');
+  if (!overlay) return;
+  bnPreviewLoading.expected = {};
+  bnPreviewLoading.ready = {};
+  bnPreviewLoading.total = layouts.length;
+  layouts.forEach(function(l){ bnPreviewLoading.expected[String(l.id)] = true; });
+  overlay.classList.remove('slow');
+  if (bnPreviewLoading.timer) clearTimeout(bnPreviewLoading.timer);
+  if (!layouts.length) { bnHidePreviewLoading(); return; }
+  overlay.classList.add('show');
+  bnUpdatePreviewLoading();
+  bnPreviewLoading.timer = setTimeout(function(){
+    var ov = document.getElementById('bn-loading-overlay');
+    if (ov && ov.classList.contains('show')) ov.classList.add('slow');
+  }, 12000);
+}
+
+function bnMarkPreviewReady(id) {
+  id = String(id || '');
+  if (!bnPreviewLoading.expected[id]) return;
+  bnPreviewLoading.ready[id] = true;
+  bnUpdatePreviewLoading();
+  if (Object.keys(bnPreviewLoading.ready).length >= bnPreviewLoading.total) {
+    setTimeout(function(){ bnHidePreviewLoading(); }, 180);
+  }
+}
+
+function bnUpdatePreviewLoading() {
+  var total = bnPreviewLoading.total || 0;
+  var ready = Object.keys(bnPreviewLoading.ready || {}).length;
+  var pct = total ? Math.round(ready / total * 100) : 100;
+  var bar = document.getElementById('bn-loading-progress');
+  var count = document.getElementById('bn-loading-count');
+  if (bar) bar.style.width = pct + '%';
+  if (count) count.textContent = ready + ' / ' + total + ' 個版型已完成';
+}
+
+function bnHidePreviewLoading(manual) {
+  var overlay = document.getElementById('bn-loading-overlay');
+  if (bnPreviewLoading.timer) clearTimeout(bnPreviewLoading.timer);
+  bnPreviewLoading.timer = null;
+  if (overlay) {
+    overlay.classList.remove('show');
+    if (!manual) overlay.classList.remove('slow');
+  }
+}
+
 function renderPreviews() {
   /* checked 裡沒記錄的視為 true（預設全勾） */
   var layouts = loadLayouts().filter(function(l){ return l.enabled && ((l.id in checked) ? checked[l.id] : true); });
@@ -692,8 +788,9 @@ function renderPreviews() {
 
   area.querySelectorAll('.preview-block').forEach(function(el){ el.remove(); });
 
-  if (!layouts.length) { empty.style.display = 'block'; return; }
+  if (!layouts.length) { empty.style.display = 'block'; bnHidePreviewLoading(); return; }
   empty.style.display = 'none';
+  bnStartPreviewLoading(layouts);
 
   layouts.forEach(function(l) {
     var block = document.createElement('div');
@@ -863,6 +960,7 @@ window.addEventListener('message', function (e) {
 
     var iframe = document.getElementById('iframe-' + id);
     if (!iframe) return;
+    bnMarkPreviewReady(id);
 
     var scale = Math.min(PREVIEW_MAX / W, PREVIEW_MAX / H, 1);
     var dispW = Math.round(W * scale);
