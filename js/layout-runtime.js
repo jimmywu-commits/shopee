@@ -23,18 +23,25 @@
     /* CSS 兩個都載完後，等字型也載完再 init
        document.fonts.ready 在字型下載完成後 resolve，
        保證 scrollWidth / getComputedStyle 拿到的是正確字型的量測值 */
+    waitFontsAndInit();
+  }
+
+  function waitFontsAndInit() {
+    /* 統一入口：CSS 載入完成或 window load fallback 都必須等字型 ready。
+       避免慢速電腦先用 fallback 字型完成排版，造成畫布文字位置/寬度錯誤。 */
     function doInit() {
       requestAnimationFrame(function(){ requestAnimationFrame(init); });
     }
     if (document.fonts && document.fonts.ready) {
-      document.fonts.ready.then(doInit);
+      document.fonts.ready.then(doInit).catch(doInit);
     } else {
-      doInit();
+      setTimeout(doInit, 300);
     }
   }
+
   loadCSS(fname + '.css',        onBothLoaded);
   loadCSS(fname + '.config.css', onBothLoaded);
-  window.addEventListener('load', function(){ setTimeout(init, 600); });
+  window.addEventListener('load', function(){ setTimeout(waitFontsAndInit, 600); });
   var inited = false;
 
   function init() {
@@ -578,7 +585,12 @@
         var zoneH = parseFloat(window.getComputedStyle(zone).height) || 50;
         var maxTotal = Math.min(490, zoneW);
         var imgs = [];
-        zone.style.position = zone.style.position || 'relative';
+        /* 不要把 CSS 的 position:absolute 覆蓋成 relative。
+           ddcard 橫 logo 的 .logo範圍 原本靠 CSS absolute 定位；
+           工單匯入後 iframe 會重建並重新套 logo，如果這裡改成 relative，
+           logo 區會掉回正常文件流，造成畫布上的 logo 往下偏移。 */
+        var _zonePos = window.getComputedStyle(zone).position;
+        if(!_zonePos || _zonePos === 'static') zone.style.position = 'relative';
         zone.style.overflow = 'visible';
         zone.style.display = 'block';
         zone.style.alignItems = '';
@@ -883,34 +895,13 @@
       }
 
       /* Search_Image1 下載補償：
-         html2canvas 下載圖的文字 baseline 會比 bn.html 預覽偏上。
-         這兩個常數只影響下載截圖，不影響畫布預覽。
-         之後要微調只改這裡：
-           SEARCH_IMAGE1_SUBTITLE_OFFSET：副標案型七字內
-           SEARCH_IMAGE1_STORE_OFFSET：官方旗艦店
+         只保留副標下載補償。左側紅底共用區（官方旗艦店/橫線/商城logo）
+         改為完全所見即所得，不再於下載時針對 1/2/3 做不同位移。
       */
       var SEARCH_IMAGE1_SUBTITLE_OFFSET = 14;
-
-      /* 官方旗艦店下載補償：1/2/3 分開調
-         數值越大 = 下載圖越往下
-         數值越小 = 下載圖越往上
-      */
-      var SEARCH_IMAGE1_STORE_OFFSET = 6;
-      var SEARCH_IMAGE2_STORE_OFFSET = 6;
-      var SEARCH_IMAGE3_STORE_OFFSET = 6;
-
       var _captureAdjustEls = [];
       var _fnameLower = (fname || '').toLowerCase();
       var _isSearchImage1 = _fnameLower.indexOf('search_image1') !== -1;
-      var _storeOffset = null;
-
-      if(_fnameLower.indexOf('search_image1') !== -1){
-        _storeOffset = SEARCH_IMAGE1_STORE_OFFSET;
-      } else if(_fnameLower.indexOf('search_image2') !== -1){
-        _storeOffset = SEARCH_IMAGE2_STORE_OFFSET;
-      } else if(_fnameLower.indexOf('search_image3') !== -1){
-        _storeOffset = SEARCH_IMAGE3_STORE_OFFSET;
-      }
 
       if(_isSearchImage1 && _cv){
         _cv.querySelectorAll('.副標案型七字內').forEach(function(el){
@@ -919,16 +910,6 @@
           var currentTop = parseFloat(window.getComputedStyle(el).top) || 0;
           _captureAdjustEls.push({el:el, top:oldTop, priority:oldPriority});
           el.style.setProperty('top', (currentTop + SEARCH_IMAGE1_SUBTITLE_OFFSET) + 'px', 'important');
-        });
-      }
-
-      if(_storeOffset !== null && _cv){
-        _cv.querySelectorAll('.官方旗艦店').forEach(function(el){
-          var oldTop = el.style.top || '';
-          var oldPriority = el.style.getPropertyPriority('top') || '';
-          var currentTop = parseFloat(window.getComputedStyle(el).top) || 0;
-          _captureAdjustEls.push({el:el, top:oldTop, priority:oldPriority});
-          el.style.setProperty('top', (currentTop + _storeOffset) + 'px', 'important');
         });
       }
 
@@ -1571,11 +1552,18 @@
   }
 
   function captureCanvas(cb){
-    if(window.html2canvas){doCapture(cb);return;}
-    var s=document.createElement('script');
-    s.src='https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
-    s.onload=function(){doCapture(cb);}; s.onerror=function(){if(cb)cb(null);};
-    document.head.appendChild(s);
+    function runAfterFonts(){
+      if(window.html2canvas){doCapture(cb);return;}
+      var s=document.createElement('script');
+      s.src='https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+      s.onload=function(){doCapture(cb);}; s.onerror=function(){if(cb)cb(null);};
+      document.head.appendChild(s);
+    }
+    if(document.fonts && document.fonts.ready){
+      document.fonts.ready.then(runAfterFonts).catch(runAfterFonts);
+    } else {
+      runAfterFonts();
+    }
   }
   function doCapture(cb){
     var cv=document.getElementById('canvas');
