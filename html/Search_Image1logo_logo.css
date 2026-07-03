@@ -1,18 +1,21 @@
 /* ================================================
    Search_Image1logo_logo.css
    共用左側紅底 Logo 區（Image1 / Image2 / Image3 共用）
+   只改這支檔案即可同步三個 Search_Image 左側紅底區。
    ================================================ */
 * { transform-origin: 0 0; }
 
 .蝦皮商城logo紅底 {
-  background-color: rgb(208, 2, 27);
-  position: absolute;
-  left: -56px;
-  top: -7px;
-  width: 355px;
-  height: 174px;
-  z-index: 195;
+  background-color: rgb(208, 2, 27) !important;
+  position: absolute !important;
+  left: -56px !important;
+  top: -7px !important;
+  width: 355px !important;
+  height: 174px !important;
+  z-index: 195 !important;
 }
+
+.底色 { z-index: 194 !important; }
 
 .蝦皮商城logo紅底::before,
 .蝦皮商城logo紅底::after {
@@ -21,16 +24,16 @@
 }
 
 .蝦皮商城logo圖 {
-  position: absolute;
-  left: 39px;
-  top: 37px;
-  width: 219px;
-  height: 50px;
-  background-image: url('img/蝦皮商城logo.png');
-  background-size: 219px 50px;
-  background-repeat: no-repeat;
-  pointer-events: none;
-  z-index: 196;
+  position: absolute !important;
+  left: 39px !important;
+  top: 37px !important;
+  width: 219px !important;
+  height: 50px !important;
+  background-image: url('img/蝦皮商城logo.png') !important;
+  background-size: 219px 50px !important;
+  background-repeat: no-repeat !important;
+  pointer-events: none !important;
+  z-index: 196 !important;
 }
 
 .主logo橫線,
@@ -39,14 +42,13 @@ svg.main-logo-auto-lines {
 }
 
 .主logo橫線_左 {
-  position: absolute;
-  left: 35px;
-  top: 110px;
-  width: 30px;
-  height: 0;
-  border-width: 1px;
-  border-color: rgb(255, 255, 255);
-  border-style: solid;
+  position: absolute !important;
+  left: 35px !important;
+  top: 110px !important;
+  width: 30px !important;
+  height: 1.5px !important;
+  background: #fff !important;
+  border: none !important;
   display: block !important;
   opacity: 1 !important;
   visibility: visible !important;
@@ -54,14 +56,13 @@ svg.main-logo-auto-lines {
 }
 
 .主logo橫線_右 {
-  position: absolute;
-  left: 223px;
-  top: 109px;
-  width: 30px;
-  height: 0;
-  border-width: 1px;
-  border-color: rgb(255, 255, 255);
-  border-style: solid;
+  position: absolute !important;
+  left: 223px !important;
+  top: 109px !important;
+  width: 30px !important;
+  height: 1.5px !important;
+  background: #fff !important;
+  border: none !important;
   display: block !important;
   opacity: 1 !important;
   visibility: visible !important;
@@ -71,7 +72,7 @@ svg.main-logo-auto-lines {
 .官方旗艦店 {
   position: absolute !important;
   left: 69px !important;
-  top: 95px !important;
+  top: 98px !important;
   height: 30px !important;
   display: block !important;
   line-height: 30px !important;
