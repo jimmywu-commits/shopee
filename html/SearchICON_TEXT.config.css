@@ -18,6 +18,11 @@
 
 * { transform-origin: 0 0; }
 
+/* 只吃背景色連動，不吃背景圖片（原因說明見 SearchICON_LOGO.config.css） */
+.背景色 {
+  background-image: none !important;
+}
+
 .ICON獨立文案 {
   display: block !important;
   white-space: nowrap !important;

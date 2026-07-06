@@ -18,6 +18,14 @@
 
 * { transform-origin: 0 0; }
 
+/* 只吃背景色連動，不吃背景圖片：系統的「背景圖調整」功能是對全部版位廣播的，
+   即使沒有顯示調整面板（bn-editor-plugin.js 已排除），background 訊息還是會送到
+   這裡的 .背景色 並嘗試設定 background-image；用 !important 擋掉，
+   確保這顆圓永遠只用純色，不會被背景圖覆蓋。 */
+.背景色 {
+  background-image: none !important;
+}
+
 .logo範圍 {
   display: flex !important;
   align-items: center;
