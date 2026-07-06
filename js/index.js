@@ -22,7 +22,11 @@ var BN_LAYOUTS = [
 
   "Search_Image1logo.html",
   "Search_Image2logo.html",
-  "Search_Image3logo.html"
+  "Search_Image3logo.html",
+
+  "SearchICON_LOGO.html",
+  "SearchICON_PRODUCT.html",
+  "SearchICON_TEXT.html"
 ];
 
 /* ★ 這行不要刪 */

@@ -1178,11 +1178,11 @@
   }
 
   /* ── 畫布文字直接點擊編輯 ── */
-  var EDITABLE_CLASSES = ['主標','副標','副標案型七字內','日期','品牌名'];
+  var EDITABLE_CLASSES = ['主標','副標','副標案型七字內','日期','品牌名','ICON獨立文案'];
   var _dollarExemptSet = {};   /* {className: true} */
 
   /* ── 字數計算（中文1字，英數0.5字） ── */
-  var CHAR_LIMITS = { '品牌名':9, '主標':8, '副標':7, '日期':14 };
+  var CHAR_LIMITS = { '品牌名':9, '主標':8, '副標':7, '日期':14, 'ICON獨立文案':2 };
 
   function calcUnits(text){
     var units = 0;

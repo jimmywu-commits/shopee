@@ -760,6 +760,8 @@
           }
           var ifrEl = block.querySelector('iframe');
           if(!ifrEl) return;
+          /* SearchICON 系列版位不需要背景圖調整浮動面板（純色圓形背景，無背景圖可調） */
+          if(/SearchICON/i.test(ifrEl.getAttribute('src') || '')) return;
           var id = getIfrBnid(ifrEl);
           if(!id) return;
 
@@ -1801,6 +1803,25 @@
         try{ return canvas.toDataURL('image/jpeg', Math.max(0.05, Math.min(0.98, quality))); }catch(_){ return null; }
       }
 
+      /* 把截圖縮成固定的正方形尺寸（例如 84x84），給 SearchICON 系列版位
+         同時輸出 120x120（原尺寸）與 84x84 兩種尺寸使用。 */
+      function resizeDataUrlSquare(dataUrl, size, cb){
+        var img = new Image();
+        img.onload = function(){
+          try{
+            var c = document.createElement('canvas');
+            c.width = size; c.height = size;
+            var ctx = c.getContext('2d');
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(0,0,size,size);
+            ctx.drawImage(img, 0, 0, size, size);
+            cb(c.toDataURL('image/png'));
+          }catch(e){ cb(null); }
+        };
+        img.onerror = function(){ cb(null); };
+        img.src = dataUrl;
+      }
+
       function compressDataUrlToTargetKb(dataUrl, targetKb, cb){
         targetKb = parseInt(targetKb,10) || 0;
         if(!targetKb || !dataUrl){ cb(dataUrl); return; }
@@ -2008,15 +2029,30 @@
             }
 
             if(dataUrl){
-              var kbLimit = getDownloadKbLimitByName(baseName);
+              var isSearchIcon = /SearchICON/i.test(iframe.src || '');
+              var kbLimit = isSearchIcon ? null : getDownloadKbLimitByName(baseName);
               var outName = baseName + (kbLimit ? '.jpg' : '.png');
+
+              function afterMainReady(mainUrl, mainName){
+                if(!isSearchIcon){ afterCompress(mainUrl, mainName); return; }
+                /* SearchICON 系列：不壓縮，維持原畫質；84x84 也是單純縮放，不額外壓縮 */
+                resizeDataUrlSquare(dataUrl, 84, function(resized84){
+                  if(resized84){
+                    var name84 = baseName + '_84x84.png';
+                    if(total===1){ triggerDownload(resized84, name84); }
+                    else { files.push({name:name84, dataUrl:resized84}); }
+                  }
+                  afterCompress(mainUrl, mainName);
+                });
+              }
+
               if(kbLimit){
                 setProgress('壓縮 '+baseName+' 至 '+kbLimit+'KB 以下…');
                 compressDataUrlToTargetKb(dataUrl, kbLimit, function(jpgUrl){
-                  afterCompress(jpgUrl, outName);
+                  afterMainReady(jpgUrl, outName);
                 });
               }else{
-                afterCompress(dataUrl, outName);
+                afterMainReady(dataUrl, outName);
               }
             }else{
               afterCompress(null, baseName+'.png');
