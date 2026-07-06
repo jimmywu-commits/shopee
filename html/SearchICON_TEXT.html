@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<title>SearchICON_TEXT 排版預覽</title>
+<style>
+@font-face {
+  font-family: "ShopeeNotoSans (content)";
+  font-weight: 300;
+  src: url("../fonts/ShopeeNotoSans(content)-Regular.ttf") format("truetype");
+}
+@font-face {
+  font-family: "ShopeeNotoSans (content)";
+  font-weight: 400;
+  src: url("../fonts/ShopeeNotoSans(content)-Medium.ttf") format("truetype");
+}
+@font-face {
+  font-family: "ShopeeNotoSans (content)";
+  font-weight: 700;
+  src: url("../fonts/ShopeeNotoSans(content)-Bold.ttf") format("truetype");
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  width: 100%; height: 100%;
+  background: #1a1a1a;
+  display: flex; align-items: center; justify-content: center;
+  overflow: hidden;
+}
+#stage { position: relative; }
+#canvas {
+  position: absolute; top: 0; left: 0;
+  overflow: hidden; transform-origin: top left;
+}
+#底圖 {
+  position: absolute; top: 0; left: 0;
+  width: 100%; height: 100%;
+  z-index: 1; pointer-events: none; display: none;
+}
+#css-err {
+  display: none; position: fixed;
+  top: 14px; left: 50%; transform: translateX(-50%);
+  background: #7f1d1d; color: #fca5a5;
+  font-size: 13px; font-family: monospace;
+  padding: 7px 16px; border-radius: 6px; z-index: 9999;
+}
+</style>
+</head>
+<!-- 搜尋頁 / 搜尋結果頁 ICON：純文字（120x120px），不連動其他版位 -->
+<body data-fw="120" data-fh="120">
+<div id="css-err"></div>
+<div id="stage">
+  <div id="canvas">
+    <img id="底圖" src="" alt="">
+    <!-- 圖層由 layout-runtime.js 從 --layers 自動產生 -->
+  </div>
+</div>
+<script src="../js/layout-runtime.js"></script>
+<script>
+/* ════════════════════════════════════════════════════
+   SearchICON_TEXT 下載置中補償：
+   .ICON獨立文案 在畫布上用 line-height 置中，瀏覽器即時渲染是正確置中的，
+   但實測下載出來的圖片（html2canvas 截圖）文字會偏上約 11px
+  （html2canvas 對這個字體/line-height 的文字基準線計算跟瀏覽器不一致，
+   是 html2canvas 本身的已知限制，不是這裡的 CSS 寫法問題）。
+
+   做法沿用系統既有的「截圖前暫時偏移，截圖後還原」補償方式
+  （跟 layout-runtime.js 裡 Search_Image1 的 副標案型七字內 下載補償是同一招），
+   只影響「下載出來的圖」，不影響畫布上編輯時看到的位置。
+   ════════════════════════════════════════════════════ */
+(function(){
+  var CAPTURE_OFFSET_PX = 11;
+  window.addEventListener('message', function(e){
+    if (!e.data || e.data.type !== 'bn-capture') return;
+    var el = document.querySelector('.ICON獨立文案');
+    if (!el) return;
+    el.style.setProperty('top', CAPTURE_OFFSET_PX + 'px', 'important');
+    setTimeout(function(){
+      el.style.removeProperty('top');
+    }, 1500);
+  });
+})();
+</script>
+</body>
+</html>
