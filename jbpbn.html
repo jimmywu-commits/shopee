@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
 <meta charset="UTF-8">
-<title>BN 編輯器 v1</title>
+<title>BN 編輯器</title>
 <style>
 /* ════════════════════════════════
    Reset & Base
@@ -403,6 +403,13 @@ border-radius:50%;border:none;background:#fff;font-size:20px;cursor:pointer;}
           <div class="s-field-row">
             <input type="text" id="txt-date" data-limit="14" placeholder="日期文字" value="5/18 12:00 - 5/25 11:59 期間限定" oninput="broadcastText()">
             <span class="char-count-badge" id="badge-日期"></span><div class="color-dot" id="dot-dateText" title="日期文字色"></div>
+          </div>
+        </div>
+        <div class="s-field-inline">
+          <label>ICON文案</label>
+          <div class="s-field-row">
+            <input type="text" id="txt-icon" data-limit="2" placeholder="ICON文案" value="文案" oninput="broadcastText()">
+            <span class="char-count-badge" id="badge-ICON獨立文案"></span>
           </div>
         </div>
 
@@ -877,8 +884,8 @@ window.addEventListener('message', function (e) {
   /* iframe 就緒，回傳畫布尺寸 */
   /* 畫布文字直接編輯後同步回左側輸入框（含 banword 轉換） */
   if (e.data.type === 'bn-text-update') {
-    var fieldMap = { '品牌名':'txt-brand', '主標':'txt-main', '副標':'txt-sub', '日期':'txt-date' };
-    var roleMap  = { '品牌名':'品牌名',    '主標':'主標',     '副標':'副標',    '日期':'date' };
+    var fieldMap = { '品牌名':'txt-brand', '主標':'txt-main', '副標':'txt-sub', '日期':'txt-date', 'ICON獨立文案':'txt-icon' };
+    var roleMap  = { '品牌名':'品牌名',    '主標':'主標',     '副標':'副標',    '日期':'date',    'ICON獨立文案':'ICON獨立文案' };
     var inputId  = fieldMap[e.data.field];
     if(inputId){
       var inp = document.getElementById(inputId);
@@ -900,7 +907,7 @@ window.addEventListener('message', function (e) {
             shadow.style.cssText='position:fixed;left:-9999px;top:-9999px;width:1px;height:1px;opacity:0;';
             document.body.appendChild(shadow);
           }
-          var roleMap3 = {'品牌名':'品牌名','主標':'主標','副標':'副標','日期':'date'};
+          var roleMap3 = {'品牌名':'品牌名','主標':'主標','副標':'副標','日期':'date','ICON獨立文案':'ICON獨立文案'};
           shadow.dataset.role = roleMap3[e.data.field] || '';
           shadow.textContent = rawVal;
           /* 豁免清單傳給 shadow，applyToElement 讀 dataset.dollarExempt */
@@ -943,8 +950,8 @@ window.addEventListener('message', function (e) {
 
   /* 字數提示：iframe 回報字數，顯示在左側輸入框旁並紅框超限 */
   if (e.data.type === 'bn-char-count') {
-    var badgeMap = {'品牌名':'badge-品牌名','主標':'badge-主標','副標':'badge-副標','日期':'badge-日期'};
-    var inputMap = {'品牌名':'txt-brand','主標':'txt-main','副標':'txt-sub','日期':'txt-date'};
+    var badgeMap = {'品牌名':'badge-品牌名','主標':'badge-主標','副標':'badge-副標','日期':'badge-日期','ICON獨立文案':'badge-ICON獨立文案'};
+    var inputMap = {'品牌名':'txt-brand','主標':'txt-main','副標':'txt-sub','日期':'txt-date','ICON獨立文案':'txt-icon'};
     var badgeEl = document.getElementById(badgeMap[e.data.field]);
     var inpEl   = document.getElementById(inputMap[e.data.field]);
     var rowEl   = inpEl ? inpEl.closest('.s-field-row') : null;
@@ -965,7 +972,7 @@ window.addEventListener('message', function (e) {
 
   /* Escape 取消編輯：把原本的文字推回去 */
   if (e.data.type === 'bn-text-cancel') {
-    var fieldMap2 = { '品牌名':'txt-brand', '主標':'txt-main', '副標':'txt-sub', '日期':'txt-date' };
+    var fieldMap2 = { '品牌名':'txt-brand', '主標':'txt-main', '副標':'txt-sub', '日期':'txt-date', 'ICON獨立文案':'txt-icon' };
     var inp2 = document.getElementById(fieldMap2[e.data.field]);
     if(inp2) broadcastText();
     return;
@@ -1074,7 +1081,8 @@ function getTextData() {
     品牌名: document.getElementById('txt-brand').value,
     主標:   document.getElementById('txt-main').value,
     副標:   document.getElementById('txt-sub').value,
-    日期:   document.getElementById('txt-date').value
+    日期:   document.getElementById('txt-date').value,
+    ICON獨立文案: document.getElementById('txt-icon').value
   };
 }
 
@@ -1164,7 +1172,7 @@ function rememberCurrentColorState(){
 }
 
 var COLOR_FIELDS = [
-  { key: 'canvasBg',  label: '背景色（SCBN色塊 / IG畫布）' },
+  { key: 'canvasBg',  label: '背景色' },
   { key: 'ctaText',   label: 'CTA 文字色' },
   { key: 'ctaBg',     label: 'CTA 底色' },
   { key: 'searchImageCtaBg', label: 'Search Image CTA 底色' }
@@ -1725,7 +1733,8 @@ document.addEventListener('DOMContentLoaded',function(){
     ['txt-brand','badge-品牌名'],
     ['txt-main','badge-主標'],
     ['txt-sub','badge-副標'],
-    ['txt-date','badge-日期']
+    ['txt-date','badge-日期'],
+    ['txt-icon','badge-ICON獨立文案']
   ];
 
   function calcUnits(text, allowComma){
