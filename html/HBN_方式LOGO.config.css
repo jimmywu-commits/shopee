@@ -54,11 +54,11 @@
      值 = PS 變形面板的 X/Y（基準點左上角）
      PS 改版後若有移動文字，重新查 X/Y 更新這裡
 ──────────────────────────────────────────── */
-.副標        { left: 162px;     top: 168.77px; line-height: 1; white-space: nowrap; }
-.日期        { left: 165px;     top: 246px; line-height: 1; white-space: nowrap;   font-family: "ShopeeNotoSans (content)";
+.副標        { left: 162px;     top: 169px; line-height: 1; white-space: nowrap; }
+.日期        { left: 165px;     top: 244px; line-height: 1; white-space: nowrap;   font-family: "ShopeeNotoSans (content)";
   font-weight: 300;
 }
-.主標        { left: 164px;     top: 124.75px; line-height: 1; white-space: nowrap; }
+.主標        { left: 162px;     top: 124px; line-height: 1; white-space: nowrap; }
 .放心買_安心退 {
   font-family: "ShopeeNotoSans (content)";
   font-weight: 300; left: 955px; top: 297px; line-height: 1; white-space: nowrap; letter-spacing: 0.05em; }

@@ -32,9 +32,11 @@
   left: 52.828px;
   top: 184.269px;
   z-index: 293;
+    letter-spacing:0.2px;
+
 }
 .日期 {
-  font-size: 24px;
+  font-size: 28px;
   font-family: "ShopeeNotoSans (content)";
   font-weight: 300;
   color: rgb(255, 255, 255);
@@ -47,6 +49,8 @@
   left: 63.719px;
   top: 262.093px;
   z-index: 292;
+  letter-spacing:0.5px;
+
 }
 .主標 {
   font-size: 39.311px;
@@ -61,6 +65,8 @@
   left: 102.153px;
   top: 148.197px;
   z-index: 291;
+  letter-spacing:0.5px;
+
 }
 .放心買_安心退 {
   font-size: 34px;
