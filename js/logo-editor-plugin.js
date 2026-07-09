@@ -158,11 +158,11 @@
   gap:8px !important;
   justify-content:flex-end !important;
 }
-#logoCropModal img{
-  max-width:100% !important;
-  max-height:64vh !important;
-  display:block !important;
-  margin:0 auto !important;
+#logoCropImg{
+  max-width:100%;
+  max-height:64vh;
+  display:block;
+  margin:0 auto;
 }
 `;
     document.head.appendChild(s);
