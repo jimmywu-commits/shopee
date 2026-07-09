@@ -236,7 +236,7 @@
     if (role === 'date') {
       out = out.replace(/[^\p{Script=Han}\p{L}\p{N}\s,$%\/\-:]/gu, '');
     } else {
-      out = out.replace(/[^\p{Script=Han}\p{L}\p{N}\s,$%]/gu, '');
+      out = out.replace(/[^\p{Script=Han}\p{L}\p{N}\s$%]/gu, '');
     }
 
     out = out.replace(/\u00A0/g, ' ');
@@ -502,7 +502,8 @@
     const chars = String(str || '');
     for (let i = 0; i < chars.length; i++) {
       const ch = chars[i];
-      if (/\p{Script=Han}/u.test(ch)) units += 1;
+      if (ch === ',') units += 1;
+      else if (/\p{Script=Han}/u.test(ch)) units += 1;
       else units += 0.5;
     }
     return units;
@@ -517,7 +518,7 @@
 
     for (let i = 0; i < chars.length; i++) {
       const ch = chars[i];
-      const next = /\p{Script=Han}/u.test(ch) ? 1 : 0.5;
+      const next = (ch === ',') ? 1 : (/\p{Script=Han}/u.test(ch) ? 1 : 0.5);
       if (units + next > limit) break;
       out += ch;
       units += next;

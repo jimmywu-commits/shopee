@@ -228,7 +228,13 @@
       next();
     }
 
+    function _bnIsTagDisabledForLayout(){
+      var n = _bnNormalizeTagName(fname);
+      return n === 'ddcard' || n.indexOf('ddcard') !== -1;
+    }
+
     function _bnEnsureTagLayers(){
+      if(_bnIsTagDisabledForLayout()) return null;
       if(!_bnTagWrap){
         _bnTagWrap = document.getElementById('bn-auto-tag-wrap');
       }
@@ -258,6 +264,7 @@
       return _bnTagWrap;
     }
     function _bnRefreshTagVisibility(){
+      if(_bnIsTagDisabledForLayout()) return;
       _bnEnsureTagLayers();
       var visible = false;
       ['red','white'].forEach(function(color){
@@ -269,6 +276,7 @@
       _bnTagWrap.style.display = visible ? 'block' : 'none';
     }
     function _bnLoadTagLayers(){
+      if(_bnIsTagDisabledForLayout()) return;
       var seq = ++_bnTagSeq;
       _bnEnsureTagLayers();
       ['red','white'].forEach(function(color){
@@ -303,6 +311,7 @@
       });
     }
     function _bnSetTagColor(color){
+      if(_bnIsTagDisabledForLayout()) return;
       _bnTagColor = (color === 'white') ? 'white' : 'red';
       _bnRefreshTagVisibility();
       if(!_bnTagSrcs.red && !_bnTagSrcs.white) _bnLoadTagLayers();
@@ -310,6 +319,114 @@
     window._bnSetTagColor = _bnSetTagColor;
     window._bnApplyTag = _bnLoadTagLayers;
     _bnLoadTagLayers();
+
+    /* 蝦皮LOGO：比照掛標的疊圖機制，但圖片固定為 img/tag/shopeelogo_w.png（白）
+       與 img/tag/shopeelogo_o.png（橘），不像掛標依版位檔名找圖，預設白色。
+       只有 FB_POST 版位需要這個功能，其他版位一律不啟用。 */
+    function _bnIsShopeeLogoEnabledForLayout(){
+      return (fname || '').toLowerCase().indexOf('fb_post') !== -1;
+    }
+    var _bnLogoColor = 'white';
+    var _bnShopeeWrap = null;
+    var _bnShopeeImgs = { white: null, orange: null };
+    var _bnShopeeSrcs = { white: '', orange: '' };
+    var _bnShopeeSeq = 0;
+
+    function _bnShopeeCacheKey(color){
+      return 'bnShopeeLogo:' + color;
+    }
+    function _bnShopeeCandidates(color){
+      var suffix = color === 'orange' ? 'o' : 'w';
+      return ['img/tag/shopeelogo_' + suffix + '.png', 'html/img/tag/shopeelogo_' + suffix + '.png'];
+    }
+    function _bnEnsureShopeeLayers(){
+      if(!_bnIsShopeeLogoEnabledForLayout()) return null;
+      if(!_bnShopeeWrap){
+        _bnShopeeWrap = document.getElementById('bn-shopee-logo-wrap');
+      }
+      if(!_bnShopeeWrap){
+        _bnShopeeWrap = document.createElement('div');
+        _bnShopeeWrap.id = 'bn-shopee-logo-wrap';
+      }
+      _bnShopeeWrap.style.cssText = 'position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none;z-index:9997;display:none;';
+
+      ['white','orange'].forEach(function(color){
+        var img = _bnShopeeImgs[color] || document.getElementById('bn-shopee-logo-' + color);
+        if(!img){
+          img = document.createElement('img');
+          img.id = 'bn-shopee-logo-' + color;
+          img.alt = '';
+        }
+        img.style.cssText = 'position:absolute;left:0;top:0;width:100%;height:100%;object-fit:fill;pointer-events:none;display:none;';
+        if(img.parentNode !== _bnShopeeWrap) _bnShopeeWrap.appendChild(img);
+        _bnShopeeImgs[color] = img;
+      });
+
+      if(_bnShopeeWrap.parentNode !== canvas){
+        /* 疊在掛標之上（若掛標已存在），否則接在背景層之後 */
+        var afterEl = (_bnTagWrap && _bnTagWrap.parentNode === canvas)
+          ? _bnTagWrap
+          : (canvas.querySelector('.bg') || canvas.querySelector('.背景色') || canvas.querySelector('.底色'));
+        if(afterEl) afterEl.insertAdjacentElement('afterend', _bnShopeeWrap);
+        else canvas.appendChild(_bnShopeeWrap);
+      }
+      return _bnShopeeWrap;
+    }
+    function _bnRefreshShopeeVisibility(){
+      if(!_bnIsShopeeLogoEnabledForLayout()) return;
+      _bnEnsureShopeeLayers();
+      var visible = false;
+      ['white','orange'].forEach(function(color){
+        var img = _bnShopeeImgs[color];
+        var show = color === _bnLogoColor && !!_bnShopeeSrcs[color];
+        if(img) img.style.display = show ? 'block' : 'none';
+        if(show) visible = true;
+      });
+      _bnShopeeWrap.style.display = visible ? 'block' : 'none';
+    }
+    function _bnLoadShopeeLayers(){
+      if(!_bnIsShopeeLogoEnabledForLayout()) return;
+      var seq = ++_bnShopeeSeq;
+      _bnEnsureShopeeLayers();
+      ['white','orange'].forEach(function(color){
+        var cacheKey = _bnShopeeCacheKey(color);
+        var cached = null;
+        try { cached = window.sessionStorage.getItem(cacheKey); } catch(_) {}
+        if(cached !== null){
+          if(seq !== _bnShopeeSeq) return;
+          _bnShopeeSrcs[color] = cached || '';
+          var cimg = _bnShopeeImgs[color];
+          if(cached && cimg){
+            cimg.onload = function(){ _bnRefreshShopeeVisibility(); };
+            cimg.onerror = function(){ _bnShopeeSrcs[color] = ''; _bnRefreshShopeeVisibility(); };
+            cimg.src = cached + (cached.indexOf('?') === -1 ? '?v=' : '&v=') + Date.now();
+          }
+          _bnRefreshShopeeVisibility();
+          return;
+        }
+        _bnFindFirstImage(_bnShopeeCandidates(color), function(src){
+          try { window.sessionStorage.setItem(cacheKey, src || ''); } catch(_) {}
+          if(seq !== _bnShopeeSeq) return;
+          _bnShopeeSrcs[color] = src || '';
+          var img = _bnShopeeImgs[color];
+          if(src && img){
+            img.onload = function(){ _bnRefreshShopeeVisibility(); };
+            img.onerror = function(){ _bnShopeeSrcs[color] = ''; _bnRefreshShopeeVisibility(); };
+            img.src = src + (src.indexOf('?') === -1 ? '?v=' : '&v=') + Date.now();
+          }
+          _bnRefreshShopeeVisibility();
+        });
+      });
+    }
+    function _bnSetLogoColor(color){
+      if(!_bnIsShopeeLogoEnabledForLayout()) return;
+      _bnLogoColor = (color === 'orange') ? 'orange' : 'white';
+      _bnRefreshShopeeVisibility();
+      if(!_bnShopeeSrcs.white && !_bnShopeeSrcs.orange) _bnLoadShopeeLayers();
+    }
+    window._bnSetLogoColor = _bnSetLogoColor;
+    window._bnApplyShopeeLogo = _bnLoadShopeeLayers;
+    _bnLoadShopeeLayers();
 
 
     /* Search_Image：動態置中 */
@@ -499,6 +616,13 @@
         else {
           _bnTagColor = (c.tagColor === 'white') ? 'white' : 'red';
           if(typeof window._bnApplyTag === 'function') window._bnApplyTag();
+        }
+      }
+      if(c.logoColor){
+        if(typeof window._bnSetLogoColor === 'function') window._bnSetLogoColor(c.logoColor);
+        else {
+          _bnLogoColor = (c.logoColor === 'orange') ? 'orange' : 'white';
+          if(typeof window._bnApplyShopeeLogo === 'function') window._bnApplyShopeeLogo();
         }
       }
       /* CTA 文字色：.放心買_安心退 / .逛逛去 */
@@ -894,6 +1018,50 @@
         });
       }
 
+      /* 下載補償①：未上傳 LOGO / 商品圖時，對應的粉紅色標示區塊
+         （.logo範圍 / .商品範圍 等）只是編輯用的視覺輔助，不應出現在下載結果裡。
+         沒有實際圖片子元素的區塊，截圖前先把底色蓋成透明，截完再還原成原本樣式，
+         不影響回到編輯畫面時繼續顯示提示色塊。 */
+      var _guideZoneEls = [];
+      if(_cv){
+        var _guideZoneSelectors = [
+          '.商品範圍', '.商品圖範圍',
+          '.logo範圍', '.LOGO範圍',
+          '.logo範圍_左', '.logo範圍_中', '.logo範圍_右'
+        ];
+        _guideZoneSelectors.forEach(function(sel){
+          _cv.querySelectorAll(sel).forEach(function(zn){
+            var hasContent = zn.querySelector('.bn-prod-box') || zn.querySelector('img.bn-logo-img');
+            if(!hasContent){
+              _guideZoneEls.push({el:zn, bg:zn.style.background, op:zn.style.opacity});
+              zn.style.background = 'transparent';
+              zn.style.opacity = '0';
+            }
+          });
+        });
+      }
+
+      /* 下載補償②：商品圖用 object-fit:contain 顯示，畫面上不會變形，
+         但 html2canvas 不支援 object-fit，會把圖片直接拉滿容器造成比例跑掉。
+         截圖前依「容器尺寸 + 圖片原始比例」算出實際等比顯示的寬高與置中位移，
+         暫時把 <img> 改成該精確尺寸（不再依賴 object-fit），截完後還原，
+         確保下載結果跟畫布上看到的比例完全一致。 */
+      var _prodImgFix = [];
+      if(_cv){
+        _cv.querySelectorAll('.bn-prod-box > img').forEach(function(img){
+          var nw = img.naturalWidth, nh = img.naturalHeight;
+          var cw = img.clientWidth, ch = img.clientHeight;
+          if(!nw || !nh || !cw || !ch) return;
+          var scale = Math.min(cw / nw, ch / nh);
+          var dw = Math.round(nw * scale);
+          var dh = Math.round(nh * scale);
+          var offX = Math.round((cw - dw) / 2);
+          var offY = Math.round((ch - dh) / 2);
+          _prodImgFix.push({img:img, cssText:img.style.cssText});
+          img.style.cssText = 'position:absolute;left:'+offX+'px;top:'+offY+'px;width:'+dw+'px;height:'+dh+'px;max-width:none;max-height:none;pointer-events:none;display:block;';
+        });
+      }
+
       /* Search_Image1 下載補償：
          只保留副標下載補償。左側紅底共用區（官方旗艦店/橫線/商城logo）
          改為完全所見即所得，不再於下載時針對 1/2/3 做不同位移。
@@ -915,6 +1083,8 @@
 
       captureCanvas(function(dataUrl){
         _editEls.forEach(function(o){ o.el.style.display = o.disp; });
+        _guideZoneEls.forEach(function(o){ o.el.style.background = o.bg; o.el.style.opacity = o.op; });
+        _prodImgFix.forEach(function(o){ o.img.style.cssText = o.cssText; });
         _captureAdjustEls.forEach(function(o){ o.el.style.setProperty('top', o.top, o.priority || ''); });
         window.parent.postMessage({type:'bn-snapshot',msgId:e.data.msgId,dataUrl:dataUrl},'*');
       });
@@ -1189,7 +1359,7 @@
     for(var i=0; i<text.length; i++){
       var c = text.charCodeAt(i);
       /* 中文、全形等 CJK 算 1，其餘算 0.5 */
-      units += (c > 0x2E7F) ? 1 : 0.5;
+      units += (text[i] === ',') ? 1 : ((c > 0x2E7F) ? 1 : 0.5);
     }
     return Math.round(units * 10) / 10;
   }
@@ -1230,7 +1400,7 @@
     text = String(text || '');
     for(var i=0; i<text.length; i++){
       var c = text.charCodeAt(i);
-      var w = (c > 0x2E7F) ? 1 : 0.5;
+      var w = (text[i] === ',') ? 1 : ((c > 0x2E7F) ? 1 : 0.5);
       if(sum + w > limit) break;
       out += text[i];
       sum += w;
@@ -1289,6 +1459,14 @@
     }, 400);
   }
 
+  function sanitizeEditableTextByClass(text, cls){
+    text = String(text || '');
+    if(cls === '主標' || cls === '副標' || cls === '副標案型七字內'){
+      return text.replace(/[,，]/g, '');
+    }
+    return text;
+  }
+
   /* ── makeEditable ── */
   function makeEditable(el, cls){
     if(el.dataset.bnEditBound === '1') return;
@@ -1330,7 +1508,18 @@
     el.addEventListener('beforeinput', function(e){
       if(e.inputType && e.inputType.indexOf('delete') === 0) return;
       if(e.isComposing) return;
-      var insert = e.data || '';
+      var rawInsert = e.data || '';
+      var insert = sanitizeEditableTextByClass(rawInsert, cls);
+      if(rawInsert && rawInsert !== insert){
+        e.preventDefault();
+        if(insert && !wouldExceedLimit(el, cls, insert)){
+          try{ document.execCommand('insertText', false, insert); }catch(_){}
+        }else{
+          flashEditLimit(el);
+          showCounter(el, cls);
+        }
+        return;
+      }
       if(!insert && e.inputType !== 'insertText') return;
       if(wouldExceedLimit(el, cls, insert)){
         e.preventDefault();
@@ -1340,8 +1529,9 @@
     });
 
     el.addEventListener('paste', function(e){
-      var text = (e.clipboardData || window.clipboardData).getData('text') || '';
-      if(!wouldExceedLimit(el, cls, text)) return;
+      var rawText = (e.clipboardData || window.clipboardData).getData('text') || '';
+      var text = sanitizeEditableTextByClass(rawText, cls);
+      if(rawText === text && !wouldExceedLimit(el, cls, text)) return;
       e.preventDefault();
       var limit = CHAR_LIMITS[cls];
       var cur = el.textContent || '';

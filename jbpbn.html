@@ -851,14 +851,15 @@ function onIframeLoad(id) {
 
 function bnCalcTextUnits(text){
   var units=0, str=String(text||'');
-  for(var i=0;i<str.length;i++) units += (str.charCodeAt(i)>0x2E7F) ? 1 : 0.5;
+  for(var i=0;i<str.length;i++) if(allowComma && str[i]===','){ continue; }
+      units += (str.charCodeAt(i)>0x2E7F) ? 1 : 0.5;
   return Math.round(units*10)/10;
 }
 function bnTrimTextToLimit(text, limit){
   if(!limit || !isFinite(limit)) return String(text||'');
   var out='', sum=0, str=String(text||'');
   for(var i=0;i<str.length;i++){
-    var w=(str.charCodeAt(i)>0x2E7F) ? 1 : 0.5;
+    var w=(allowComma && str[i]===',') ? 0 : ((str.charCodeAt(i)>0x2E7F) ? 1 : 0.5);
     if(sum+w>limit) break;
     out+=str[i]; sum+=w;
   }
@@ -1042,13 +1043,16 @@ function getColorData() {
     ctaText:   colorState.ctaText,
     ctaBg:     colorState.ctaBg,
     searchImageCtaBg: colorState.searchImageCtaBg,
-    tagColor: colorState.tagColor || 'red'
+    tagColor: colorState.tagColor || 'red',
+    logoColor: colorState.logoColor || 'white'
   };
   /* ZIP 匯出期間或剛匯出後，以最後一次使用者實際色票為準，避免舊暫存預設藍回灌。 */
   if (window._bnFrozenColorData) data = Object.assign(data, cloneColorDataSafe(window._bnFrozenColorData));
   else if (isColorGuardActive() && window._bnLastUserColorState) data = Object.assign(data, cloneColorDataSafe(window._bnLastUserColorState));
   /* 掛標顏色必須以目前工具列狀態為準，不讓色彩 guard 的舊暫存值覆蓋，避免畫布先閃一下又跳回紅色。 */
   data.tagColor = (colorState && colorState.tagColor === 'white') ? 'white' : 'red';
+  /* 蝦皮LOGO顏色同理，以目前工具列狀態為準，不被舊暫存值回灌。 */
+  data.logoColor = (colorState && colorState.logoColor === 'orange') ? 'orange' : 'white';
   lockedCanvasBg = getCanvasBgHardLock();
   if (lockedCanvasBg) data.canvasBg = lockedCanvasBg;
   var authoritativeCanvasBg = getAuthoritativeCanvasBg();
@@ -1102,7 +1106,8 @@ var colorState = {
   ctaText:   '#6bc0ec',
   ctaBg:     '#ffffff',
   searchImageCtaBg: '#d0021b',
-  tagColor: 'red'
+  tagColor: 'red',
+  logoColor: 'white'
 };
 
 /* 使用者目前設定的背景色唯一權威來源。
@@ -1200,6 +1205,76 @@ function applyTagColor(mode) {
   try { document.dispatchEvent(new CustomEvent('bn-state-dirty')); } catch(_) {}
 }
 
+function applyLogoColor(mode) {
+  mode = (mode === 'orange') ? 'orange' : 'white';
+  colorState.logoColor = mode;
+  window._bnLogoColor = mode;
+  /* 先更新最後使用者色彩快照，避免 broadcastColors() 被舊快照回灌成預設白色。 */
+  try { window._bnLastUserColorState = cloneColorDataSafe(colorState); } catch(_) {}
+  document.querySelectorAll('.logo-color-dot').forEach(function(dot) {
+    dot.classList.toggle('active', dot.dataset.logoColor === mode);
+  });
+  broadcastColors();
+  document.querySelectorAll('.preview-block iframe').forEach(function(iframe) {
+    try {
+      if (iframe.contentWindow && typeof iframe.contentWindow._bnSetLogoColor === 'function') {
+        iframe.contentWindow._bnSetLogoColor(mode);
+      } else if (iframe.contentWindow && typeof iframe.contentWindow._bnApplyShopeeLogo === 'function') {
+        iframe.contentWindow._bnLogoColor = mode;
+        iframe.contentWindow._bnApplyShopeeLogo();
+      }
+    } catch(_) {}
+  });
+  /* 有些 iframe 會在收到 bn-color 後再做一次 layout/init，延遲補套用一次，避免只閃一下沒有真正切換。 */
+  [50, 250].forEach(function(delay) {
+    setTimeout(function() {
+      document.querySelectorAll('.preview-block iframe').forEach(function(iframe) {
+        try {
+          if (iframe.contentWindow && typeof iframe.contentWindow._bnSetLogoColor === 'function') {
+            iframe.contentWindow._bnSetLogoColor(mode);
+          }
+        } catch(_) {}
+      });
+    }, delay);
+  });
+  try { document.dispatchEvent(new CustomEvent('bn-state-dirty')); } catch(_) {}
+}
+
+function renderLogoColorRow(afterRow) {
+  if (!afterRow || document.getElementById('logo-color-row')) return;
+  var row = document.createElement('div');
+  row.className = 'color-row';
+  row.id = 'logo-color-row';
+
+  var lbl = document.createElement('label');
+  lbl.textContent = '蝦皮LOGO';
+  row.appendChild(lbl);
+
+  var box = document.createElement('div');
+  box.style.cssText = 'display:flex;gap:8px;align-items:center;';
+
+  [
+    {mode:'white', color:'#ffffff', title:'白色蝦皮LOGO'},
+    {mode:'orange', color:'#ee4d2d', title:'橘色蝦皮LOGO'}
+  ].forEach(function(item){
+    var dot = document.createElement('div');
+    dot.className = 'color-dot logo-color-dot';
+    dot.dataset.logoColor = item.mode;
+    dot.title = item.title;
+    dot.style.background = item.color;
+    dot.style.boxShadow = item.mode === 'white' ? 'inset 0 0 0 1px rgba(0,0,0,.35)' : '';
+    dot.addEventListener('click', function(e){
+      e.stopPropagation();
+      applyLogoColor(item.mode);
+    });
+    box.appendChild(dot);
+  });
+
+  row.appendChild(box);
+  afterRow.parentNode.insertBefore(row, afterRow.nextSibling);
+  applyLogoColor(colorState.logoColor || 'white');
+}
+
 function renderTagColorRow(afterRow) {
   if (!afterRow || document.getElementById('tag-color-row')) return;
   var row = document.createElement('div');
@@ -1261,7 +1336,10 @@ function renderColorPickers() {
     row.appendChild(dot);
 
     wrap.appendChild(row);
-    if (f.key === 'searchImageCtaBg') renderTagColorRow(row);
+    if (f.key === 'searchImageCtaBg') {
+      renderTagColorRow(row);
+      renderLogoColorRow(document.getElementById('tag-color-row'));
+    }
   });
 
   /* 初始化 inline 文字色 dot（bound 保護，避免 renderColorPickers 重複呼叫時累積多個 handler）*/
@@ -1650,17 +1728,18 @@ document.addEventListener('DOMContentLoaded',function(){
     ['txt-date','badge-日期']
   ];
 
-  function calcUnits(text){
+  function calcUnits(text, allowComma){
     var units=0, str=String(text||'');
     for(var i=0;i<str.length;i++){
+      if(allowComma && str[i]===','){ continue; }
       units += (str.charCodeAt(i)>0x2E7F) ? 1 : 0.5;
     }
     return Math.round(units*10)/10;
   }
-  function trimToLimit(text, limit){
+  function trimToLimit(text, limit, allowComma){
     var out='', sum=0, str=String(text||'');
     for(var i=0;i<str.length;i++){
-      var w=(str.charCodeAt(i)>0x2E7F) ? 1 : 0.5;
+      var w=(allowComma && str[i]===',') ? 0 : ((str.charCodeAt(i)>0x2E7F) ? 1 : 0.5);
       if(sum+w>limit) break;
       out+=str[i]; sum+=w;
     }
@@ -1688,13 +1767,14 @@ document.addEventListener('DOMContentLoaded',function(){
     if(!input) return;
     var limit=parseFloat(input.dataset.limit||'');
     if(!limit) return;
+    var allowComma = input.id==='txt-date';
 
     input.addEventListener('beforeinput',function(e){
       if(e.inputType && e.inputType.indexOf('delete')===0) return;
       if(e.isComposing) return;
       var insert=e.data||'';
       if(!insert && e.inputType!=='insertText') return;
-      if(calcUnits(nextValue(input, insert))>limit){
+      if(calcUnits(nextValue(input, insert), allowComma)>limit){
         e.preventDefault();
         flashLimit(input,badge);
       }
@@ -1702,14 +1782,14 @@ document.addEventListener('DOMContentLoaded',function(){
 
     input.addEventListener('paste',function(e){
       var text=(e.clipboardData||window.clipboardData).getData('text')||'';
-      if(calcUnits(nextValue(input,text))<=limit) return;
+      if(calcUnits(nextValue(input,text), allowComma)<=limit) return;
       e.preventDefault();
       var start=input.selectionStart==null ? input.value.length : input.selectionStart;
       var end=input.selectionEnd==null ? input.value.length : input.selectionEnd;
       var prefix=input.value.slice(0,start);
       var suffix=input.value.slice(end);
-      var remaining=limit-calcUnits(prefix+suffix);
-      var safe=trimToLimit(text,remaining);
+      var remaining=limit-calcUnits(prefix+suffix, allowComma);
+      var safe=trimToLimit(text,remaining, allowComma);
       if(safe){
         input.value=prefix+safe+suffix;
         setCaretToEnd(input);
@@ -1719,13 +1799,13 @@ document.addEventListener('DOMContentLoaded',function(){
     });
 
     input.addEventListener('input',function(){
-      if(calcUnits(input.value)>limit){
-        input.value=trimToLimit(input.value,limit);
+      if(calcUnits(input.value, allowComma)>limit){
+        input.value=trimToLimit(input.value,limit, allowComma);
         setCaretToEnd(input);
         broadcastText();
         flashLimit(input,badge);
       }
-      if(calcUnits(input.value)>=limit && badge) badge.title='已達輸入上限';
+      if(calcUnits(input.value, allowComma)>=limit && badge) badge.title='已達輸入上限';
     });
   });
 });
