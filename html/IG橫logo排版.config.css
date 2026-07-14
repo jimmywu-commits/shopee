@@ -28,9 +28,9 @@
 * { transform-origin: 0 0; }
 
 /* ── 文字圖層位置修正（top = PS 變形面板 Y，X 置中不改 left）── */
-.主標 { top: 483.63px; transform-origin: center top; white-space: normal; line-height: 1; }
-.副標 { top: 567.79px; transform-origin: center top; white-space: normal; line-height: 1; }
-.日期 { top: 664.67px; transform-origin: center top; white-space: normal; line-height: 1;   font-family: "ShopeeNotoSans (content)";
+.主標 { top: 478.5px; transform-origin: center top; white-space: normal; line-height: 1; }
+.副標 { top: 559px; transform-origin: center top; white-space: normal; line-height: 1; letter-spacing: 0.05px;}
+.日期 { top: 661.5px; transform-origin: center top; white-space: normal; line-height: 1;   font-family: "ShopeeNotoSans (content)";
   font-weight: 300;
 }
 

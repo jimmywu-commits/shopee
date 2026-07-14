@@ -21,9 +21,9 @@
 
 /* ── 文字置中：left:0 + width 等於版位寬，text-align:center 才生效 ── */
 /* ── 同時修正 top（PS 變形面板 Y）和 transform-origin ── */
-.主標 { left: 0; width: 531px; top: 200.4px;  transform-origin: center top; line-height: 1; }
-.副標 { left: 0; width: 531px; top: 249px; transform-origin: center top; line-height: 1; }
-.日期 { left: 0; width: 531px; top: 327px; transform-origin: center top; line-height: 1;   font-family: "ShopeeNotoSans (content)";
+.主標 { left: 0; width: 531px; top: 199px;  transform-origin: center top; line-height: 1;letter-spacing: 0.1px; }
+.副標 { left: 0; width: 531px; top: 248px; transform-origin: center top; line-height: 1; }
+.日期 { left: 0; width: 531px; top: 322px; transform-origin: center top; line-height: 1;   font-family: "ShopeeNotoSans (content)";
   font-weight: 300;
 }
 
@@ -37,7 +37,7 @@
   border-bottom: 9px solid transparent;
   border-left:   13px solid rgb(201, 230, 36);
   left: 359px;
-  top: 688px;
+  top: 688.5px;
   z-index: 292;
 }
 .放心買_安心退 {

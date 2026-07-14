@@ -42,9 +42,9 @@
      PS 改版後若有移動文字，重新查 X/Y 更新這裡
 ──────────────────────────────────────────── */
 .主標        { left: 51px;     top: 279.84px; line-height: 1; white-space: nowrap; }
-.副標        { left: 51px;     top: 341.73px; line-height: 1; white-space: nowrap; }
-.日期        { left: 51px;     top: 418px; line-height: 1; white-space: nowrap;   font-family: "ShopeeNotoSans (content)";
-  font-weight: 300;
+.副標        { left: 51px;     top: 341.73px; line-height: 1; white-space: nowrap;}
+.日期        { left: 53px;     top: 417px; line-height: 1; white-space: nowrap;   font-family: "ShopeeNotoSans (content)";
+  font-weight: 300;letter-spacing: 0.025em;
 }
 
 /* ── 左側保護色塊 ── */
