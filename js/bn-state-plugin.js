@@ -93,6 +93,7 @@
     }
     if(light.products){ light.products.forEach(function(p){ if(p && p.src) p.src='__BN_IDB__'; }); }
     if(light.logos){ light.logos.forEach(function(l){ if(l && l.src) l.src='__BN_IDB__'; }); }
+    if(light.character && light.character.src){ light.character.src='__BN_IDB__'; }
     return light;
   }
 
@@ -530,6 +531,7 @@
       colors: applyLockedCanvasBg(global._bnLastUserColorState ? clone(global._bnLastUserColorState) : (global.colorState ? clone(global.colorState) : {})),
       inputMeta: collectInputMeta(),
       logos: (global._bnLogos||[]).map(function(l){ return clone(l); }),
+      character: global._bnCharacter ? clone(global._bnCharacter) : null,
       products:(global._bnProducts||[]).map(function(p){
         return {id:p.id,src:p.src,baseSrc:p.baseSrc,ratio:p.ratio,name:p.name,
           sizeScale:p.sizeScale||1,position:p.position||0,zOrder:p.zOrder||0,
@@ -557,6 +559,7 @@
   function stateHasHeavyPlaceholders(state){
     if(!state) return false;
     if(state._heavyStripped) return true;
+    if(state.character && state.character.src === '__BN_IDB__') return true;
     var bg = state.background || {};
     if(bg.legacySrc === '__BN_IDB__') return true;
     var st = bg.states || {};
@@ -603,6 +606,16 @@
         if(typeof global._bnRequestProductLayouts==='function'){
           [500, 1200, 2200].forEach(function(delay){ setTimeout(global._bnRequestProductLayouts, delay); });
         }
+      }
+    }
+    if('character' in state){
+      /* character 為 null 代表使用者存檔時沒有人物圖，允許還原成「移除」；
+         但若這份 state 是被 strip 過的輕量版且人物圖是佔位符，就不要拿它把真正的人物圖蓋掉。 */
+      var charPlaceholder = state.character && state.character.src === '__BN_IDB__';
+      if(!charPlaceholder){
+        global._bnCharacter = state.character ? clone(state.character) : null;
+        if(typeof global._bnRenderCharacter==='function') global._bnRenderCharacter();
+        if(typeof global._bnBroadcastCharacter==='function') global._bnBroadcastCharacter();
       }
     }
     if(state.layouts && typeof global.setLayoutState==='function'){

@@ -515,6 +515,23 @@
       }
     } /* end search_image */
 
+    /* CTA 永遠最上層，不被任何物件（商品圖、logo、掛標、蝦皮LOGO等）擋住。
+       各版位對 CTA 的命名不一樣（cta底/逛逛去/cta三角標/放心買_安心退/
+       逛逛去底/逛逛去三角標/cta圓底/cta白線/cta三角箭頭...），這裡把所有
+       已知的 CTA 相關 class 一次性強制蓋成最高 z-index。 */
+    (function _bnForceCtaTopmost(){
+      var CTA_SELECTORS = [
+        '.cta底', '.cta圓底', '.cta白線', '.cta三角標', '.cta三角箭頭', '.cta符號',
+        '.逛逛去', '.逛逛去底', '.逛逛去三角標', '.放心買_安心退',
+        '.cta-text', '.cta-arrow'
+      ];
+      canvas.querySelectorAll(CTA_SELECTORS.join(',')).forEach(function(el){
+        el.style.setProperty('z-index', '10000', 'important');
+        /* 若原本是 static 定位（沒有 position），z-index 不會生效，補上 relative */
+        var pos = window.getComputedStyle(el).position;
+        if(pos === 'static') el.style.position = 'relative';
+      });
+    })();
 
     /* 啟用畫布文字直接編輯 */
     attachEditableToAll();
@@ -525,7 +542,7 @@
 
     if (e.data.type === 'bn-text') {
       var d = e.data.data||{};
-      ['品牌名','主標','副標','日期'].forEach(function(cls) {
+      ['品牌名','主標','副標','日期','ICON獨立文案'].forEach(function(cls) {
         if (d[cls]===undefined) return;
         document.querySelectorAll('.'+cls).forEach(function(el) {
           var ct = el.querySelector('.cta-text');
@@ -860,7 +877,7 @@
       });
       pzone.appendChild(box);
       setupProdDrag(box, pzone);
-      layoutProducts(pzone);
+      applyCharacterProductVisibility(pzone, _bnHasCharacter);
     }
 
     if (e.data.type === 'bn-product-remove') {
@@ -869,7 +886,7 @@
       if(el) el.remove();
       var remaining = pzone.querySelectorAll('.bn-prod-box');
       if(!remaining.length) { pzone.style.background=''; pzone.style.opacity=''; }
-      else layoutProducts(pzone);
+      else applyCharacterProductVisibility(pzone, _bnHasCharacter);
     }
 
     /* z-index 順序更新：order[0] = 最上層（z 最高） */
@@ -881,6 +898,80 @@
         var box = pzone.querySelector('.bn-prod-box[data-id="'+id+'"]');
         if(box) box.style.zIndex = String(total - i + 10);
       });
+    }
+
+    /* 人物圖新增/更新：
+       - 掛在 #canvas 底下（不是商品範圍底下），所以可拖曳/放大到超出商品範圍。
+       - #canvas 本身有 overflow:hidden，超出畫布的部分預覽時會自動裁掉，
+         同時底層資料仍允許無限放大（可超出畫布）。
+       - 預設：商品範圍右側 1/3 寬、高度 auto，垂直置中於商品範圍。
+       - 一旦有人物圖，商品圖只顯示第1張（index/position 0），2、3 張暫時隱藏。 */
+    if (e.data.type === 'bn-character-add') {
+      var canvasEl = document.getElementById('canvas');
+      if(!canvasEl) return;
+      var pzoneForChar = getProductZone();
+      var old = canvasEl.querySelector('.bn-char-box');
+      if(old) old.remove();
+
+      var box = document.createElement('div');
+      box.className = 'bn-char-box';
+      box.dataset.id = e.data.id || 'character';
+      var ratio = parseFloat(e.data.ratio) || 1;
+      box.dataset.ratio = ratio;
+
+      var cimg = document.createElement('img');
+      cimg.src = e.data.src;
+      cimg.style.cssText = 'width:100%;height:100%;object-fit:contain;pointer-events:none;display:block;';
+      box.appendChild(cimg);
+      ['nw','ne','sw','se'].forEach(function(c){
+        var h = document.createElement('div'); h.dataset.corner = c;
+        h.style.cssText = 'position:absolute;width:14px;height:14px;border-radius:50%;background:#e2874a;border:2px solid #fff;z-index:5;'
+          +(c==='nw'?'left:-7px;top:-7px;cursor:nwse-resize;':'')
+          +(c==='ne'?'right:-7px;top:-7px;cursor:nesw-resize;':'')
+          +(c==='sw'?'left:-7px;bottom:-7px;cursor:nesw-resize;':'')
+          +(c==='se'?'right:-7px;bottom:-7px;cursor:nwse-resize;':'');
+        box.appendChild(h);
+      });
+
+      /* 預設位置：商品範圍右側 1/3 寬、高度 auto、垂直置中 */
+      var zx=0, zy=0, zw=parseFloat(getComputedStyle(canvasEl).width)||400, zh=parseFloat(getComputedStyle(canvasEl).height)||300;
+      if(pzoneForChar){
+        var canvasRect = canvasEl.getBoundingClientRect();
+        var pr = pzoneForChar.getBoundingClientRect();
+        zx = pr.left - canvasRect.left; zy = pr.top - canvasRect.top;
+        zw = pr.width; zh = pr.height;
+      }
+      var defaultW = zw / 3;
+      var defaultH = defaultW / ratio;
+      var L = zx + zw - defaultW;         /* 靠齊商品範圍右緣 */
+      var T = zy + (zh - defaultH) / 2;   /* 垂直置中於商品範圍 */
+      var W = defaultW, H = defaultH;
+
+      /* 若有先前手動調整過的位置（依目前版位 bnid 對應），優先套用 */
+      var __bnid = getCurrentBnId();
+      var __lay = (e.data.layoutById && (__bnid in e.data.layoutById)) ? e.data.layoutById[__bnid] : (e.data.layout || null);
+      if(__lay && isFinite(__lay.left) && isFinite(__lay.top) && isFinite(__lay.width) && isFinite(__lay.height) && __lay.width>0 && __lay.height>0){
+        L = __lay.left; T = __lay.top; W = __lay.width; H = __lay.height;
+      }
+
+      box.style.cssText = 'position:absolute;left:'+L+'px;top:'+T+'px;width:'+W+'px;height:'+H+'px;'
+        +'cursor:move;box-sizing:border-box;outline:2px solid transparent;z-index:30;';
+      canvasEl.appendChild(box);
+      setupCharDrag(box, canvasEl);
+
+      _bnHasCharacter = true;
+      if(pzoneForChar) applyCharacterProductVisibility(pzoneForChar, true);
+    }
+
+    if (e.data.type === 'bn-character-remove') {
+      var canvasEl2 = document.getElementById('canvas');
+      if(canvasEl2){
+        var oldBox = canvasEl2.querySelector('.bn-char-box');
+        if(oldBox) oldBox.remove();
+      }
+      _bnHasCharacter = false;
+      var pzoneForChar2 = getProductZone();
+      if(pzoneForChar2) applyCharacterProductVisibility(pzoneForChar2, false);
     }
 
     /* 背景圖：放到 .背景色（如有）或畫布底層 */
@@ -958,7 +1049,7 @@
           'position:absolute;top:0;left:0;',
           'width:100%;height:100%;',
           'object-fit:contain;object-position:top left;',
-          'z-index:9999;pointer-events:none;',
+          'z-index:10001;pointer-events:none;',
           'opacity:0.5;',
         ].join('');
         document.getElementById('canvas').appendChild(overlay);
@@ -1129,11 +1220,32 @@
     }catch(_){ }
   }
 
+  /* 是否已有人物圖（有的話商品僅顯示第1張，2、3張暫時隱藏但保留資料） */
+  var _bnHasCharacter = false;
+
+  function applyCharacterProductVisibility(pzone, hasChar){
+    if(!pzone) return;
+    var boxes = Array.from(pzone.querySelectorAll('.bn-prod-box'));
+    boxes.forEach(function(b){
+      var pos = parseInt(b.dataset.position, 10) || 0;
+      if(hasChar && pos > 0){
+        b.dataset.charHidden = '1';
+        b.style.display = 'none';
+      } else {
+        if(b.dataset.charHidden) delete b.dataset.charHidden;
+        b.style.display = '';
+      }
+    });
+    layoutProducts(pzone);
+  }
+
   /* 正三角排品（仿 freelyapp 邏輯）
      主品（第0張）居中最大，左配品（第1張）次之，右配品（第2張）最小
      底部對齊，所有尺寸以商品範圍 px 為單位，不超出邊界 */
   function layoutProducts(pzone) {
-    var allBoxes = Array.from(pzone.querySelectorAll('.bn-prod-box'));
+    /* 被人物圖暫時隱藏的商品不參與排版計算，讓剩下的商品（通常是主品）
+       維持「單品置中」的正確大小，而不是仍照 3 件的比例縮小。 */
+    var allBoxes = Array.from(pzone.querySelectorAll('.bn-prod-box:not([data-char-hidden="1"])'));
     var n = allBoxes.length; if(!n) return;
 
     /* 依 position 排序：0=主品，1=左配，2=右配 */
@@ -1345,6 +1457,79 @@
       box.style.width=w+'px'; box.style.height=bh+'px';
       postProductLayout(box);
     },{passive:false});
+  }
+
+  /* 人物圖拖曳/縮放：
+     - 掛在 #canvas 底下而非商品範圍底下，位置不受商品範圍邊界限制。
+     - 不做邊界夾制（可拖出、可放大超出畫布），視覺上超出部分由 #canvas 的
+       overflow:hidden 自動裁掉，符合「可無限放大但預覽時不超出畫布」的需求。 */
+  function postCharacterLayout(box, canvasEl){
+    try{
+      var cr = canvasEl.getBoundingClientRect(), br = box.getBoundingClientRect();
+      window.parent && window.parent.postMessage({
+        type:'bn-character-layout-update', bnid:getCurrentBnId(), id:box.dataset.id,
+        layout:{ left:br.left-cr.left, top:br.top-cr.top, width:br.width, height:br.height }
+      }, '*');
+    }catch(_){ }
+  }
+
+  function setupCharDrag(box, canvasEl){
+    var drag=null;
+    box.addEventListener('pointerdown',function(e){
+      if(e.target.dataset.corner) return;
+      e.stopPropagation();
+      var cr=canvasEl.getBoundingClientRect(), br=box.getBoundingClientRect();
+      drag={type:'move', sx:e.clientX, sy:e.clientY, l:br.left-cr.left, t:br.top-cr.top, w:br.width, h:br.height};
+      box.setPointerCapture(e.pointerId); box.style.outline='2px solid #e2874a';
+    });
+    box.querySelectorAll('[data-corner]').forEach(function(h){
+      h.addEventListener('pointerdown',function(e){
+        e.stopPropagation();
+        var br=box.getBoundingClientRect();
+        drag={type:'resize', corner:h.dataset.corner, sx:e.clientX, sy:e.clientY,
+          l:parseFloat(box.style.left)||0, t:parseFloat(box.style.top)||0,
+          w:br.width, h:br.height, ratio:parseFloat(box.dataset.ratio)||1};
+        h.setPointerCapture(e.pointerId); box.style.outline='2px solid #e2874a'; e.preventDefault();
+      });
+      h.addEventListener('pointermove',function(e){
+        if(!drag||drag.type!=='resize') return;
+        var dx=e.clientX-drag.sx, dy=e.clientY-drag.sy, c=drag.corner, r=drag.ratio;
+        var sX=c.includes('w')?-1:1, sY=c.includes('n')?-1:1;
+        var delta = Math.abs(dx)>Math.abs(dy) ? dx*sX : dy*sY*r;
+        /* 僅限制最小尺寸，不設上限，允許放大到超出畫布範圍 */
+        var w=Math.max(30, drag.w+delta), bh=w/r;
+        if(bh<30){ bh=30; w=bh*r; }
+        var l=drag.l, t=drag.t;
+        if(c.includes('w')) l = drag.l + (drag.w - w);
+        if(c.includes('n')) t = drag.t + (drag.h - bh);
+        box.style.left=l+'px'; box.style.top=t+'px'; box.style.width=w+'px'; box.style.height=bh+'px';
+      });
+      h.addEventListener('pointerup', function(){ postCharacterLayout(box,canvasEl); drag=null; box.style.outline='2px solid transparent'; });
+      h.addEventListener('pointercancel', function(){ postCharacterLayout(box,canvasEl); drag=null; box.style.outline='2px solid transparent'; });
+      h.addEventListener('lostpointercapture', function(){ postCharacterLayout(box,canvasEl); drag=null; box.style.outline='2px solid transparent'; });
+    });
+    box.addEventListener('pointermove',function(e){
+      if(!drag||drag.type!=='move') return;
+      /* 刻意不夾制邊界：人物圖可以被拖到商品範圍外，甚至半個畫布外，
+         超出畫布的部分交給 #canvas 的 overflow:hidden 自動裁掉即可。 */
+      box.style.left=(drag.l+e.clientX-drag.sx)+'px';
+      box.style.top =(drag.t+e.clientY-drag.sy)+'px';
+    });
+    box.addEventListener('pointerup', function(){ postCharacterLayout(box,canvasEl); drag=null; box.style.outline='2px solid transparent'; });
+    box.addEventListener('pointercancel', function(){ postCharacterLayout(box,canvasEl); drag=null; box.style.outline='2px solid transparent'; });
+    box.addEventListener('lostpointercapture', function(){ postCharacterLayout(box,canvasEl); drag=null; box.style.outline='2px solid transparent'; });
+    box.addEventListener('wheel', function(e){
+      e.preventDefault();
+      var br=box.getBoundingClientRect();
+      var sc = e.deltaY<0 ? 1.08 : .93, r = parseFloat(box.dataset.ratio)||1;
+      var w = Math.max(30, br.width*sc), bh = w/r; /* 無上限：可無限放大超出畫布 */
+      var cx = (parseFloat(box.style.left)||0) + br.width/2;
+      var cy = (parseFloat(box.style.top)||0)  + br.height/2;
+      box.style.left = (cx - w/2) + 'px';
+      box.style.top  = (cy - bh/2) + 'px';
+      box.style.width = w+'px'; box.style.height = bh+'px';
+      postCharacterLayout(box, canvasEl);
+    }, {passive:false});
   }
 
   /* ── 畫布文字直接點擊編輯 ── */
