@@ -531,12 +531,32 @@
     return (info && Number(info.w) > Number(info.h)) ? 'height100' : 'width100';
   }
 
+  /* 橫式/直式的選擇、以及套用後的預設 fit/scale/x/y，一律優先用
+     bn-editor-plugin.js 暴露出來的共用判斷函式——那邊才有 FB_POST_方LOGO /
+     FB_POST_橫LOGO / SCBN_APP 這幾個版位「固定吃直式背景圖」的專屬例外，
+     還有各自的預設縮放/位置。之前這裡自己複製了一份「純看寬高比」的
+     判斷邏輯，沒有這些例外，才會出現「手動上傳修好了、選圖庫卻沒修好」
+     這種兩條路徑不同步的狀況。找不到共用函式時（理論上不會發生，
+     bn-editor-plugin.js 一定比這支檔案先載入），才退回原本單純看寬高比
+     的備援邏輯。 */
   function chooseSrcForLayout(info, img, dataH, dataV){
     if(dataH && dataV){
-      // 寬高比判斷：橫式吃 HBN，方/直式吃 DDCARD。
+      if(typeof window._bnGetBgLayoutOrientation === 'function'){
+        var iframeEl = info && info.id ? document.querySelector('.preview-block iframe[src*="bnid=' + info.id + '"]') : null;
+        var orientation = window._bnGetBgLayoutOrientation(info.id, iframeEl);
+        return orientation === 'vertical' ? dataV : dataH;
+      }
+      // 備援：寬高比判斷（橫式吃 HBN，方/直式吃 DDCARD）。
       return (info.w > info.h) ? dataH : dataV;
     }
     return dataH || dataV || null;
+  }
+
+  function getBgParamsForLibraryLayout(info, iframeEl){
+    if(typeof window._bnGetDefaultBgParamsForLayout === 'function'){
+      return window._bnGetDefaultBgParamsForLayout(info && info.id, iframeEl);
+    }
+    return { fit: getDefaultBgFitForLibraryLayout(info), scale:100, x:50, y:50 };
   }
 
   function applyPreset(img){
@@ -554,8 +574,9 @@
           var info = getLayoutInfoForIframe(iframe);
           var src = chooseSrcForLayout(info, img, dataH, dataV);
           if(!src) return;
-          if(info.id) states[info.id] = {src:resolveBgImgUrl(src), fit:getDefaultBgFitForLibraryLayout(info), scale:100, x:50, y:50, _initialized:true};
-          try{ iframe.contentWindow.postMessage({ type:'bn-bg', src:resolveBgImgUrl(src), fit:getDefaultBgFitForLibraryLayout(info), scale:100, x:50, y:50 }, '*'); }catch(_){ }
+          var params = getBgParamsForLibraryLayout(info, iframe);
+          if(info.id) states[info.id] = {src:resolveBgImgUrl(src), fit:params.fit, scale:params.scale, x:params.x, y:params.y, _initialized:true};
+          try{ iframe.contentWindow.postMessage({ type:'bn-bg', src:resolveBgImgUrl(src), fit:params.fit, scale:params.scale, x:params.x, y:params.y }, '*'); }catch(_){ }
         });
         if(window._bnSetBgStates){
           try{ window._bnSetBgStates(states, null); }catch(_){ }

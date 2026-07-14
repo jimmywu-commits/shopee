@@ -55,31 +55,21 @@ html, body {
     <!-- 圖層由 layout-runtime.js 從 --layers 自動產生 -->
   </div>
 </div>
-<script src="../js/layout-runtime.js"></script>
 <script>
-/* ════════════════════════════════════════════════════
-   SearchICON_TEXT 下載置中補償：
-   .ICON獨立文案 在畫布上用 line-height 置中，瀏覽器即時渲染是正確置中的，
-   但實測下載出來的圖片（html2canvas 截圖）文字會偏上約 11px
-  （html2canvas 對這個字體/line-height 的文字基準線計算跟瀏覽器不一致，
-   是 html2canvas 本身的已知限制，不是這裡的 CSS 寫法問題）。
-
-   做法沿用系統既有的「截圖前暫時偏移，截圖後還原」補償方式
-  （跟 layout-runtime.js 裡 Search_Image1 的 副標案型七字內 下載補償是同一招），
-   只影響「下載出來的圖」，不影響畫布上編輯時看到的位置。
-   ════════════════════════════════════════════════════ */
+/* layout-runtime.js 原本是純靜態 script 標籤載入，沒有防快取機制，
+   瀏覽器可能一直用快取住的舊版本，導致改完程式碼、重新整理頁面，
+   卻像是完全沒有生效。改成動態插入＋時間戳記，強制每次重新整理都
+   向伺服器要最新版本。 */
 (function(){
-  var CAPTURE_OFFSET_PX = 11;
-  window.addEventListener('message', function(e){
-    if (!e.data || e.data.type !== 'bn-capture') return;
-    var el = document.querySelector('.ICON獨立文案');
-    if (!el) return;
-    el.style.setProperty('top', CAPTURE_OFFSET_PX + 'px', 'important');
-    setTimeout(function(){
-      el.style.removeProperty('top');
-    }, 1500);
-  });
+  var s = document.createElement('script');
+  s.src = '../js/layout-runtime.js?t=' + Date.now();
+  document.head.appendChild(s);
 })();
+</script>
+<script>
+/* SearchICON_TEXT 不再使用下載時固定 Y 位移補償。
+   文字位置由共用截圖流程依畫布的最終計算樣式輸出，
+   避免每次下載都額外向下移動 11px。 */
 </script>
 </body>
 </html>

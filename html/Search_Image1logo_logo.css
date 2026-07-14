@@ -44,7 +44,7 @@ svg.main-logo-auto-lines {
 .主logo橫線_左 {
   position: absolute !important;
   left: 35px !important;
-  top: 110px !important;
+  top: 115px !important;
   width: 30px !important;
   height: 1.5px !important;
   background: #fff !important;
@@ -58,7 +58,7 @@ svg.main-logo-auto-lines {
 .主logo橫線_右 {
   position: absolute !important;
   left: 223px !important;
-  top: 109px !important;
+  top: 115px !important;
   width: 30px !important;
   height: 1.5px !important;
   background: #fff !important;

@@ -3,7 +3,7 @@
   opacity: 0.4;
   position: absolute;
   left: 60px;
-  top: 370px;
+  top: 361px;
   width: 412px;
   height: 284px;
   z-index: 52;
@@ -48,7 +48,7 @@
   z-index: 48;
 }
 .日期 {
-  font-size: 24px;
+  font-size: 34px;
   font-family: "ShopeeNotoSans (content)";
   font-weight: 300;
   color: rgb(255, 255, 255);

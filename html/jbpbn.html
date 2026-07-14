@@ -419,7 +419,7 @@ border-radius:50%;border:none;background:#fff;font-size:20px;cursor:pointer;}
           <label>ICON文案</label>
           <div class="s-field-row">
             <input type="text" id="txt-icon" data-limit="2" placeholder="ICON文案" value="文案" oninput="broadcastText()">
-            <span class="char-count-badge" id="badge-ICON獨立文案"></span><div class="color-dot" id="dot-iconTextMirror" title="ICON文案顏色（跟主標共用同一個顏色，改這裡主標也會一起變，改主標這裡也會跟著變）"></div>
+            <span class="char-count-badge" id="badge-ICON獨立文案"></span>
           </div>
         </div>
 
@@ -1414,19 +1414,6 @@ function renderColorPickers() {
     }
   });
 
-  /* ICON文案的顏色色點：故意不建立新的 colorState key，直接共用 mainText，
-     這樣「跟主標一起變、改 ICON文案也會連動主標」這件事不需要額外寫
-     同步邏輯就自動成立——兩邊本來就是同一個值，不會有兩邊各自改、
-     忘記同步的問題。點下去開的也是同一個 mainText 顏色面板。 */
-  var iconDot = document.getElementById('dot-iconTextMirror');
-  if(iconDot){
-    iconDot.style.background = colorState.mainText;
-    if(!iconDot.dataset.bound){
-      iconDot.dataset.bound = '1';
-      iconDot.addEventListener('click', function(e){ openPanel('mainText', e); });
-    }
-  }
-
   /* 建快速色票（原有） */
   var sw = document.getElementById('cp-swatches');
   sw.innerHTML = '';
@@ -1522,12 +1509,6 @@ function applyColor(color) {
   /* 更新圓點（sidebar 和 inline 共用同一個 id） */
   var dot = document.getElementById('dot-' + cpActiveKey);
   if (dot) dot.style.background = color;
-
-  /* ICON文案色點是 mainText 的鏡射，改主標顏色時這顆也要跟著變 */
-  if (cpActiveKey === 'mainText') {
-    var iconDot = document.getElementById('dot-iconTextMirror');
-    if (iconDot) iconDot.style.background = color;
-  }
 
   /* 更新面板 hex input 和 native color picker */
   var hexInp = document.getElementById('cp-hex-input');

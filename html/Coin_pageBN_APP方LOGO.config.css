@@ -37,8 +37,8 @@
   height: 0;
   border-top:    9px solid transparent;
   border-bottom: 9px solid transparent;
-  border-left:   13px solid rgb(201, 230, 36);
-  left: 1159px;
+  border-left:   11px solid rgb(201, 230, 36);
+  left: 1162px;
   top: 355px;
   z-index: 292;
 }
@@ -56,12 +56,12 @@
 ──────────────────────────────────────────── */
 .主標        { left: 165px;     top: 149.96px; line-height: 1; white-space: nowrap; }
 .副標        { left: 165px;     top: 205px; line-height: 1; white-space: nowrap; }
-.日期        { left: 165px;     top: 284px; line-height: 1; white-space: nowrap;   font-family: "ShopeeNotoSans (content)";
+.日期        { left: 167px;     top: 284px; line-height: 1; white-space: nowrap;   font-family: "ShopeeNotoSans (content)";
   font-weight: 300;
 }
 .逛逛去 {
   font-family: "ShopeeNotoSans (content)";
-  font-weight: 300; left: 1064.52px; top: 348px; line-height: 1; white-space: nowrap; letter-spacing: 0.05em; }
+  font-weight: 300; left: 1064.52px; top: 348px; line-height: 1; white-space: nowrap; letter-spacing: 0.1em; }
 
 /* ══════════════════════════════════════
    漸層圖層

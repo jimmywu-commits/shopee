@@ -55,6 +55,16 @@ html, body {
     <!-- 圖層由 layout-runtime.js 從 --layers 自動產生 -->
   </div>
 </div>
-<script src="../js/layout-runtime.js"></script>
+<script>
+/* layout-runtime.js 原本是純靜態 script 標籤載入，沒有防快取機制，
+   瀏覽器可能一直用快取住的舊版本，導致改完程式碼、重新整理頁面，
+   卻像是完全沒有生效。改成動態插入＋時間戳記，強制每次重新整理都
+   向伺服器要最新版本。 */
+(function(){
+  var s = document.createElement('script');
+  s.src = '../js/layout-runtime.js?t=' + Date.now();
+  document.head.appendChild(s);
+})();
+</script>
 </body>
 </html>
