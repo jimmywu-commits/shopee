@@ -2,15 +2,19 @@
   'use strict';
 
   var CFG = window.BN_FEEDBACK_CONFIG || {};
-  var DRAFT_KEY = 'bn_feedback_draft_v1';
-  var DB_NAME = 'bn_feedback_local_v1';
+  var DRAFT_KEY = 'bn_feedback_draft_v2';
+  var DB_NAME = 'bn_feedback_local_v2';
   var DB_STORE = 'feedback';
   var dbPromise = null;
+  var cloudPromise = null;
 
-  function esc(v){
-    return String(v == null ? '' : v).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});
+  function uid(){ return 'fb_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,10); }
+  function hasCloud(){
+    var c=CFG.firebaseConfig||{};
+    return !!(c.apiKey && c.projectId && c.appId && String(c.apiKey).indexOf('請貼上')<0);
   }
-  function uid(){ return 'fb_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2,9); }
+  function isAdminUid(uidValue){ return Array.isArray(CFG.adminUids) && CFG.adminUids.indexOf(uidValue)>=0; }
+
   function openDb(){
     if(dbPromise) return dbPromise;
     dbPromise = new Promise(function(resolve,reject){
@@ -31,50 +35,65 @@
 
   function loadScript(src){
     return new Promise(function(resolve,reject){
-      var found=[].slice.call(document.scripts).some(function(s){return s.src===src;});
-      if(found){resolve();return;}
-      var s=document.createElement('script');s.src=src;s.onload=resolve;s.onerror=function(){reject(new Error('無法載入 Firebase'));};document.head.appendChild(s);
+      var existing=[].slice.call(document.scripts).find(function(s){return s.src===src;});
+      if(existing){ if(window.firebase) resolve(); else existing.addEventListener('load',resolve,{once:true}); return; }
+      var s=document.createElement('script');
+      s.src=src;s.onload=resolve;s.onerror=function(){reject(new Error('無法載入 Firebase SDK'));};
+      document.head.appendChild(s);
     });
   }
-  function hasCloud(){ return !!(CFG.firebaseConfig && CFG.firebaseConfig.apiKey && CFG.firebaseConfig.projectId); }
-  var cloudPromise=null;
   function initCloud(){
     if(!hasCloud()) return Promise.resolve(null);
     if(cloudPromise) return cloudPromise;
-    cloudPromise=Promise.all([
-      loadScript('https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js'),
-      loadScript('https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js'),
-      loadScript('https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js'),
-      loadScript('https://www.gstatic.com/firebasejs/10.12.5/firebase-storage-compat.js')
-    ]).then(function(){
-      var app=firebase.apps.length?firebase.app():firebase.initializeApp(CFG.firebaseConfig);
-      return firebase.auth().signInAnonymously().catch(function(){return null;}).then(function(){return app;});
-    });
+    cloudPromise=loadScript('https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js')
+      .then(function(){return Promise.all([
+        loadScript('https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js'),
+        loadScript('https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js')
+      ]);})
+      .then(function(){
+        return firebase.apps.length ? firebase.app() : firebase.initializeApp(CFG.firebaseConfig);
+      });
     return cloudPromise;
   }
-  function fileToLocal(file){
-    return new Promise(function(resolve,reject){
-      if(!file){resolve(null);return;}
-      var r=new FileReader();r.onload=function(){resolve({name:file.name,type:file.type,size:file.size,dataUrl:r.result});};r.onerror=function(){reject(r.error);};r.readAsDataURL(file);
+  function ensureAnonymous(){
+    return initCloud().then(function(app){
+      if(!app) throw new Error('尚未設定 Firebase');
+      var user=firebase.auth().currentUser;
+      if(user) return user;
+      return firebase.auth().signInAnonymously().then(function(cred){return cred.user;});
     });
   }
-  function submitCloud(row,file){
+  function adminLogin(email,password){
     return initCloud().then(function(app){
-      if(!app) throw new Error('未設定 Firebase');
+      if(!app) throw new Error('尚未設定 Firebase');
+      return firebase.auth().signInWithEmailAndPassword(email,password).then(function(cred){
+        if(!isAdminUid(cred.user.uid)){
+          return firebase.auth().signOut().then(function(){throw new Error('這個帳號沒有管理權限');});
+        }
+        return cred.user;
+      });
+    });
+  }
+  function adminLogout(){ return initCloud().then(function(){return firebase.auth().signOut();}); }
+  function getCurrentUser(){ return initCloud().then(function(){return firebase.auth().currentUser;}); }
+
+  function submitCloud(row){
+    return ensureAnonymous().then(function(user){
       var db=firebase.firestore();
-      var storage=firebase.storage();
       var base={
-        id:row.id,name:row.name,company:row.company,email:row.email,summary:row.summary,
-        fixed:false,createdAt:firebase.firestore.FieldValue.serverTimestamp(),updatedAt:firebase.firestore.FieldValue.serverTimestamp(),
-        attachment:null,userAgent:navigator.userAgent,pageUrl:location.href
+        name:row.name,
+        company:row.company,
+        email:row.email,
+        summary:row.summary,
+        fixed:false,
+        createdAt:firebase.firestore.FieldValue.serverTimestamp(),
+        updatedAt:firebase.firestore.FieldValue.serverTimestamp(),
+        createdByUid:user.uid,
+        userAgent:navigator.userAgent,
+        pageUrl:location.href
       };
-      if(!file) return db.collection(CFG.collectionName||'bn_feedback').doc(row.id).set(base).then(function(){return row.id;});
-      var safe=(file.name||'attachment').replace(/[\\/:*?"<>|]/g,'_');
-      var ref=storage.ref((CFG.storageFolder||'bn_feedback_attachments')+'/'+row.id+'/'+safe);
-      return ref.put(file).then(function(snap){return snap.ref.getDownloadURL();}).then(function(url){
-        base.attachment={name:file.name,type:file.type,size:file.size,url:url};
-        return db.collection(CFG.collectionName||'bn_feedback').doc(row.id).set(base);
-      }).then(function(){return row.id;});
+      return db.collection(CFG.collectionName||'bn_feedback').doc(row.id).set(base)
+        .then(function(){return row.id;});
     });
   }
 
@@ -91,8 +110,6 @@
       '.bn-feedback-field label{font-size:12px;color:#9da7b5;font-weight:700}',
       '.bn-feedback-field input,.bn-feedback-field textarea{box-sizing:border-box;width:100%;border:1px solid #3a4350;border-radius:8px;background:#0d1117;color:#e6edf3;padding:10px 12px;font:inherit;outline:none}',
       '.bn-feedback-field textarea{min-height:150px;resize:vertical}.bn-feedback-field input:focus,.bn-feedback-field textarea:focus{border-color:#ff6b35}',
-      '.bn-feedback-file{border:1px dashed #495363;border-radius:9px;padding:12px;background:#111720}',
-      '.bn-feedback-note{font-size:12px;color:#8b98a8;margin-top:7px;line-height:1.5}',
       '.bn-feedback-actions{display:flex;align-items:center;justify-content:flex-end;gap:10px;padding:15px 20px;border-top:1px solid #30363d}',
       '.bn-feedback-actions button{border-radius:8px;padding:9px 16px;font-weight:700;cursor:pointer}',
       '.bn-feedback-cancel{background:#21262d;color:#d9e0ea;border:1px solid #3a4350}.bn-feedback-submit{background:#ee4d2d;color:#fff;border:1px solid #ee4d2d}',
@@ -112,7 +129,6 @@
             <div class="bn-feedback-field"><label for="bn-fb-company">公司名</label><input id="bn-fb-company" name="company" maxlength="120"></div>\
             <div class="bn-feedback-field full"><label for="bn-fb-email">郵件 *</label><input id="bn-fb-email" name="email" type="email" required maxlength="160"></div>\
             <div class="bn-feedback-field full"><label for="bn-fb-summary">簡述 *</label><textarea id="bn-fb-summary" name="summary" required maxlength="5000" placeholder="請描述遇到的問題、操作步驟與預期結果"></textarea></div>\
-            <div class="bn-feedback-field full"><label for="bn-fb-file">上傳附件</label><div class="bn-feedback-file"><input id="bn-fb-file" name="attachment" type="file" accept="image/*,.pdf,.zip,.json,.txt"><div class="bn-feedback-note">單一附件上限 '+Math.round((CFG.maxAttachmentBytes||10485760)/1048576)+' MB。文字欄位與附件會保留在這台電腦，關閉視窗後再開仍可繼續編輯。</div></div></div>\
           </div></div>\
           <div class="bn-feedback-actions"><span class="bn-feedback-status" aria-live="polite"></span><button class="bn-feedback-cancel" type="button">取消</button><button class="bn-feedback-submit" type="submit">送出反饋</button></div>\
         </form>\
@@ -137,19 +153,27 @@
     document.addEventListener('keydown',function(e){if(e.key==='Escape'&&modal.classList.contains('show'))close();});
     form.addEventListener('submit',function(e){
       e.preventDefault();if(!form.reportValidity())return;
-      var file=form.attachment.files[0]||null,max=CFG.maxAttachmentBytes||10485760;
-      if(file&&file.size>max){status.textContent='附件超過 '+Math.round(max/1048576)+' MB';return;}
+      if(!hasCloud()){status.textContent='尚未完成 Firebase 設定，請先填寫 js/feedback-config.js';return;}
       submit.disabled=true;status.textContent='送出中…';
-      var row={id:uid(),name:form.name.value.trim(),company:form.company.value.trim(),email:form.email.value.trim(),summary:form.summary.value.trim(),fixed:false,createdAt:Date.now(),updatedAt:Date.now(),syncStatus:hasCloud()?'pending':'local'};
-      var task=hasCloud()?submitCloud(row,file).then(function(){row.syncStatus='synced';return fileToLocal(file);}):fileToLocal(file);
-      task.then(function(localAttachment){row.attachment=localAttachment;return idbPut(row);}).then(function(){
-        clearDraft();form.reset();status.textContent=hasCloud()?'已成功送出，謝謝你的反饋！':'已儲存在本機。完成 Firebase 設定後才會傳到管理者。';
-        setTimeout(function(){modal.classList.remove('show');status.textContent='';},hasCloud()?1200:2600);
+      var row={id:uid(),name:form.name.value.trim(),company:form.company.value.trim(),email:form.email.value.trim(),summary:form.summary.value.trim(),fixed:false,createdAt:Date.now(),updatedAt:Date.now(),syncStatus:'pending'};
+      submitCloud(row).then(function(){
+        row.syncStatus='synced';return idbPut(row);
+      }).then(function(){
+        clearDraft();form.reset();status.textContent='已成功送出，謝謝你的反饋！';
+        setTimeout(function(){modal.classList.remove('show');status.textContent='';},1200);
       }).catch(function(err){
-        fileToLocal(file).then(function(a){row.attachment=a;row.syncStatus='local';return idbPut(row);}).then(function(){status.textContent='雲端送出失敗，已保存在本機：'+(err&&err.message?err.message:'未知錯誤');});
+        row.syncStatus='failed';row.lastError=err&&err.message?err.message:String(err);
+        idbPut(row).catch(function(){});
+        status.textContent='送出失敗：'+row.lastError;
       }).finally(function(){submit.disabled=false;});
     });
   }
-  window.BNFeedbackLocal={all:idbAll,put:idbPut,remove:idbDelete,initCloud:initCloud,hasCloud:hasCloud,config:CFG,escape:esc};
+
+  window.BNFeedback={
+    all:idbAll,put:idbPut,remove:idbDelete,
+    initCloud:initCloud,ensureAnonymous:ensureAnonymous,
+    adminLogin:adminLogin,adminLogout:adminLogout,getCurrentUser:getCurrentUser,
+    hasCloud:hasCloud,isAdminUid:isAdminUid,config:CFG
+  };
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
 })();

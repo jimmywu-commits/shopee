@@ -1,12 +1,23 @@
-/* 使用者反饋雲端設定
- * 1. 建立 Firebase 專案，啟用 Firestore、Storage 與 Anonymous Authentication。
- * 2. 將 Firebase Web App 設定貼到 firebaseConfig。
- * 3. 設定完成後，所有使用者送出的反饋與附件會集中到 Firebase；
- *    feedback-admin.html 可跨裝置查看並勾選「已修正」。
+/* JBP 使用反饋 Firebase 設定
+ * 管理頁使用 Firebase Authentication 的「電子郵件/密碼」登入。
+ * 一般使用者送出反饋時使用 Anonymous Authentication。
+ * 此版本僅使用 Authentication + Cloud Firestore，不使用 Firebase Storage。
  */
 window.BN_FEEDBACK_CONFIG = {
-  firebaseConfig: null,
-  collectionName: 'bn_feedback',
-  storageFolder: 'bn_feedback_attachments',
-  maxAttachmentBytes: 10 * 1024 * 1024
+  firebaseConfig: {
+    apiKey: "AIzaSyBV8PTY4sZGRTbQTNDMyqUEB1Eqnwkw6BA",
+    authDomain: "jbp-ed.firebaseapp.com",
+    projectId: "jbp-ed",
+    storageBucket: "jbp-ed.firebasestorage.app",
+    messagingSenderId: "458472558224",
+    appId: "1:458472558224:web:cb6b3733183426e06cd215",
+    measurementId: "G-ZKS0JRLLN5"
+  },
+
+  collectionName: "bn_feedback",
+
+  // Firebase Console > Authentication > Users > 使用者 UID
+  adminUids: [
+    "QoPe75RsJehf8imORa9p4KXy1fu2"
+  ]
 };
