@@ -517,7 +517,10 @@
       });
   }
 
+  var ENABLE_WORKORDER_UPLOAD = false;
+
   function injectUI(){
+    if(!ENABLE_WORKORDER_UPLOAD) return;
     var sidebar = $('sidebar-scroll');
     if(!sidebar || $('bn-workorder-box')) return;
 
