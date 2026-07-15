@@ -55,10 +55,20 @@
     canvas.style.height = H + 'px';
 
     var bgRaw = root.getPropertyValue('--bg-img').trim();
+    var bimgInit = document.getElementById('底圖');
     if (bgRaw && bgRaw !== 'none' && bgRaw !== '') {
       var bsrc = bgRaw.replace(/^url\(["']?/,'').replace(/["']?\)$/,'').trim();
-      var bimg = document.getElementById('底圖');
-      if (bimg) { bimg.src = bsrc; bimg.style.display = 'block'; }
+      if (bimgInit) { bimgInit.src = bsrc; bimgInit.style.display = 'block'; }
+    } else if (bimgInit) {
+      /* 原始 html 裡 #底圖 這個 <img> 標籤預設帶 src=""（空字串），
+         瀏覽器對空字串 src 會發出一個「請求頁面自己網址」的圖片請求，
+         這個請求一定會失敗，顯示瀏覽器預設的「破圖」小圖示——
+         即使這個元素本身是 display:none，下載截圖工具（html2canvas）
+         走訪 DOM 時仍可能把這個破圖圖示畫進截圖結果的左上角
+         （#底圖 這個元素本來就固定在 top:0,left:0）。
+         這裡明確整個移除 src 屬性（不是留著空字串），從根本避免這個
+         幽靈請求發生，而不是只依賴 display:none 去隱藏它。 */
+      bimgInit.removeAttribute('src');
     }
 
     var ctaRaw = root.getPropertyValue('--cta-classes').trim().replace(/^["']/,'').replace(/["']$/,'');
@@ -586,6 +596,11 @@
 
     if (e.data.type === 'bn-color') {
       var c = e.data.data||{}, cv = document.getElementById('canvas');
+      /* SearchICON_LOGO / SearchICON_PRODUCT / SearchICON_TEXT 這三個版位的
+         .背景色是圖示本身的圓形底色，使用者確認過：這個圓形範圍的底色
+         要跟其他版位一樣，正常套用全域背景色設定，不用排除。
+         （画布最外圍、圓角以外那一小圈的白底，是另一個獨立的東西，
+         本來就沒有被這裡的邏輯影響過，不用特別處理。） */
       if (c.canvasBg) {
         /* 支援 .背景色 和 .bg 兩種 class 名稱 */
         var bg = cv.querySelector('.背景色') || cv.querySelector('.bg') || cv.querySelector('.底色');
@@ -622,6 +637,10 @@
       ac('主標',c.mainText); ac('副標',c.subText); ac('日期',c.dateText); ac('品牌名',c.brandText);
       /* Search_Image：副標案型七字內 顏色跟著副標文字色連動 */
       document.querySelectorAll('.副標案型七字內').forEach(function(el){ if(c.subText) el.style.setProperty('color', c.subText, 'important'); });
+      /* SearchICON_TEXT：ICON獨立文案顏色跟著主標(mainText)連動——
+         這兩個顏色在面板上是同一個顏色點(共用 mainText)，這裡負責
+         把畫布上實際的文字顏色也同步過去。 */
+      document.querySelectorAll('.ICON獨立文案').forEach(function(el){ if(c.mainText) el.style.setProperty('color', c.mainText, 'important'); });
       document.querySelectorAll('.cta-text').forEach(function(el){ if(c.ctaText) el.style.color=c.ctaText; });
       document.querySelectorAll('.cta-arrow').forEach(function(el){ if(c.ctaText) el.style.borderLeftColor=c.ctaText; });
       /* CTA 底色：.逛逛去按鈕 / .cta底 / .逛逛去底 */
@@ -877,7 +896,17 @@
       });
       pzone.appendChild(box);
       setupProdDrag(box, pzone);
-      applyCharacterProductVisibility(pzone, _bnHasCharacter);
+      layoutProducts(pzone);
+      /* 立刻套用「目前已知」的人物可見度狀態，不要只靠 layoutProducts() 排版——
+         排版只負責位置大小，不負責「這件商品該不該顯示」。如果有人物圖，
+         這裡會把非最上層的商品重新隱藏；下載/匯出流程資送 bn-product-add
+         時沒有跟著送 bn-character-visibility，這裡改成主動套用已知狀態，
+         才能保證下載結果跟畫布上看到的一致，不會把隱藏的商品秀出來。 */
+      if(_bnSingleProductOnlyTemplate){
+        applyCharacterVisibility(pzone, true, _bnLastCharVis.topId);
+      } else if(!_bnCharExcludedTemplate){
+        applyCharacterVisibility(pzone, _bnLastCharVis.hasChar, _bnLastCharVis.topId);
+      }
     }
 
     if (e.data.type === 'bn-product-remove') {
@@ -886,7 +915,7 @@
       if(el) el.remove();
       var remaining = pzone.querySelectorAll('.bn-prod-box');
       if(!remaining.length) { pzone.style.background=''; pzone.style.opacity=''; }
-      else applyCharacterProductVisibility(pzone, _bnHasCharacter);
+      else layoutProducts(pzone);
     }
 
     /* z-index 順序更新：order[0] = 最上層（z 最高） */
@@ -900,17 +929,67 @@
       });
     }
 
+    /* 商品去背/裁切/擦除/影子編輯完成後，只換圖片內容，完全不動這件商品
+       目前的位置/大小，也不觸發 layoutProducts() 重新排版——避免像
+       remove 再 add 那樣讓其他商品的三角排版跟著跳動、造成畫面閃爍。 */
+    if (e.data.type === 'bn-product-update-image') {
+      var pzoneUpd = getProductZone(); if(!pzoneUpd) return;
+      var boxUpd = pzoneUpd.querySelector('.bn-prod-box[data-id="'+e.data.id+'"]');
+      if(boxUpd){
+        var imgUpd = boxUpd.querySelector('img');
+        if(imgUpd) imgUpd.src = e.data.src;
+        boxUpd.dataset.ratio = e.data.ratio || boxUpd.dataset.ratio || 1;
+      }
+    }
+
+    /* 人物圖跟商品「誰現在顯示」完全由面板端(bn-editor-plugin.js)決定並用這則訊息告知，
+       不在這裡自行猜測——面板才知道目前 z-order 排序、目前最上層是哪一件商品。
+       hasChar=false 時 topId 不重要，全部商品恢復顯示。
+       例外：SearchICON_PRODUCT 這個版位本身就只放得下一張商品圖（不是三角形排版），
+       所以不管有沒有人物圖，都固定只顯示「目前最上層」那一件，忽略 hasChar。 */
+    if (e.data.type === 'bn-character-visibility') {
+      /* 記住這次的結果，讓 bn-product-add 之後可以直接拿來用──
+         不要每次都得靠「之後會不會再收到這則訊息」來決定可見度，
+         下載/匯出流程（syncIframeForExport）只會重送 bn-product-add，
+         不會跟著送這則可見度訊息，商品新增後如果沒有立刻套用可見度，
+         原本應該隱藏的第2、3層商品就會在下載時整個跑出來。 */
+      _bnLastCharVis = {hasChar: !!e.data.hasChar, topId: e.data.topId};
+      var pzoneVis = getProductZone(); if(!pzoneVis) return;
+      if(_bnSingleProductOnlyTemplate){
+        applyCharacterVisibility(pzoneVis, true, e.data.topId);
+        return;
+      }
+      if(_bnCharExcludedTemplate) return;
+      applyCharacterVisibility(pzoneVis, e.data.hasChar, e.data.topId);
+    }
+
     /* 人物圖新增/更新：
        - 掛在 #canvas 底下（不是商品範圍底下），所以可拖曳/放大到超出商品範圍。
        - #canvas 本身有 overflow:hidden，超出畫布的部分預覽時會自動裁掉，
          同時底層資料仍允許無限放大（可超出畫布）。
        - 預設：商品範圍右側 1/3 寬、高度 auto，垂直置中於商品範圍。
-       - 一旦有人物圖，商品圖只顯示第1張（index/position 0），2、3 張暫時隱藏。 */
+       - 一旦有人物圖，商品圖只顯示「目前最上層（排序最前面）」那一件，其餘暫時隱藏。
+       - 這個功能不適用 SearchICON_LOGO / SearchICON_TEXT / SearchICON_PRODUCT /
+         Search_Image1logo / Search_Image2logo / Search_Image3logo 這幾個版位。 */
     if (e.data.type === 'bn-character-add') {
+      if(_bnCharExcludedTemplate) return;
       var canvasEl = document.getElementById('canvas');
       if(!canvasEl) return;
       var pzoneForChar = getProductZone();
-      var old = canvasEl.querySelector('.bn-char-box');
+      /* 人物現在掛在「商品範圍」容器裡面，跟商品是同一層的兄弟元素——
+         這樣疊層比較才能直接套用跟商品完全一樣的方式（拿商品範圍裡面
+         個別商品的 z-index 互相比較），不會被「商品範圍」這個容器本身的
+         矩形範圍擋住。之前人物是掛在 #canvas 底下、商品範圍旁邊，商品範圍
+         整個容器（一個涵蓋所有商品的矩形色塊）疊在人物前面時，會整塊把
+         人物擋住，不是只擋住商品圖片本身的範圍——這才是「人物退到第二層
+         會被商品範圍擋住、拖拉不到」的真正原因。
+         商品範圍的 overflow 是 visible（bn-product-add 時設定），
+         人物一樣可以視覺上超出商品範圍的框，最終只受 #canvas 的
+         overflow:hidden 裁切，效果跟之前相同，不影響「可超出商品範圍」
+         這個需求。 */
+      var parentEl = pzoneForChar || canvasEl;
+      var old = parentEl.querySelector('.bn-char-box');
+      if(!old && parentEl !== canvasEl) old = canvasEl.querySelector('.bn-char-box');
       if(old) old.remove();
 
       var box = document.createElement('div');
@@ -933,45 +1012,67 @@
         box.appendChild(h);
       });
 
-      /* 預設位置：商品範圍右側 1/3 寬、高度 auto、垂直置中 */
-      var zx=0, zy=0, zw=parseFloat(getComputedStyle(canvasEl).width)||400, zh=parseFloat(getComputedStyle(canvasEl).height)||300;
+      /* 人物現在是商品範圍的子元素，預設位置/大小的計算基準改成
+         商品範圍自己的寬高（不用再算商品範圍在畫布裡的偏移量）。
+         沒有商品範圍時（理論上少見）才退回用畫布自己的寬高。 */
+      var zw, zh;
       if(pzoneForChar){
-        var canvasRect = canvasEl.getBoundingClientRect();
-        var pr = pzoneForChar.getBoundingClientRect();
-        zx = pr.left - canvasRect.left; zy = pr.top - canvasRect.top;
-        zw = pr.width; zh = pr.height;
+        zw = pzoneForChar.clientWidth || parseFloat(getComputedStyle(pzoneForChar).width) || 400;
+        zh = pzoneForChar.clientHeight || parseFloat(getComputedStyle(pzoneForChar).height) || 300;
+      } else {
+        zw = parseFloat(getComputedStyle(canvasEl).width) || 400;
+        zh = parseFloat(getComputedStyle(canvasEl).height) || 300;
       }
       var defaultW = zw / 3;
       var defaultH = defaultW / ratio;
-      var L = zx + zw - defaultW;         /* 靠齊商品範圍右緣 */
-      var T = zy + (zh - defaultH) / 2;   /* 垂直置中於商品範圍 */
+      var L = zw - defaultW;        /* 靠齊商品範圍右緣（相對於商品範圍自己） */
+      var T = (zh - defaultH) / 2;  /* 垂直置中於商品範圍 */
       var W = defaultW, H = defaultH;
 
-      /* 若有先前手動調整過的位置（依目前版位 bnid 對應），優先套用 */
+      /* 若有先前手動調整過的位置（依目前版位 bnid 對應），優先套用；
+         百分比一律換算成「相對於商品範圍自己」的寬高（配對的方/橫版位
+         商品範圍尺寸不同時，換算出來的相對位置才正確）。 */
       var __bnid = getCurrentBnId();
       var __lay = (e.data.layoutById && (__bnid in e.data.layoutById)) ? e.data.layoutById[__bnid] : (e.data.layout || null);
-      if(__lay && isFinite(__lay.left) && isFinite(__lay.top) && isFinite(__lay.width) && isFinite(__lay.height) && __lay.width>0 && __lay.height>0){
-        L = __lay.left; T = __lay.top; W = __lay.width; H = __lay.height;
+      if(__lay){
+        var pl = __lay.leftPct   !== undefined ? __lay.leftPct   * zw : __lay.left;
+        var pt = __lay.topPct    !== undefined ? __lay.topPct    * zh : __lay.top;
+        var pw = __lay.widthPct  !== undefined ? __lay.widthPct  * zw : __lay.width;
+        var ph = __lay.heightPct !== undefined ? __lay.heightPct * zh : __lay.height;
+        if(isFinite(pl) && isFinite(pt) && isFinite(pw) && isFinite(ph) && pw>0 && ph>0){
+          L = pl; T = pt; W = pw; H = ph;
+        }
       }
 
       box.style.cssText = 'position:absolute;left:'+L+'px;top:'+T+'px;width:'+W+'px;height:'+H+'px;'
-        +'cursor:move;box-sizing:border-box;outline:2px solid transparent;z-index:30;';
-      canvasEl.appendChild(box);
-      setupCharDrag(box, canvasEl);
+        +'cursor:move;box-sizing:border-box;outline:2px solid transparent;';
+      parentEl.appendChild(box);
+      setupCharDrag(box, parentEl);
 
-      _bnHasCharacter = true;
-      if(pzoneForChar) applyCharacterProductVisibility(pzoneForChar, true);
+      _bnCharAboveMain = (e.data.aboveMain !== false);
+      applyCharacterZIndex();
     }
 
     if (e.data.type === 'bn-character-remove') {
+      if(_bnCharExcludedTemplate) return;
       var canvasEl2 = document.getElementById('canvas');
       if(canvasEl2){
         var oldBox = canvasEl2.querySelector('.bn-char-box');
         if(oldBox) oldBox.remove();
       }
-      _bnHasCharacter = false;
-      var pzoneForChar2 = getProductZone();
-      if(pzoneForChar2) applyCharacterProductVisibility(pzoneForChar2, false);
+    }
+
+    /* 人物圖去背/裁切/擦除/影子編輯完成後，只換圖片內容，完全不動目前的
+       位置/大小/上下層——理由跟商品就地換圖一樣，避免整個重建造成閃跳。 */
+    if (e.data.type === 'bn-character-update-image') {
+      if(_bnCharExcludedTemplate) return;
+      var canvasElUpd = document.getElementById('canvas'); if(!canvasElUpd) return;
+      var charBoxUpd = canvasElUpd.querySelector('.bn-char-box[data-id="'+e.data.id+'"]');
+      if(charBoxUpd){
+        var cimgUpd = charBoxUpd.querySelector('img');
+        if(cimgUpd) cimgUpd.src = e.data.src;
+        charBoxUpd.dataset.ratio = e.data.ratio || charBoxUpd.dataset.ratio || 1;
+      }
     }
 
     /* 背景圖：放到 .背景色（如有）或畫布底層 */
@@ -1034,7 +1135,7 @@
         }
       } else {
         if(bgContainer) bgContainer.style.backgroundImage = '';
-        if(bimg2){ bimg2.src=''; bimg2.style.display='none'; bimg2.style.transform=''; }
+        if(bimg2){ bimg2.removeAttribute('src'); bimg2.style.display='none'; bimg2.style.transform=''; }
       }
       return;
     }
@@ -1097,7 +1198,36 @@
       return;
     }
 
+    /* 人物圖跨配對版位（方/橫）即時同步：不夾在畫布範圍內，
+       允許超出畫布——跟使用者手動拖曳/縮放時的行為一致。 */
+    if (e.data.type === 'bn-character-layout-apply') {
+      if(_bnCharExcludedTemplate) return;
+      var canvasElApply = document.getElementById('canvas'); if(!canvasElApply) return;
+      var pzoneApply = getProductZone();
+      var charBoxApply = (pzoneApply || canvasElApply).querySelector('.bn-char-box[data-id="'+e.data.id+'"]');
+      var layC = e.data.layout || {};
+      if(charBoxApply){
+        var refElApply = pzoneApply || canvasElApply;
+        var cwApply = refElApply.clientWidth || parseFloat(getComputedStyle(refElApply).width) || 1;
+        var chApply = refElApply.clientHeight || parseFloat(getComputedStyle(refElApply).height) || 1;
+        var lc = layC.leftPct   !== undefined ? layC.leftPct   * cwApply : layC.left;
+        var tc = layC.topPct    !== undefined ? layC.topPct    * chApply : layC.top;
+        var wc = layC.widthPct  !== undefined ? layC.widthPct  * cwApply : layC.width;
+        var hc = layC.heightPct !== undefined ? layC.heightPct * chApply : layC.height;
+        if(isFinite(lc) && isFinite(tc) && isFinite(wc) && isFinite(hc) && wc>0 && hc>0){
+          charBoxApply.style.left = lc + 'px';
+          charBoxApply.style.top = tc + 'px';
+          charBoxApply.style.width = wc + 'px';
+          charBoxApply.style.height = hc + 'px';
+        }
+      }
+      return;
+    }
+
     if (e.data.type === 'bn-capture') {
+      var _captureMsgId = e.data.msgId;
+
+      function _doCaptureNow(){
       var _cv = document.getElementById('canvas');
 
       /* 隱藏所有編輯用控制元素（縮放點等），截完再還原 */
@@ -1122,7 +1252,7 @@
         ];
         _guideZoneSelectors.forEach(function(sel){
           _cv.querySelectorAll(sel).forEach(function(zn){
-            var hasContent = zn.querySelector('.bn-prod-box') || zn.querySelector('img.bn-logo-img');
+            var hasContent = zn.querySelector('.bn-prod-box') || zn.querySelector('img.bn-logo-img') || zn.querySelector('.bn-char-box');
             if(!hasContent){
               _guideZoneEls.push({el:zn, bg:zn.style.background, op:zn.style.opacity});
               zn.style.background = 'transparent';
@@ -1132,14 +1262,18 @@
         });
       }
 
-      /* 下載補償②：商品圖用 object-fit:contain 顯示，畫面上不會變形，
+      /* 下載補償②：商品圖／人物圖都是用 object-fit:contain 顯示，畫面上不會變形，
          但 html2canvas 不支援 object-fit，會把圖片直接拉滿容器造成比例跑掉。
          截圖前依「容器尺寸 + 圖片原始比例」算出實際等比顯示的寬高與置中位移，
          暫時把 <img> 改成該精確尺寸（不再依賴 object-fit），截完後還原，
-         確保下載結果跟畫布上看到的比例完全一致。 */
+         確保下載結果跟畫布上看到的比例完全一致。
+         （人物圖之前沒有一併處理，導致某些人物框跟圖片原始比例差異較大的
+         版位——例如 Coin_pageBN_APP方LOGO，商品範圍本身又寬又扁，人物預設
+         框的比例因此跟人像照片常見的直式比例落差很大——下載出來的人物會被
+         明顯拉寬變形。） */
       var _prodImgFix = [];
       if(_cv){
-        _cv.querySelectorAll('.bn-prod-box > img').forEach(function(img){
+        _cv.querySelectorAll('.bn-prod-box > img, .bn-char-box > img').forEach(function(img){
           var nw = img.naturalWidth, nh = img.naturalHeight;
           var cw = img.clientWidth, ch = img.clientHeight;
           if(!nw || !nh || !cw || !ch) return;
@@ -1153,16 +1287,58 @@
         });
       }
 
-      /* Search_Image1 下載補償：
-         只保留副標下載補償。左側紅底共用區（官方旗艦店/橫線/商城logo）
-         改為完全所見即所得，不再於下載時針對 1/2/3 做不同位移。
-      */
+      /* 真正解決 Search_Image1logo / SearchICON_TEXT 文字下載時往下掉很多的問題：
+         這兩個版位的關鍵文字（.副標案型七字內 / .ICON獨立文案）都是先套用
+         原始 .css 一次，再靠 config.css 用 !important 疊加覆蓋（transform:none、
+         white-space:nowrap、line-height、font-size…等），兩個樣式表是分開的
+         <link> 動態載入的。html2canvas 擷取畫面時會自己複製一份 DOM 重新套用
+         樣式，如果它沒有正確重現「兩個樣式表疊加後的最終結果」——例如疊加
+         順序跟真實瀏覽器不同、或漏掉 config.css 那層覆蓋——就會退回沒有
+         nowrap、字級/行高不同、還帶著原始縮放 transform 的版本，文字很容易
+         因此意外換行；這些文案的版面又是靠 line-height 把單行文字垂直置中，
+         一旦意外多跳出一行，容器高度沒變，整段文字就會往下掉一大截。
+         （之前 Search_Image1 有一個固定 +14px 的位移補償，那只是針對這個
+         症狀的其中一種表現方式去猜一個數字治標，沒有真正解決「html2canvas
+         沒有正確疊加樣式」這個根本問題，所以换了字數、換了版位條件就會失效。
+         這次拿掉那個猜測值，改用下面更直接可靠的做法。）
+         解法：截圖前，直接讀出「瀏覽器實際算出來、已經疊加完 config.css 覆蓋」
+         的最終樣式（getComputedStyle），把這些關鍵屬性原封不動地寫成
+         這個元素自己的 inline style（加 !important），讓 html2canvas
+         不用再自己重新疊加、猜測樣式表的層疊順序，直接照抄目前畫面上
+         真正呈現的樣子去截圖，跟樣式表怎麼疊加、載入順序為何完全無關。 */
+      var _textStyleFixEls = [];
+      if(_cv){
+        var _TEXT_STYLE_FIX_PROPS = [
+          'transform', 'whiteSpace', 'lineHeight', 'fontSize', 'fontWeight',
+          'fontFamily', 'color', 'overflow', 'display', 'borderRadius', 'textAlign'
+        ];
+        ['.副標案型七字內', '.ICON獨立文案'].forEach(function(sel){
+          _cv.querySelectorAll(sel).forEach(function(el){
+            var cs = window.getComputedStyle(el);
+            _textStyleFixEls.push({el:el, cssText:el.style.cssText});
+            _TEXT_STYLE_FIX_PROPS.forEach(function(prop){
+              try{
+                var cssProp = prop.replace(/([A-Z])/g, function(m){ return '-'+m.toLowerCase(); });
+                el.style.setProperty(cssProp, cs[prop], 'important');
+              }catch(_){ }
+            });
+          });
+        });
+      }
+
+      /* 上面的樣式烘焙解決了「意外換行、整段往下掉」的問題，但 Search_Image1logo
+         這裡拿掉 transform 之後，html2canvas 對這個元素的實際擷取位置，
+         跟瀏覽器活生生渲染出來的位置，還是有一個小落差（這次量到的方向是
+         往上飄，比畫布上看到的位置還高）——這是 html2canvas 本身處理
+         「原本有 transform、現在被移除」這種元素時的既有落差，不是樣式
+         疊加的問題，兩者要分開處理，不能只做其中一個。
+         這裡在樣式烘焙之後，額外針對這個元素量一次目前的 top，
+         往下微調一個固定量做位置補償。如果之後測試發現落差數字跑掉，
+         只需要調整 SEARCH_IMAGE1_SUBTITLE_OFFSET 這個數字即可。 */
       var SEARCH_IMAGE1_SUBTITLE_OFFSET = 14;
       var _captureAdjustEls = [];
       var _fnameLower = (fname || '').toLowerCase();
-      var _isSearchImage1 = _fnameLower.indexOf('search_image1') !== -1;
-
-      if(_isSearchImage1 && _cv){
+      if(_fnameLower.indexOf('search_image1') !== -1 && _cv){
         _cv.querySelectorAll('.副標案型七字內').forEach(function(el){
           var oldTop = el.style.top || '';
           var oldPriority = el.style.getPropertyPriority('top') || '';
@@ -1176,9 +1352,28 @@
         _editEls.forEach(function(o){ o.el.style.display = o.disp; });
         _guideZoneEls.forEach(function(o){ o.el.style.background = o.bg; o.el.style.opacity = o.op; });
         _prodImgFix.forEach(function(o){ o.img.style.cssText = o.cssText; });
+        _textStyleFixEls.forEach(function(o){ o.el.style.cssText = o.cssText; });
         _captureAdjustEls.forEach(function(o){ o.el.style.setProperty('top', o.top, o.priority || ''); });
-        window.parent.postMessage({type:'bn-snapshot',msgId:e.data.msgId,dataUrl:dataUrl},'*');
+        window.parent.postMessage({type:'bn-snapshot',msgId:_captureMsgId,dataUrl:dataUrl},'*');
       });
+      }
+
+      /* 真正的根本原因（Search_Image1logo、SearchICON_TEXT 文字下載時往下掉很多）：
+         截圖之前沒有等待自訂字型（ShopeeNotoSans）確認載入完成。如果截圖那一刻
+         字型還沒套用完成，瀏覽器會先用備用字型計算文字寬度——備用字型通常比較寬，
+         這些文案本來只有 1 行的短字（例如 ICON獨立文案限制 2 個字、
+         副標案型七字內限制 7 個字），用備用字型量出來的寬度可能就超版、被迫換行；
+         這些文案的 CSS 又是靠「line-height 等於容器高度」或類似手法把單行文字
+         垂直置中，一旦意外變成兩行，容器高度沒變，文字就會整段往下掉很多。
+         這不是只有這兩個版位才有的問題，是所有用這種置中手法的文字都可能中，
+         只是這兩個版位的文字框比較窄、字數限制抓得比較剛好，換行機率才特別高。
+         這裡改成截圖前先確定字型完全就緒再截圖，從根本解決，不用再逐一針對
+         每個版位加減固定位移這種治標的做法。 */
+      if(document.fonts && document.fonts.ready){
+        document.fonts.ready.then(_doCaptureNow).catch(_doCaptureNow);
+      } else {
+        _doCaptureNow();
+      }
     }
   });
 
@@ -1220,15 +1415,40 @@
     }catch(_){ }
   }
 
-  /* 是否已有人物圖（有的話商品僅顯示第1張，2、3張暫時隱藏但保留資料） */
-  var _bnHasCharacter = false;
+  /* 這個版位是否不支援人物圖功能（SearchICON 系列版位太小、不適合疊人物）。
+     只算一次即可，檔名不會在頁面存活期間變動。 */
+  /* 記住最後一次收到的「人物可見度」狀態(hasChar/topId)，讓 bn-product-add
+     新增商品時可以直接套用，不用等待下一次的 bn-character-visibility 訊息——
+     下載/匯出流程重送商品時不會跟著送這則訊息，商品新增後如果只能等訊息才套用
+     可見度，下載出來的圖就會把本該隱藏的第2、3層商品也顯示出來。 */
+  var _bnLastCharVis = {hasChar:false, topId:null};
 
-  function applyCharacterProductVisibility(pzone, hasChar){
+  var _bnCharExcludedTemplate = (function(){
+    var EXCLUDED = [
+      'SearchICON_LOGO', 'SearchICON_TEXT', 'SearchICON_PRODUCT',
+      'Search_Image1logo', 'Search_Image2logo', 'Search_Image3logo'
+    ];
+    var name = decodeURIComponent(location.pathname.split('/').pop().replace(/\.html$/i, ''));
+    return EXCLUDED.indexOf(name) !== -1;
+  })();
+
+  /* SearchICON_PRODUCT 這個版位本身只放得下一張商品圖（config.css 的 --layers
+     只有「背景色、商品範圍」，不是三角形排版），不管有沒有人物圖，
+     都固定只顯示目前最上層的那一件商品。 */
+  var _bnSingleProductOnlyTemplate = (function(){
+    var SINGLE = ['SearchICON_PRODUCT'];
+    var name = decodeURIComponent(location.pathname.split('/').pop().replace(/\.html$/i, ''));
+    return SINGLE.indexOf(name) !== -1;
+  })();
+
+  /* 哪一件商品現在該顯示，完全由面板端(bn-editor-plugin.js)透過 bn-character-visibility
+     訊息明確告知（topId＝目前 z-order 排序最上層/最前面那件商品的 id），
+     這裡只負責套用，不自己用 DOM 猜測「誰在最上層」。 */
+  function applyCharacterVisibility(pzone, hasChar, topId){
     if(!pzone) return;
     var boxes = Array.from(pzone.querySelectorAll('.bn-prod-box'));
     boxes.forEach(function(b){
-      var pos = parseInt(b.dataset.position, 10) || 0;
-      if(hasChar && pos > 0){
+      if(hasChar && topId !== undefined && topId !== null && String(b.dataset.id) !== String(topId)){
         b.dataset.charHidden = '1';
         b.style.display = 'none';
       } else {
@@ -1237,6 +1457,36 @@
       }
     });
     layoutProducts(pzone);
+  }
+
+  /* 人物圖跟「目前最上層（z-order 排序最前面）的那件商品」之間的上下層關係——
+     不再鎖死是「主品(中)」；使用者拖動商品的上下層箭頭改變了誰在最上層，
+     人物圖互動的對象也會跟著換成新的最上層商品。
+     true＝人物在該商品前面（蓋住它），false＝人物在該商品後面（被蓋住）。 */
+  var _bnCharAboveMain = true;
+
+  function applyCharacterZIndex(){
+    var pzone = getProductZone();
+    var canvasEl = document.getElementById('canvas');
+    var parentEl = pzone || canvasEl;
+    if(!parentEl) return;
+    var charBox = parentEl.querySelector('.bn-char-box');
+    if(!charBox) return;
+    /* 人物現在是商品範圍的子元素，直接跟商品範圍裡的個別商品用同一套
+       z-index 數字比較即可，不用再處理商品範圍容器本身、裝飾圖層的疊層問題——
+       這些問題完全不會影響到商品彼此之間的疊層，人物現在跟商品「同一國」，
+       自然也不會再被影響。商品目前用到的 z-index 數字最高大概在 20 出頭
+       （zorder 公式 total-i+10，total 最多 3），用 1000／0 保證一定在最前面
+       或最後面，不會跟任何商品的數字混在一起。 */
+    charBox.style.zIndex = _bnCharAboveMain ? '1000' : '0';
+
+    /* 方便除錯用：如果套用後看到的結果還是不對，打開瀏覽器主控台（F12）
+       檢查這行印出來的數字，可以確認目前載入的是不是最新版的檔案。 */
+    if(window.console && window.console.debug){
+      console.debug('[bn-character] aboveMain=', _bnCharAboveMain,
+        'parent=', pzone ? '商品範圍(內部)' : '#canvas(找不到商品範圍)',
+        'applied z-index=', charBox.style.zIndex);
+    }
   }
 
   /* 正三角排品（仿 freelyapp 邏輯）
@@ -1463,12 +1713,25 @@
      - 掛在 #canvas 底下而非商品範圍底下，位置不受商品範圍邊界限制。
      - 不做邊界夾制（可拖出、可放大超出畫布），視覺上超出部分由 #canvas 的
        overflow:hidden 自動裁掉，符合「可無限放大但預覽時不超出畫布」的需求。 */
+  /* 注意：這裡的 canvasEl 參數，呼叫端(bn-character-add)現在傳進來的
+     實際上是「商品範圍」(pzone)，不是 #canvas 本身──因為人物現在是
+     商品範圍的子元素。函式內容不用因此改動，getBoundingClientRect()
+     本來就是算相對於傳進來的這個參照元素，改成商品範圍一樣正確運作，
+     只是百分比換算的基準也自然跟著變成「相對於商品範圍」。 */
   function postCharacterLayout(box, canvasEl){
     try{
       var cr = canvasEl.getBoundingClientRect(), br = box.getBoundingClientRect();
+      var cw = cr.width || parseFloat(getComputedStyle(canvasEl).width) || 1;
+      var ch = cr.height || parseFloat(getComputedStyle(canvasEl).height) || 1;
+      var left = br.left - cr.left, top = br.top - cr.top, width = br.width, height = br.height;
       window.parent && window.parent.postMessage({
         type:'bn-character-layout-update', bnid:getCurrentBnId(), id:box.dataset.id,
-        layout:{ left:br.left-cr.left, top:br.top-cr.top, width:br.width, height:br.height }
+        layout:{
+          left:left, top:top, width:width, height:height,
+          /* 百分比：畫布尺寸不同的「方/橫」配對版位靠這個換算對應位置，
+             人物可以超出畫布，所以百分比允許 <0 或 >1，不夾在 0~1 之間。 */
+          leftPct: left/cw, topPct: top/ch, widthPct: width/cw, heightPct: height/ch
+        }
       }, '*');
     }catch(_){ }
   }

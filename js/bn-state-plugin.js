@@ -790,14 +790,46 @@
     clrBtn.addEventListener('mouseenter',function(){ clrBtn.style.background='rgba(239,68,68,.08)'; });
     clrBtn.addEventListener('mouseleave',function(){ clrBtn.style.background='transparent'; });
     clrBtn.addEventListener('click',function(){
-      if(!confirm('確定要清除本機暫存？畫面將回到預設值。')) return;
+      if(!confirm('確定要清除本機暫存？頁面將重新整理，畫面會回到預設值。')) return;
       try{
-        /* 1. 清除 localStorage + IndexedDB 完整暫存 */
-        Object.keys(localStorage).filter(function(k){ return k.startsWith('bn'); })
-          .forEach(function(k){ localStorage.removeItem(k); });
-        idbClearState().catch(function(e){ console.warn('[BNState] IndexedDB clear 失敗', e); });
+        /* 1. 清除 localStorage + IndexedDB 完整暫存
+           ────────────────────────────────────────────────
+           重要：'bn-layouts' 這個鍵值絕對不能清掉！它存的是「版位清單設定」
+           （每個版位對應的 id / 檔名），不是使用者的編輯進度。
+           商品、人物、每個版位的背景設定，全部都是用這個 id 當 key 存起來的
+           （例如 products[].layouts = {"這個id": {left,top,width,height}}）。
 
-        /* 2. 文字輸入框還原預設 value，觸發 broadcastText */
+           之前這裡沒有排除 'bn-layouts'，一旦清掉，頁面重新整理時會自動
+           重新掃描版位清單（scanLayouts() 在頁面載入時一定會執行一次），
+           因為對照不到舊的清單，所有版位都會拿到全新產生的 id
+           （用當下的時間戳記重新產生，一定跟清除前不一樣）。
+           這樣一來，不管使用者上傳哪一份暫存檔，裡面商品/人物/背景的位置
+           資料全部都是用清除前的舊 id 存的，跟清除後畫面上全新的 id
+           完全對不起來，等於整份暫存檔的位置資料都變成孤兒資料、
+           完全沒有作用，畫面只能整個退回預設位置——這正是「上傳暫存檔
+           沒辦法 100% 還原商品/人物/背景位置」的根本原因，不是上傳
+           流程的優先權不夠高，是清除這個動作本身，把「位置資料要對照
+           的那把鑰匙（id）」也一起清掉了。
+           這裡明確排除 'bn-layouts'，只清除使用者的編輯狀態，
+           版位清單設定維持不變，id 不會因為清除暫存而改變。 */
+        Object.keys(localStorage).filter(function(k){ return k.startsWith('bn') && k !== 'bn-layouts'; })
+          .forEach(function(k){ localStorage.removeItem(k); });
+        idbClearState().catch(function(e){ console.warn('[BNState] IndexedDB clear 失敗', e); })
+          .then(function(){
+            /* 一定要重新整理頁面才會真正回到預設值。
+               之前這裡只清掉 localStorage/IndexedDB（儲存層），
+               沒有重置「目前頁面正在執行中」的商品/人物/Logo/各版位背景
+               這些記憶體內的狀態——這些變數分散在好幾支不同的檔案裡，
+               不重新整理頁面的話，即使儲存的資料清掉了，畫面上看到的
+               還是清除前那份還留在記憶體裡的舊資料，重新上傳背景圖之類的
+               操作也會沿用那份舊資料，跟「清除、回到預設值」的預期不符。
+               重新整理頁面才能保證是真正乾淨的初始狀態。 */
+            location.reload();
+          });
+
+        /* 2. 文字輸入框還原預設 value，觸發 broadcastText
+           （雖然馬上就會重新整理頁面，這裡先做一次是為了讓使用者在
+           頁面重新整理前，也能立刻看到畫面有反應，而不是按下去像沒反應。）*/
         var defaults = {
           'txt-brand': '品牌名不放圖$9字折內',
           'txt-main':  '滿$200享9折',
@@ -819,7 +851,7 @@
           if(typeof global.broadcastColors==='function') global.broadcastColors();
         }
 
-        showToast('已還原為預設值','ok');
+        showToast('已清除，頁面即將重新整理…','ok');
       }catch(e){ showToast('清除失敗：'+e.message,'err'); }
     });
     clrBar.appendChild(clrBtn);
