@@ -19,11 +19,25 @@
   }
 
   function loadScript(src, cb){
-    if(document.querySelector('script[src="'+src+'"]')){
-      if(cb) cb(); return;
+    /* src 可能已帶 ?t= 防快取，不能再用完全相等 selector 判斷。
+       若引擎已就緒直接回呼；否則載入最新版並等待真正 onload。 */
+    if(src.indexOf('banwords-engine-hbn.js') !== -1 && global.__BANWORD_ENGINE_READY){
+      if(cb) cb();
+      return;
+    }
+    var base = String(src).split('?')[0];
+    var existing = Array.prototype.slice.call(document.scripts || []).find(function(node){
+      return String(node.getAttribute('src') || '').split('?')[0] === base;
+    });
+    if(existing){
+      if(global.__BANWORD_ENGINE_READY){ if(cb) cb(); }
+      else existing.addEventListener('load', cb || function(){}, {once:true});
+      return;
     }
     var s = document.createElement('script');
-    s.src = src; s.onload = cb||function(){}; s.onerror = function(){ if(cb) cb(); };
+    s.src = base + (base.indexOf('?') === -1 ? '?t=' + Date.now() : '');
+    s.onload = cb||function(){};
+    s.onerror = function(){ if(cb) cb(); };
     document.head.appendChild(s);
   }
 
@@ -226,6 +240,13 @@
       inp.value = result.text;
       inp.dispatchEvent(new Event('input', {bubbles:true}));
     }
+
+    /* 格式化是在 blur 發生，不能只依賴 30 秒定時儲存或 beforeunload 的非同步流程。
+       立即標記 dirty 並同步寫入 localStorage，重新整理時才不會回到舊文字。 */
+    markDirty();
+    setTimeout(function(){
+      try{ autoSave(); }catch(err){ console.warn('[BNState] blur 即時儲存失敗', err); }
+    }, 0);
 
     /* Toast 提示 */
     if(result && result.message){
@@ -693,15 +714,22 @@
   function startAutoSave(){
     setInterval(autoSave,30000);
     window.addEventListener('beforeunload',autoSave);
+    window.addEventListener('pagehide', autoSave);
+    document.addEventListener('visibilitychange', function(){
+      if(document.visibilityState === 'hidden') autoSave();
+    });
     function queueSave(e){
       /* bn-state-dirty 可能從 document 或 iframe message 流程發出，target 不會在 #sidebar。
          舊邏輯只接受 sidebar 事件，導致商品拖曳/縮放、背景畫布設定等不會寫入本機暫存，刷新後就回到舊資料。 */
       var isDirtyEvent = e && e.type === 'bn-state-dirty';
       var fromSidebar = !e || (e.target && e.target.closest && e.target.closest('#sidebar'));
-      if(global._bnExporting || global._bnStateDownloading || global._bnStateApplying) return;
+      if(global._bnExporting || global._bnStateDownloading) return;
+      /* applyState 期間程式自行 dispatch 的事件不儲存；但使用者真的開始輸入時
+         （isTrusted=true）不可被 _bnStateApplying 擋掉，否則刷新會讀回舊資料。 */
+      if(global._bnStateApplying && !(e && e.isTrusted)) return;
       if(isDirtyEvent || fromSidebar){
         clearTimeout(global._bnSaveTimer);
-        global._bnSaveTimer=setTimeout(autoSave, isDirtyEvent ? 250 : 1500);
+        global._bnSaveTimer=setTimeout(autoSave, isDirtyEvent ? 100 : 350);
       }
     }
     document.addEventListener('input',queueSave,true);
