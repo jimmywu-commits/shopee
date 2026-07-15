@@ -19,25 +19,11 @@
   }
 
   function loadScript(src, cb){
-    /* src 可能已帶 ?t= 防快取，不能再用完全相等 selector 判斷。
-       若引擎已就緒直接回呼；否則載入最新版並等待真正 onload。 */
-    if(src.indexOf('banwords-engine-hbn.js') !== -1 && global.__BANWORD_ENGINE_READY){
-      if(cb) cb();
-      return;
-    }
-    var base = String(src).split('?')[0];
-    var existing = Array.prototype.slice.call(document.scripts || []).find(function(node){
-      return String(node.getAttribute('src') || '').split('?')[0] === base;
-    });
-    if(existing){
-      if(global.__BANWORD_ENGINE_READY){ if(cb) cb(); }
-      else existing.addEventListener('load', cb || function(){}, {once:true});
-      return;
+    if(document.querySelector('script[src="'+src+'"]')){
+      if(cb) cb(); return;
     }
     var s = document.createElement('script');
-    s.src = base + (base.indexOf('?') === -1 ? '?t=' + Date.now() : '');
-    s.onload = cb||function(){};
-    s.onerror = function(){ if(cb) cb(); };
+    s.src = src; s.onload = cb||function(){}; s.onerror = function(){ if(cb) cb(); };
     document.head.appendChild(s);
   }
 
@@ -108,6 +94,7 @@
     if(light.products){ light.products.forEach(function(p){ if(p && p.src) p.src='__BN_IDB__'; }); }
     if(light.logos){ light.logos.forEach(function(l){ if(l && l.src) l.src='__BN_IDB__'; }); }
     if(light.character && light.character.src){ light.character.src='__BN_IDB__'; }
+    if(light.character2 && light.character2.src){ light.character2.src='__BN_IDB__'; }
     return light;
   }
 
@@ -240,13 +227,6 @@
       inp.value = result.text;
       inp.dispatchEvent(new Event('input', {bubbles:true}));
     }
-
-    /* 格式化是在 blur 發生，不能只依賴 30 秒定時儲存或 beforeunload 的非同步流程。
-       立即標記 dirty 並同步寫入 localStorage，重新整理時才不會回到舊文字。 */
-    markDirty();
-    setTimeout(function(){
-      try{ autoSave(); }catch(err){ console.warn('[BNState] blur 即時儲存失敗', err); }
-    }, 0);
 
     /* Toast 提示 */
     if(result && result.message){
@@ -553,6 +533,8 @@
       inputMeta: collectInputMeta(),
       logos: (global._bnLogos||[]).map(function(l){ return clone(l); }),
       character: global._bnCharacter ? clone(global._bnCharacter) : null,
+      character2: global._bnCharacter2 ? clone(global._bnCharacter2) : null,
+      charPairFirst: global._bnCharPairFirst || null,
       products:(global._bnProducts||[]).map(function(p){
         return {id:p.id,src:p.src,baseSrc:p.baseSrc,ratio:p.ratio,name:p.name,
           sizeScale:p.sizeScale||1,position:p.position||0,zOrder:p.zOrder||0,
@@ -581,6 +563,7 @@
     if(!state) return false;
     if(state._heavyStripped) return true;
     if(state.character && state.character.src === '__BN_IDB__') return true;
+    if(state.character2 && state.character2.src === '__BN_IDB__') return true;
     var bg = state.background || {};
     if(bg.legacySrc === '__BN_IDB__') return true;
     var st = bg.states || {};
@@ -629,15 +612,23 @@
         }
       }
     }
-    if('character' in state){
+    if('character' in state || 'character2' in state){
       /* character 為 null 代表使用者存檔時沒有人物圖，允許還原成「移除」；
-         但若這份 state 是被 strip 過的輕量版且人物圖是佔位符，就不要拿它把真正的人物圖蓋掉。 */
-      var charPlaceholder = state.character && state.character.src === '__BN_IDB__';
-      if(!charPlaceholder){
-        global._bnCharacter = state.character ? clone(state.character) : null;
-        if(typeof global._bnRenderCharacter==='function') global._bnRenderCharacter();
-        if(typeof global._bnBroadcastCharacter==='function') global._bnBroadcastCharacter();
+         但若這份 state 是被 strip 過的輕量版且人物圖是佔位符，就不要拿它把真正的人物圖蓋掉。
+         人物1、人物2 各自獨立判斷，其中一個是佔位符不影響另一個正常還原。 */
+      if('character' in state){
+        var charPlaceholder = state.character && state.character.src === '__BN_IDB__';
+        if(!charPlaceholder) global._bnCharacter = state.character ? clone(state.character) : null;
       }
+      if('character2' in state){
+        var char2Placeholder = state.character2 && state.character2.src === '__BN_IDB__';
+        if(!char2Placeholder) global._bnCharacter2 = state.character2 ? clone(state.character2) : null;
+      }
+      if('charPairFirst' in state && state.charPairFirst){
+        global._bnCharPairFirst = state.charPairFirst;
+      }
+      if(typeof global._bnRenderCharacter==='function') global._bnRenderCharacter();
+      if(typeof global._bnBroadcastCharacter==='function') global._bnBroadcastCharacter();
     }
     if(state.layouts && typeof global.setLayoutState==='function'){
       global.setLayoutState(state.layouts);
@@ -714,22 +705,15 @@
   function startAutoSave(){
     setInterval(autoSave,30000);
     window.addEventListener('beforeunload',autoSave);
-    window.addEventListener('pagehide', autoSave);
-    document.addEventListener('visibilitychange', function(){
-      if(document.visibilityState === 'hidden') autoSave();
-    });
     function queueSave(e){
       /* bn-state-dirty 可能從 document 或 iframe message 流程發出，target 不會在 #sidebar。
          舊邏輯只接受 sidebar 事件，導致商品拖曳/縮放、背景畫布設定等不會寫入本機暫存，刷新後就回到舊資料。 */
       var isDirtyEvent = e && e.type === 'bn-state-dirty';
       var fromSidebar = !e || (e.target && e.target.closest && e.target.closest('#sidebar'));
-      if(global._bnExporting || global._bnStateDownloading) return;
-      /* applyState 期間程式自行 dispatch 的事件不儲存；但使用者真的開始輸入時
-         （isTrusted=true）不可被 _bnStateApplying 擋掉，否則刷新會讀回舊資料。 */
-      if(global._bnStateApplying && !(e && e.isTrusted)) return;
+      if(global._bnExporting || global._bnStateDownloading || global._bnStateApplying) return;
       if(isDirtyEvent || fromSidebar){
         clearTimeout(global._bnSaveTimer);
-        global._bnSaveTimer=setTimeout(autoSave, isDirtyEvent ? 100 : 350);
+        global._bnSaveTimer=setTimeout(autoSave, isDirtyEvent ? 250 : 1500);
       }
     }
     document.addEventListener('input',queueSave,true);

@@ -899,13 +899,13 @@
       layoutProducts(pzone);
       /* 立刻套用「目前已知」的人物可見度狀態，不要只靠 layoutProducts() 排版——
          排版只負責位置大小，不負責「這件商品該不該顯示」。如果有人物圖，
-         這裡會把非最上層的商品重新隱藏；下載/匯出流程資送 bn-product-add
+         這裡會把不該顯示的商品重新隱藏；下載/匯出流程資送 bn-product-add
          時沒有跟著送 bn-character-visibility，這裡改成主動套用已知狀態，
          才能保證下載結果跟畫布上看到的一致，不會把隱藏的商品秀出來。 */
       if(_bnSingleProductOnlyTemplate){
-        applyCharacterVisibility(pzone, true, _bnLastCharVis.topId);
+        applyCharacterVisibility(pzone, _bnLastCharVis.visibleIds && _bnLastCharVis.visibleIds.length ? [_bnLastCharVis.visibleIds[0]] : (_bnLastCharVis.topId!=null?[_bnLastCharVis.topId]:null));
       } else if(!_bnCharExcludedTemplate){
-        applyCharacterVisibility(pzone, _bnLastCharVis.hasChar, _bnLastCharVis.topId);
+        applyCharacterVisibility(pzone, _bnLastCharVis.visibleIds);
       }
     }
 
@@ -943,24 +943,25 @@
     }
 
     /* 人物圖跟商品「誰現在顯示」完全由面板端(bn-editor-plugin.js)決定並用這則訊息告知，
-       不在這裡自行猜測——面板才知道目前 z-order 排序、目前最上層是哪一件商品。
-       hasChar=false 時 topId 不重要，全部商品恢復顯示。
+       不在這裡自行猜測——面板才知道目前 z-order 排序、目前可見商品有哪些。
+       規則：0張人物->商品最多顯示3件(全開)，1張人物->最多2件，2張人物->完全不顯示。
        例外：SearchICON_PRODUCT 這個版位本身就只放得下一張商品圖（不是三角形排版），
-       所以不管有沒有人物圖，都固定只顯示「目前最上層」那一件，忽略 hasChar。 */
+       所以不管有幾張人物圖，都固定只顯示「目前最上層」那一件。 */
     if (e.data.type === 'bn-character-visibility') {
       /* 記住這次的結果，讓 bn-product-add 之後可以直接拿來用──
          不要每次都得靠「之後會不會再收到這則訊息」來決定可見度，
          下載/匯出流程（syncIframeForExport）只會重送 bn-product-add，
          不會跟著送這則可見度訊息，商品新增後如果沒有立刻套用可見度，
-         原本應該隱藏的第2、3層商品就會在下載時整個跑出來。 */
-      _bnLastCharVis = {hasChar: !!e.data.hasChar, topId: e.data.topId};
+         原本應該隱藏的商品就會在下載時整個跑出來。 */
+      _bnLastCharVis = {hasChar: !!e.data.hasChar, visibleIds: e.data.visibleIds || null, topId: e.data.topId};
       var pzoneVis = getProductZone(); if(!pzoneVis) return;
       if(_bnSingleProductOnlyTemplate){
-        applyCharacterVisibility(pzoneVis, true, e.data.topId);
+        var onlyId = (e.data.visibleIds && e.data.visibleIds.length) ? [e.data.visibleIds[0]] : (e.data.topId!=null ? [e.data.topId] : null);
+        applyCharacterVisibility(pzoneVis, onlyId);
         return;
       }
       if(_bnCharExcludedTemplate) return;
-      applyCharacterVisibility(pzoneVis, e.data.hasChar, e.data.topId);
+      applyCharacterVisibility(pzoneVis, e.data.visibleIds);
     }
 
     /* 人物圖新增/更新：
@@ -986,14 +987,19 @@
          商品範圍的 overflow 是 visible（bn-product-add 時設定），
          人物一樣可以視覺上超出商品範圍的框，最終只受 #canvas 的
          overflow:hidden 裁切，效果跟之前相同，不影響「可超出商品範圍」
-         這個需求。 */
+         這個需求。
+         現在最多可以有 2 個人物（人物1／人物2），用 data-slot 屬性
+         （'_bnCharacter' 或 '_bnCharacter2'）分辨是哪一個人物的框，
+         只移除、只更新「同一個 slot」自己的框，不會誤刪另一個人物。 */
+      var charSlot = e.data.slot || '_bnCharacter';
       var parentEl = pzoneForChar || canvasEl;
-      var old = parentEl.querySelector('.bn-char-box');
-      if(!old && parentEl !== canvasEl) old = canvasEl.querySelector('.bn-char-box');
+      var old = parentEl.querySelector('.bn-char-box[data-slot="'+charSlot+'"]');
+      if(!old && parentEl !== canvasEl) old = canvasEl.querySelector('.bn-char-box[data-slot="'+charSlot+'"]');
       if(old) old.remove();
 
       var box = document.createElement('div');
       box.className = 'bn-char-box';
+      box.dataset.slot = charSlot;
       box.dataset.id = e.data.id || 'character';
       var ratio = parseFloat(e.data.ratio) || 1;
       box.dataset.ratio = ratio;
@@ -1014,7 +1020,9 @@
 
       /* 人物現在是商品範圍的子元素，預設位置/大小的計算基準改成
          商品範圍自己的寬高（不用再算商品範圍在畫布裡的偏移量）。
-         沒有商品範圍時（理論上少見）才退回用畫布自己的寬高。 */
+         沒有商品範圍時（理論上少見）才退回用畫布自己的寬高。
+         人物2 的預設位置跟人物1 錯開一點（往左內縮一些），避免兩個人物
+         剛上傳時完全疊在同一個位置，完全看不出來已經有2個人物。 */
       var zw, zh;
       if(pzoneForChar){
         zw = pzoneForChar.clientWidth || parseFloat(getComputedStyle(pzoneForChar).width) || 400;
@@ -1025,7 +1033,8 @@
       }
       var defaultW = zw / 3;
       var defaultH = defaultW / ratio;
-      var L = zw - defaultW;        /* 靠齊商品範圍右緣（相對於商品範圍自己） */
+      var defaultRightInset = charSlot === '_bnCharacter2' ? defaultW * 0.35 : 0;
+      var L = zw - defaultW - defaultRightInset; /* 靠齊商品範圍右緣（人物2 往左內縮一點） */
       var T = (zh - defaultH) / 2;  /* 垂直置中於商品範圍 */
       var W = defaultW, H = defaultH;
 
@@ -1049,15 +1058,18 @@
       parentEl.appendChild(box);
       setupCharDrag(box, parentEl);
 
-      _bnCharAboveMain = (e.data.aboveMain !== false);
+      /* aboveMain 現在存在 box 自己身上（每個人物各自獨立），
+         不再用單一全域變數（否則兩個人物的前後狀態會互相覆蓋）。 */
+      box.dataset.aboveMain = (e.data.aboveMain !== false) ? '1' : '0';
       applyCharacterZIndex();
     }
 
     if (e.data.type === 'bn-character-remove') {
       if(_bnCharExcludedTemplate) return;
+      var charSlotRm = e.data.slot || '_bnCharacter';
       var canvasEl2 = document.getElementById('canvas');
       if(canvasEl2){
-        var oldBox = canvasEl2.querySelector('.bn-char-box');
+        var oldBox = canvasEl2.querySelector('.bn-char-box[data-slot="'+charSlotRm+'"]');
         if(oldBox) oldBox.remove();
       }
     }
@@ -1067,7 +1079,8 @@
     if (e.data.type === 'bn-character-update-image') {
       if(_bnCharExcludedTemplate) return;
       var canvasElUpd = document.getElementById('canvas'); if(!canvasElUpd) return;
-      var charBoxUpd = canvasElUpd.querySelector('.bn-char-box[data-id="'+e.data.id+'"]');
+      var charSlotUpd = e.data.slot || '_bnCharacter';
+      var charBoxUpd = canvasElUpd.querySelector('.bn-char-box[data-slot="'+charSlotUpd+'"]');
       if(charBoxUpd){
         var cimgUpd = charBoxUpd.querySelector('img');
         if(cimgUpd) cimgUpd.src = e.data.src;
@@ -1421,7 +1434,7 @@
      新增商品時可以直接套用，不用等待下一次的 bn-character-visibility 訊息——
      下載/匯出流程重送商品時不會跟著送這則訊息，商品新增後如果只能等訊息才套用
      可見度，下載出來的圖就會把本該隱藏的第2、3層商品也顯示出來。 */
-  var _bnLastCharVis = {hasChar:false, topId:null};
+  var _bnLastCharVis = {hasChar:false, visibleIds:null, topId:null};
 
   var _bnCharExcludedTemplate = (function(){
     var EXCLUDED = [
@@ -1441,14 +1454,21 @@
     return SINGLE.indexOf(name) !== -1;
   })();
 
-  /* 哪一件商品現在該顯示，完全由面板端(bn-editor-plugin.js)透過 bn-character-visibility
-     訊息明確告知（topId＝目前 z-order 排序最上層/最前面那件商品的 id），
-     這裡只負責套用，不自己用 DOM 猜測「誰在最上層」。 */
-  function applyCharacterVisibility(pzone, hasChar, topId){
+  /* 哪些商品現在該顯示，完全由面板端(bn-editor-plugin.js)透過 bn-character-visibility
+     訊息明確告知（visibleIds＝目前該顯示的商品 id 清單，依 z-order 由前到後排列），
+     這裡只負責套用，不自己用 DOM 猜測「誰在最上層」。
+     visibleIds 傳 null/undefined 代表「不限制，全部顯示」（沒有人物圖時就是這樣）。 */
+  function applyCharacterVisibility(pzone, visibleIds){
     if(!pzone) return;
     var boxes = Array.from(pzone.querySelectorAll('.bn-prod-box'));
+    var idSet = null;
+    if(visibleIds){
+      idSet = {};
+      visibleIds.forEach(function(vid){ idSet[String(vid)] = true; });
+    }
     boxes.forEach(function(b){
-      if(hasChar && topId !== undefined && topId !== null && String(b.dataset.id) !== String(topId)){
+      var show = !idSet || idSet[String(b.dataset.id)];
+      if(!show){
         b.dataset.charHidden = '1';
         b.style.display = 'none';
       } else {
@@ -1462,31 +1482,33 @@
   /* 人物圖跟「目前最上層（z-order 排序最前面）的那件商品」之間的上下層關係——
      不再鎖死是「主品(中)」；使用者拖動商品的上下層箭頭改變了誰在最上層，
      人物圖互動的對象也會跟著換成新的最上層商品。
-     true＝人物在該商品前面（蓋住它），false＝人物在該商品後面（被蓋住）。 */
-  var _bnCharAboveMain = true;
-
+     true＝人物在該商品前面（蓋住它），false＝人物在該商品後面（被蓋住）。
+     現在最多可以有 2 個人物，各自的 aboveMain 狀態存在各自的 box
+     dataset 上（data-above-main），不再共用同一個全域變數，
+     否則兩個人物的前後狀態會互相覆蓋。 */
   function applyCharacterZIndex(){
     var pzone = getProductZone();
     var canvasEl = document.getElementById('canvas');
     var parentEl = pzone || canvasEl;
     if(!parentEl) return;
-    var charBox = parentEl.querySelector('.bn-char-box');
-    if(!charBox) return;
+    var charBoxes = Array.from(parentEl.querySelectorAll('.bn-char-box'));
+    if(!charBoxes.length) return;
     /* 人物現在是商品範圍的子元素，直接跟商品範圍裡的個別商品用同一套
        z-index 數字比較即可，不用再處理商品範圍容器本身、裝飾圖層的疊層問題——
        這些問題完全不會影響到商品彼此之間的疊層，人物現在跟商品「同一國」，
        自然也不會再被影響。商品目前用到的 z-index 數字最高大概在 20 出頭
        （zorder 公式 total-i+10，total 最多 3），用 1000／0 保證一定在最前面
-       或最後面，不會跟任何商品的數字混在一起。 */
-    charBox.style.zIndex = _bnCharAboveMain ? '1000' : '0';
-
-    /* 方便除錯用：如果套用後看到的結果還是不對，打開瀏覽器主控台（F12）
-       檢查這行印出來的數字，可以確認目前載入的是不是最新版的檔案。 */
-    if(window.console && window.console.debug){
-      console.debug('[bn-character] aboveMain=', _bnCharAboveMain,
-        'parent=', pzone ? '商品範圍(內部)' : '#canvas(找不到商品範圍)',
-        'applied z-index=', charBox.style.zIndex);
-    }
+       或最後面，不會跟任何商品的數字混在一起。兩個人物如果剛好都在前面
+       （或都在後面），彼此之間的前後順序就交給 DOM 順序決定，不特別處理。 */
+    charBoxes.forEach(function(charBox){
+      var aboveMain = charBox.dataset.aboveMain !== '0';
+      charBox.style.zIndex = aboveMain ? '1000' : '0';
+      if(window.console && window.console.debug){
+        console.debug('[bn-character]', charBox.dataset.slot, 'aboveMain=', aboveMain,
+          'parent=', pzone ? '商品範圍(內部)' : '#canvas(找不到商品範圍)',
+          'applied z-index=', charBox.style.zIndex);
+      }
+    });
   }
 
   /* 正三角排品（仿 freelyapp 邏輯）

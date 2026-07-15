@@ -39,6 +39,9 @@
 #bn-char-open-btn{display:block;width:100%;padding:8px;background:var(--bg2,#1c2333);border:1.5px dashed #e2874a;border-radius:7px;color:#e2874a;font-size:11px;cursor:pointer;text-align:center;transition:.15s}
 #bn-char-open-btn:hover{border-color:#e2874a;background:rgba(226,135,74,.08)}
 #bn-char-open-btn.has-char{border-style:solid}
+#bn-char2-open-btn{display:block;width:100%;padding:8px;background:var(--bg2,#1c2333);border:1.5px dashed #e2874a;border-radius:7px;color:#e2874a;font-size:11px;cursor:pointer;text-align:center;transition:.15s}
+#bn-char2-open-btn:hover{border-color:#e2874a;background:rgba(226,135,74,.08)}
+#bn-char2-open-btn.has-char{border-style:solid}
 #bn-download-bar{padding:10px 14px;border-top:1px solid var(--border,#30363d);flex-shrink:0}
 .bn-dl-btn{display:block;width:100%;padding:9px;background:linear-gradient(135deg,#1d4ed8,#0d47a1);border:none;border-radius:7px;color:#fff;font-size:12px;font-weight:700;cursor:pointer;transition:opacity .12s}
 .bn-dl-btn:hover{opacity:.88}
@@ -119,8 +122,29 @@
     var MAX_LOGOS = 3;
     window._bnProducts    = window._bnProducts    || [];
     var MAX_PROD = 3;
-    /* 人物圖：單張，可超出商品範圍/畫布，上傳後商品僅顯示第1張 */
+    /* 人物圖：現在最多可以上傳2張，各自可超出商品範圍/畫布。
+       規則：0張人物 -> 商品最多顯示3張(原本三角排版全開)；
+             1張人物 -> 商品最多顯示2張；
+             2張人物 -> 商品完全不顯示。
+       _bnCharacter = 人物1，_bnCharacter2 = 人物2，兩者結構完全一樣。 */
     window._bnCharacter = window._bnCharacter || null;  /* {id,src,ratio,name,layouts:{bnid:layout}} */
+    window._bnCharacter2 = window._bnCharacter2 || null;
+    /* 兩個人物都存在時，誰排在前面（'_bnCharacter' 或 '_bnCharacter2'）。
+       只有兩個人物都存在時才有意義，這時候兩者一定緊鄰在一起、不會被商品
+       插在中間（商品這時本來就完全不顯示，跟商品比前後沒有意義）。 */
+    window._bnCharPairFirst = window._bnCharPairFirst || '_bnCharacter';
+
+    /* 取得目前人物數量(0/1/2)，供商品可見度規則使用 */
+    function getCharacterCount(){
+      return (window._bnCharacter?1:0) + (window._bnCharacter2?1:0);
+    }
+    /* 依人物數量換算商品最多能顯示幾張：0張人物->3(全開)，1張->2，2張->0 */
+    function getMaxProductsVisible(){
+      var n = getCharacterCount();
+      if(n === 0) return 999;
+      if(n === 1) return 2;
+      return 0;
+    }
 
     /* ── 工具 ── */
     function readFile(file){ return new Promise(function(res,rej){var r=new FileReader();r.onload=function(e){res(e.target.result);};r.onerror=rej;r.readAsDataURL(file);}); }
@@ -187,28 +211,35 @@
         broadcastTo(tid, {type:'bn-product-layout-apply', id:product.id, layout:cloned});
       });
     }
-    /* 人物圖比照商品：同一版位只差「方/橫」時，拖曳/縮放的位置大小會即時同步到配對版位。 */
-    function syncCharacterLayoutToPairs(sourceBnid, layout){
-      if(!window._bnCharacter || !layout) return;
+    /* 人物圖比照商品：同一版位只差「方/橫」時，拖曳/縮放的位置大小會即時同步到配對版位。
+       slotKey 指定是哪一個人物欄位('_bnCharacter' 或 '_bnCharacter2')。 */
+    function syncCharacterLayoutToPairs(slotKey, sourceBnid, layout){
+      var slot = window[slotKey];
+      if(!slot || !layout) return;
       var pairIds = getPairedLayoutIds(sourceBnid);
       if(!pairIds.length) return;
-      if(!window._bnCharacter.layouts) window._bnCharacter.layouts = {};
+      if(!slot.layouts) slot.layouts = {};
       pairIds.forEach(function(tid){
         var cloned = JSON.parse(JSON.stringify(layout));
-        window._bnCharacter.layouts[tid] = cloned;
-        broadcastTo(tid, {type:'bn-character-layout-apply', id:window._bnCharacter.id, layout:cloned});
+        slot.layouts[tid] = cloned;
+        broadcastTo(tid, {type:'bn-character-layout-apply', id:slot.id, layout:cloned});
       });
     }
     window.addEventListener('message', function(ev){
       var d = ev.data || {};
       if(d.type === 'bn-character-layout-update' && d.layout){
-        /* 與商品版位更新共用同一個 listener，避免重複註冊造成的衝突。 */
-        if(window._bnSuppressProductLayoutWrite || window._bnExporting || window._bnStateApplying) return;
-        if(!window._bnCharacter) return;
-        if(!window._bnCharacter.layouts) window._bnCharacter.layouts = {};
+        /* 與商品版位更新共用同一個 listener，避免重複註冊造成的衝突。
+           用訊息裡的 id 判斷這次更新是人物1還是人物2。 */
+        if(window._bnSuppressProductLayoutWrite || window._bnExporting) return;
+        var slotKey = null;
+        if(window._bnCharacter && window._bnCharacter.id === d.id) slotKey = '_bnCharacter';
+        else if(window._bnCharacter2 && window._bnCharacter2.id === d.id) slotKey = '_bnCharacter2';
+        if(!slotKey) return;
+        var slot = window[slotKey];
+        if(!slot.layouts) slot.layouts = {};
         var ckey = d.bnid ? String(d.bnid) : 'default';
-        window._bnCharacter.layouts[ckey] = d.layout;
-        syncCharacterLayoutToPairs(ckey, d.layout);
+        slot.layouts[ckey] = d.layout;
+        syncCharacterLayoutToPairs(slotKey, ckey, d.layout);
         markStateDirty();
         return;
       }
@@ -216,7 +247,7 @@
       /* 下載圖片/同步 iframe 期間，iframe 可能因重送商品而回傳 layout-update。
          這些不是使用者拖曳，不能寫回 _bnProducts，也不能觸發本機暫存，
          否則下載會反過來覆蓋背景色、底圖或商品排版。 */
-      if(window._bnSuppressProductLayoutWrite || window._bnExporting || window._bnStateApplying) return;
+      if(window._bnSuppressProductLayoutWrite || window._bnExporting) return;
       var p = (window._bnProducts || []).find(function(x){ return x.id === d.id; });
       if(!p) return;
       if(!p.layouts) p.layouts = {};
@@ -497,24 +528,33 @@
        人物圖真正的卡片（縮圖/編輯/移除/上下層箭頭）改到 buildCharacterRowEl()，
        跟商品一起放進 #bn-prod-list，這樣人物才能跟主品「排在一起」調整上下層，
        不會被上傳按鈕隔開。 */
-    function renderCharRow(){
-      var hint = document.getElementById('bn-char-hint');
-      var btn = document.getElementById('bn-char-open-btn');
-      if(window._bnCharacter){
-        if(hint) hint.style.display='block';
-        if(btn){ btn.textContent='⟳ 更換人物圖'; btn.classList.add('has-char'); }
+    /* slotKey 是 '_bnCharacter'(人物1) 或 '_bnCharacter2'(人物2)，
+       兩個人物欄位結構、操作邏輯完全一樣，用同一套函式、傳不同 slotKey 重複使用。 */
+    function charSlotSuffix(slotKey){ return slotKey === '_bnCharacter2' ? '2' : ''; }
+    function charSlotLabel(slotKey){ return slotKey === '_bnCharacter2' ? '人物圖2' : '人物圖1'; }
+
+    function renderCharRow(slotKey){
+      var suffix = charSlotSuffix(slotKey);
+      var btn = document.getElementById('bn-char'+suffix+'-open-btn');
+      var slot = window[slotKey];
+      if(slot){
+        if(btn){ btn.textContent='⟳ 更換'+charSlotLabel(slotKey); btn.classList.add('has-char'); }
       } else {
-        if(hint) hint.style.display='none';
-        if(btn){ btn.textContent='＋ 上傳人物圖'; btn.classList.remove('has-char'); }
+        if(btn){ btn.textContent='＋ 上傳'+charSlotLabel(slotKey); btn.classList.remove('has-char'); }
       }
+      var hint = document.getElementById('bn-char-hint');
+      if(hint) hint.style.display = getCharacterCount()>0 ? 'block' : 'none';
       if(typeof renderProdList === 'function') renderProdList();
     }
 
     /* 建立人物圖的卡片列（跟商品列同一種 .bn-prod-item 結構，
        按鈕順序也刻意跟商品列一致：縮圖／名稱 → ▲▼ → 編輯 → 移除）。
-       只跟「第1件商品（主品）」比前後，所以只需要一個 aboveMain 布林值。 */
-    function buildCharacterRowEl(){
-      var c = window._bnCharacter;
+       pairInfo 有值時代表「兩個人物都存在」，這時候上下箭頭改成跟另一個
+       人物互相交換順序（兩個人物一定要排在一起，不會被商品插在中間，
+       因為 2 張人物存在時，商品本來就完全不顯示，跟商品比前後沒有意義）。
+       pairInfo 為 null 時維持原本邏輯：只跟「目前最上層的商品」比前後。 */
+    function buildCharacterRowEl(slotKey, pairInfo){
+      var c = window[slotKey];
       var aboveMain = c.aboveMain !== false;
       var row=document.createElement('div'); row.className='bn-prod-item';
       row.style.flexWrap='wrap'; row.style.gap='4px';
@@ -525,47 +565,73 @@
       var infoWrap=document.createElement('div');
       infoWrap.style.cssText='flex:1;display:flex;flex-direction:column;gap:2px;min-width:0;';
       var name=document.createElement('span');
-      name.textContent=c.name||'人物圖';
+      name.textContent=c.name||charSlotLabel(slotKey);
       name.style.cssText='overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;';
       var posLabel=document.createElement('span');
-      posLabel.textContent='人物（跟目前最上層商品比前後）';
+      posLabel.textContent = pairInfo
+        ? (charSlotLabel(slotKey)+'（跟'+charSlotLabel(pairInfo.otherKey)+'比前後，商品已完全不顯示）')
+        : (charSlotLabel(slotKey)+'（跟目前最上層商品比前後）');
       posLabel.style.cssText='font-size:9px;font-weight:700;color:#e2874a;';
       infoWrap.appendChild(name); infoWrap.appendChild(posLabel);
 
-      /* 上移/下移：只跟「目前最上層的商品」比前後（該商品可能因使用者調整
-         了商品的上下層箭頭而換人，人物圖互動對象會自動跟著換） */
       var moveWrap=document.createElement('div'); moveWrap.className='bn-prod-move';
-      var upBtn=document.createElement('button'); upBtn.textContent='▲'; upBtn.title='往前（蓋住目前最上層的商品）';
-      var downBtn=document.createElement('button'); downBtn.textContent='▼'; downBtn.title='往後（被目前最上層的商品蓋住）';
-      upBtn.disabled = aboveMain;
-      downBtn.disabled = !aboveMain;
-      upBtn.style.opacity   = upBtn.disabled   ? '0.3' : '1';
-      downBtn.style.opacity = downBtn.disabled ? '0.3' : '1';
-      upBtn.addEventListener('click', function(){
-        if(!window._bnCharacter) return;
-        window._bnCharacter.aboveMain = true;
-        renderProdList();
-        broadcastCharacter();
-        markStateDirty();
-      });
-      downBtn.addEventListener('click', function(){
-        if(!window._bnCharacter) return;
-        window._bnCharacter.aboveMain = false;
-        renderProdList();
-        broadcastCharacter();
-        markStateDirty();
-      });
+      var upBtn=document.createElement('button'); upBtn.textContent='▲';
+      var downBtn=document.createElement('button'); downBtn.textContent='▼';
+
+      if(pairInfo){
+        /* 配對交換模式：兩個人物一定緊鄰在一起，上下箭頭是跟另一個人物
+           互相交換排列順序，不是跟商品比較。 */
+        upBtn.title = '往前（跟'+charSlotLabel(pairInfo.otherKey)+'交換順序）';
+        downBtn.title = '往後（跟'+charSlotLabel(pairInfo.otherKey)+'交換順序）';
+        upBtn.disabled = pairInfo.isFirst;      /* 已經排最前面就不用再往前 */
+        downBtn.disabled = !pairInfo.isFirst;   /* 已經排最後面就不用再往後 */
+        upBtn.style.opacity   = upBtn.disabled   ? '0.3' : '1';
+        downBtn.style.opacity = downBtn.disabled ? '0.3' : '1';
+        upBtn.addEventListener('click', function(){
+          window._bnCharPairFirst = slotKey;
+          renderProdList();
+          markStateDirty();
+        });
+        downBtn.addEventListener('click', function(){
+          window._bnCharPairFirst = pairInfo.otherKey;
+          renderProdList();
+          markStateDirty();
+        });
+      } else {
+        /* 上移/下移：只跟「目前最上層的商品」比前後（該商品可能因使用者調整
+           了商品的上下層箭頭而換人，人物圖互動對象會自動跟著換） */
+        upBtn.title = '往前（蓋住目前最上層的商品）';
+        downBtn.title = '往後（被目前最上層的商品蓋住）';
+        upBtn.disabled = aboveMain;
+        downBtn.disabled = !aboveMain;
+        upBtn.style.opacity   = upBtn.disabled   ? '0.3' : '1';
+        downBtn.style.opacity = downBtn.disabled ? '0.3' : '1';
+        upBtn.addEventListener('click', function(){
+          if(!window[slotKey]) return;
+          window[slotKey].aboveMain = true;
+          renderProdList();
+          broadcastCharacter(slotKey);
+          markStateDirty();
+        });
+        downBtn.addEventListener('click', function(){
+          if(!window[slotKey]) return;
+          window[slotKey].aboveMain = false;
+          renderProdList();
+          broadcastCharacter(slotKey);
+          markStateDirty();
+        });
+      }
       moveWrap.appendChild(upBtn); moveWrap.appendChild(downBtn);
 
       var editBtn=document.createElement('button'); editBtn.textContent='編輯';
       editBtn.title='裁切・去背・擦除・影子';
-      editBtn.addEventListener('click', function(){ openCharacterEditor(); });
+      editBtn.addEventListener('click', function(){ openCharacterEditor(slotKey); });
 
       var rmBtn=document.createElement('button'); rmBtn.textContent='移除'; rmBtn.className='rm';
       rmBtn.addEventListener('click', function(){
-        window._bnCharacter = null;
-        renderCharRow(); /* renderCharRow 內部會一併呼叫 renderProdList() 重繪清單 */
-        broadcastCharacter();
+        window[slotKey] = null;
+        renderCharRow(slotKey); /* renderCharRow 內部會一併呼叫 renderProdList() 重繪清單 */
+        broadcastCharacter(slotKey);
         markStateDirty();
       });
 
@@ -575,50 +641,55 @@
       return row;
     }
 
-    function broadcastCharacter(){
-      if(window._bnCharacter){
-        broadcast({type:'bn-character-add', id:window._bnCharacter.id, src:window._bnCharacter.src,
-          ratio:window._bnCharacter.ratio, layoutById:window._bnCharacter.layouts||null,
-          aboveMain: window._bnCharacter.aboveMain !== false, restoreExact: !!window._bnStateApplying});
+    function broadcastCharacter(slotKey){
+      var slot = window[slotKey];
+      if(slot){
+        broadcast({type:'bn-character-add', slot:slotKey, id:slot.id, src:slot.src,
+          ratio:slot.ratio, layoutById:slot.layouts||null,
+          aboveMain: slot.aboveMain !== false});
       } else {
-        broadcast({type:'bn-character-remove'});
+        broadcast({type:'bn-character-remove', slot:slotKey});
       }
       broadcastCharacterVisibility();
     }
-    /* 有人物圖時，商品只顯示「目前最上層（z-order 排序最前面）」那一件；
-       這件事完全由面板端決定並明確告知每個 iframe（用商品 id，不用 position），
-       不讓 iframe 自己用 DOM z-index 猜——不同版位的 z-index 基準完全不一樣，猜不準。
+    /* 有人物圖時，商品最多只顯示「目前最上層（z-order 排序最前面）」的幾件；
+       規則：0張人物->最多3件(全開)，1張人物->最多2件，2張人物->完全不顯示。
+       這件事完全由面板端決定並明確告知每個 iframe（用商品 id 清單，不用 position），
+       不讓 iframe 自己用 DOM z-index 猜。
        renderProdList() 每次重繪清單時都會呼叫這個函式，商品新增/移除/排序都會涵蓋到。 */
     function broadcastCharacterVisibility(zSortedIn){
       var zSorted = zSortedIn || window._bnProducts.slice().sort(function(a,b){ return (a.zOrder||0)-(b.zOrder||0); });
-      var hasChar = !!window._bnCharacter;
-      var topId = zSorted.length ? zSorted[0].id : null;
-      broadcast({type:'bn-character-visibility', hasChar:hasChar, topId:topId});
+      var maxVisible = getMaxProductsVisible();
+      var visibleIds = zSorted.slice(0, maxVisible).map(function(p){ return p.id; });
+      broadcast({type:'bn-character-visibility', hasChar: getCharacterCount()>0, maxVisible:maxVisible, visibleIds:visibleIds,
+        /* 向下相容：topId 給還沒更新的舊版 layout-runtime.js 當備援 */
+        topId: visibleIds.length ? visibleIds[0] : null});
     }
     /* 只換圖片內容（去背/裁切/擦除/影子編輯完成後用），完全不動人物圖目前的
        位置/大小/上下層——避免像 bn-character-add 那樣整個重建造成畫面閃跳。 */
-    function broadcastCharacterImageUpdate(){
-      if(!window._bnCharacter) return;
-      broadcast({type:'bn-character-update-image', id:window._bnCharacter.id,
-        src:window._bnCharacter.src, ratio:window._bnCharacter.ratio});
+    function broadcastCharacterImageUpdate(slotKey){
+      var slot = window[slotKey];
+      if(!slot) return;
+      broadcast({type:'bn-character-update-image', slot:slotKey, id:slot.id,
+        src:slot.src, ratio:slot.ratio});
     }
     /* 暴露給 bn-state-plugin：暫存/工單載入後可重新渲染面板並廣播給 iframe */
-    window._bnRenderCharacter = renderCharRow;
-    window._bnBroadcastCharacter = broadcastCharacter;
+    window._bnRenderCharacter = function(){ renderCharRow('_bnCharacter'); renderCharRow('_bnCharacter2'); };
+    window._bnBroadcastCharacter = function(){ broadcastCharacter('_bnCharacter'); broadcastCharacter('_bnCharacter2'); };
 
     /* ── 開啟人物圖編輯器（裁切/去背/擦除/影子），跟商品共用同一支 editor-plugin.js ── */
-    function openCharacterEditor(){
-      if(!window._bnCharacter) return;
+    function openCharacterEditor(slotKey){
+      if(!window[slotKey]) return;
       if(!window.HBNProductEditorPlugin){
-        loadScriptOnce('js/editor-plugin.js').then(doOpenCharacterEditor)['catch'](function(){ alert('editor-plugin.js 載入失敗'); });
+        loadScriptOnce('js/editor-plugin.js').then(function(){ doOpenCharacterEditor(slotKey); })['catch'](function(){ alert('editor-plugin.js 載入失敗'); });
         return;
       }
-      doOpenCharacterEditor();
+      doOpenCharacterEditor(slotKey);
     }
 
-    function doOpenCharacterEditor(){
+    function doOpenCharacterEditor(slotKey){
       if(!window.HBNProductEditorPlugin){ alert('editor-plugin.js 未載入'); return; }
-      var c = window._bnCharacter;
+      var c = window[slotKey];
       if(!c) return;
 
       var wrap=document.getElementById('bn-edit-wrap');
@@ -677,8 +748,8 @@
              理由跟商品編輯一樣：清掉會導致編輯完成後人物圖跳回預設位置/尺寸，
              體驗不好。裁切/去背後比例可能改變，但沿用原本的框、用
              object-fit:contain 顯示新圖片即可，畫面頂多留一點內縮空白。 */
-          renderCharRow();
-          broadcastCharacterImageUpdate();
+          renderCharRow(slotKey);
+          broadcastCharacterImageUpdate(slotKey);
           markStateDirty();
         }
       });
@@ -687,11 +758,12 @@
       window.HBNProductEditorPlugin.open(img);
     }
 
-    function initCharacterUpload(){
-      var openBtn = document.getElementById('bn-char-open-btn');
-      var inp = document.getElementById('bn-char-inp');
+    function initCharacterUpload(slotKey){
+      var suffix = charSlotSuffix(slotKey);
+      var openBtn = document.getElementById('bn-char'+suffix+'-open-btn');
+      var inp = document.getElementById('bn-char'+suffix+'-inp');
       if(!openBtn || !inp) return;
-      renderCharRow();
+      renderCharRow(slotKey);
       openBtn.addEventListener('click', function(){ inp.click(); });
       inp.addEventListener('change', function(){
         var file = this.files && this.files[0];
@@ -702,18 +774,19 @@
             /* 跟商品上傳一樣：自動判別背景色，裁切到人物實際內容的寬高，
                而不是直接用整張原圖(含四周留白/背景)的比例。 */
             var trimmed = autoTrim(img);
-            var keepId = window._bnCharacter ? window._bnCharacter.id : ('character_'+Date.now());
-            var keepAboveMain = window._bnCharacter ? (window._bnCharacter.aboveMain !== false) : true;
-            window._bnCharacter = {
+            var prevSlot = window[slotKey];
+            var keepId = prevSlot ? prevSlot.id : ('character'+suffix+'_'+Date.now());
+            var keepAboveMain = prevSlot ? (prevSlot.aboveMain !== false) : true;
+            window[slotKey] = {
               id: keepId,
               src: trimmed.src,
               ratio: trimmed.ratio || 1,
-              name: file.name || '人物圖',
+              name: file.name || charSlotLabel(slotKey),
               aboveMain: keepAboveMain, /* 換圖不應該連上下層設定都被重置 */
               layouts: {} /* 換圖重設手動位置，改回預設：商品範圍右側 1/3 寬、高度 auto */
             };
-            renderCharRow();
-            broadcastCharacter();
+            renderCharRow(slotKey);
+            broadcastCharacter(slotKey);
             markStateDirty();
           });
         })['catch'](function(){ alert('人物圖片讀取失敗，請換一張圖片再試'); });
@@ -734,9 +807,11 @@
         '<div class="bn-section">',
         '  <button id="bn-prod-open-btn">＋ 上傳商品圖</button>',
         '  <div class="bn-prod-list" id="bn-prod-list"></div>',
-        '  <button id="bn-char-open-btn" style="margin-top:6px">＋ 上傳人物圖</button>',
+        '  <button id="bn-char-open-btn" style="margin-top:6px">＋ 上傳人物圖1</button>',
         '  <input type="file" id="bn-char-inp" accept="image/*" style="display:none">',
-        '  <div id="bn-char-hint" style="display:none;font-size:10px;color:var(--text3,#6e7681);margin-top:4px;line-height:1.5">已上傳人物圖：商品圖僅顯示「目前最上層（排序最前面）」的那一件，其餘暫時隱藏；調整商品的上下層順序或移除人物圖，會自動恢復顯示。人物圖卡片會顯示在上方清單裡，跟目前最上層的商品一起排前後順序。</div>',
+        '  <button id="bn-char2-open-btn" style="margin-top:6px">＋ 上傳人物圖2</button>',
+        '  <input type="file" id="bn-char2-inp" accept="image/*" style="display:none">',
+        '  <div id="bn-char-hint" style="display:none;font-size:10px;color:var(--text3,#6e7681);margin-top:4px;line-height:1.5">已上傳 1 張人物圖：商品圖最多只會顯示「目前最上層」的 2 件，其餘暫時隱藏；上傳第 2 張人物圖後，商品圖會完全不顯示。移除人物圖後會自動恢復顯示。人物圖卡片會顯示在上方清單裡，跟目前最上層的商品一起排前後順序。</div>',
         '</div>',
         '<div class="s-section" style="margin-top:8px">背景圖</div>',
         '<div class="bn-section">',
@@ -754,7 +829,8 @@
       if(target)scroll.insertBefore(sec,target);else scroll.appendChild(sec);
       document.getElementById('bn-prod-open-btn').addEventListener('click',openModal);
       buildModal();
-      initCharacterUpload();
+      initCharacterUpload('_bnCharacter');
+      initCharacterUpload('_bnCharacter2');
 
       /* 背景圖上傳事件 */
       var bgInp = document.getElementById('bn-bg-inp');
@@ -826,9 +902,9 @@
             _bgStates[id] = {
               src: src,
               fit: st.fit || prev.fit || 'cover',
-              scale: st.scale !== undefined ? parseFloat(st.scale) : (prev.scale !== undefined ? prev.scale : 100),
-              x: st.x !== undefined ? parseFloat(st.x) : (prev.x !== undefined ? prev.x : 50),
-              y: st.y !== undefined ? parseFloat(st.y) : (prev.y !== undefined ? prev.y : 50),
+              scale: st.scale !== undefined ? parseInt(st.scale,10) : (prev.scale !== undefined ? prev.scale : 100),
+              x: st.x !== undefined ? parseInt(st.x,10) : (prev.x !== undefined ? prev.x : 50),
+              y: st.y !== undefined ? parseInt(st.y,10) : (prev.y !== undefined ? prev.y : 50),
               _initialized: st._initialized !== false
             };
           });
@@ -1076,12 +1152,11 @@
             '  <button data-fit="auto"    style="flex:1;padding:3px;border-radius:4px;border:none;cursor:pointer;font-size:9px">原尺寸</button>',
             '</div>',
             '<div style="margin-bottom:2px">縮放 <span class="bg-scale-val">100%</span></div>',
-            '<input type="range" class="bg-scale" min="0" max="700" step="1" value="100" style="width:100%;margin-bottom:4px">',
-            '<div style="margin-bottom:2px">水平位置 <span class="bg-x-val">50%</span></div>',
-            '<input type="range" class="bg-x" min="-100" max="200" step="1" value="50" style="width:100%;margin-bottom:4px">',
-            '<div style="margin-bottom:2px">垂直位置 <span class="bg-y-val">50%</span></div>',
-            '<input type="range" class="bg-y" min="-100" max="200" step="1" value="50" style="width:100%;margin-bottom:6px">',
-            '<button type="button" class="bg-copy-params" style="width:100%;padding:4px;border:1px solid #3a425b;border-radius:4px;background:#202638;color:#dce5f7;cursor:pointer;font-size:9px">複製背景參數</button>',
+            '<input type="range" class="bg-scale" min="0" max="700" value="100" style="width:100%;margin-bottom:4px">',
+            '<div style="margin-bottom:2px">水平位置 <span class="bg-x-val">50</span></div>',
+            '<input type="range" class="bg-x" min="-100" max="200" value="50" style="width:100%;margin-bottom:4px">',
+            '<div style="margin-bottom:2px">垂直位置 <span class="bg-y-val">50</span></div>',
+            '<input type="range" class="bg-y" min="-100" max="200" value="50" style="width:100%">',
           ].join('');
 
           /* 事件 */
@@ -1124,36 +1199,44 @@
             markStateDirty();
           });
           panel.querySelector('.bg-x').addEventListener('input', function(){
-            var v = parseInt(this.value, 10);
+            var v = parseInt(this.value);
             getBgState(id).x = v;
-            panel.querySelector('.bg-x-val').textContent = v + '%';
+            panel.querySelector('.bg-x-val').textContent = v;
             bgBroadcastOne(id);
             markStateDirty();
           });
           panel.querySelector('.bg-y').addEventListener('input', function(){
-            var v = parseInt(this.value, 10);
+            var v = parseInt(this.value);
             getBgState(id).y = v;
-            panel.querySelector('.bg-y-val').textContent = v + '%';
+            panel.querySelector('.bg-y-val').textContent = v;
             bgBroadcastOne(id);
             markStateDirty();
           });
-          panel.querySelector('.bg-copy-params').addEventListener('click', function(){
+
+          /* 面板的滑桿一定要跟目前實際套用的 scale/x/y 同步，不能一直停在
+             HTML 寫死的 100/50/50——不然使用者滑動之前看到的數字，
+             跟目前畫布上實際套用的值對不起來，量出來的參數就不準了。
+             每次要顯示面板前都重新同步一次目前的真實狀態。 */
+          function syncPanelValues(){
             var st = getBgState(id);
-            var text = 'Scale=' + st.scale + '\nX=' + st.x + '\nY=' + st.y;
-            var btn = this;
-            function done(){
-              var oldText = btn.textContent;
-              btn.textContent = '已複製';
-              setTimeout(function(){ btn.textContent = oldText; }, 1200);
+            var scaleEl2 = panel.querySelector('.bg-scale');
+            var xEl2 = panel.querySelector('.bg-x');
+            var yEl2 = panel.querySelector('.bg-y');
+            if(scaleEl2 && st.scale !== undefined){
+              scaleEl2.value = st.scale;
+              panel.querySelector('.bg-scale-val').textContent = st.scale + '%';
             }
-            if(navigator.clipboard && navigator.clipboard.writeText){
-              navigator.clipboard.writeText(text).then(done).catch(function(){
-                window.prompt('請複製背景參數', text);
-              });
-            }else{
-              window.prompt('請複製背景參數', text);
+            if(xEl2 && st.x !== undefined){
+              xEl2.value = st.x;
+              panel.querySelector('.bg-x-val').textContent = st.x;
             }
-          });
+            if(yEl2 && st.y !== undefined){
+              yEl2.value = st.y;
+              panel.querySelector('.bg-y-val').textContent = st.y;
+            }
+            updateFitBtns(panel, st.fit || 'auto');
+            updateSliderState(st.fit || 'auto');
+          }
 
           /* 初始 fit 樣式（預設原尺寸）*/
           updateFitBtns(panel, 'auto');
@@ -1165,15 +1248,7 @@
             var thumb = document.getElementById('bn-bg-thumb');
             if(!thumb || !thumb.src) return;
             clearTimeout(_hideTimer);
-            var st = getBgState(id);
-            panel.querySelector('.bg-scale').value = st.scale;
-            panel.querySelector('.bg-x').value = st.x;
-            panel.querySelector('.bg-y').value = st.y;
-            panel.querySelector('.bg-scale-val').textContent = st.scale + '%';
-            panel.querySelector('.bg-x-val').textContent = st.x + '%';
-            panel.querySelector('.bg-y-val').textContent = st.y + '%';
-            updateFitBtns(panel, st.fit || 'auto');
-            updateSliderState(st.fit || 'auto');
+            syncPanelValues();
             panel.style.display = 'block';
             updatePanelPos();
           }
@@ -1319,24 +1394,31 @@
       function getDefaultBgParamsForLayout(id, ifrEl){
         var fit = getDefaultBgFitForLayout(id, ifrEl);
         if(isScbnApp(id, ifrEl)){
-          /* SCBN_APP 上傳／圖庫套入背景後的版位預設值。 */
-          return { fit: 'width100', scale: 43, x: 71, y: 73 };
+          /* SCBN_APP 吃直式背景圖時：圖片寬度＝畫布寬度的 1/4（scale:25，
+             畫布1200px寬 → 圖片顯示寬度300px，高度auto），位置放在
+             「右邊第二格」——假設整條畫布從左到右分成4等分格子各300px
+             （0-300 / 300-600 / 600-900 / 900-1200），從右邊數第二格
+             是 600-900px 這一格，置中點=750px，換算成畫布寬度百分比
+             ≈62.5%。這個「4等分格子」是我依你的描述推算的，如果實際
+             畫面上的格子劃分方式不是這樣切，麻煩告訴我正確的格子寬度，
+             我可以重新換算這個百分比。 */
+          return { fit: 'width100', scale: 25, x: 62.5, y: 50 };
         }
         if(isFbPost(id, ifrEl)){
-          /* FB_POST 上傳／圖庫套入背景後的版位預設值。 */
-          return { fit: 'width100', scale: 63, x: 116, y: 69 };
+          /* FB_POST 吃直式背景圖時：位置在畫面右半部（水平置中點在畫面
+             75% 的位置，也就是右半邊的正中間），放大 20%（scale:120）。 */
+          return { fit: 'width100', scale: 120, x: 75, y: 50 };
         }
         return { fit: fit, scale: 100, x: 50, y: 50 };
       }
-
-      /* 提供背景圖庫與工單流程共用，避免各入口各自複製方向判斷與預設參數。 */
-      window._bnGetBgLayoutOrientation = function(id, ifrEl){
-        return getBgLayoutOrientation(id, ifrEl);
-      };
-      window._bnGetDefaultBgParamsForLayout = function(id, ifrEl){
-        var p = getDefaultBgParamsForLayout(id, ifrEl);
-        return { fit:p.fit, scale:p.scale, x:p.x, y:p.y };
-      };
+      /* 暴露給 bn-bg-library-plugin.js（背景圖庫）共用：
+         圖庫套用背景圖是完全獨立的另一支檔案，原本自己複製了一份
+         「判斷橫式/直式、預設 fit/scale/x/y」的邏輯，沒有這幾個版位的
+         專屬例外，導致「手動上傳」修好了，但「選圖庫」還是不對。
+         暴露這兩個函式讓兩邊共用同一套判斷依據，以後只要改這裡一份，
+         兩條路徑都會同步生效，不會再各自寫一份、各自忘記同步更新。 */
+      window._bnGetBgLayoutOrientation = getBgLayoutOrientation;
+      window._bnGetDefaultBgParamsForLayout = getDefaultBgParamsForLayout;
 
       function applyBgByOrientation(horizontalSrc, verticalSrc){
         var h = horizontalSrc || null;
@@ -1809,18 +1891,57 @@
       /* 工具列顯示用 zSorted（前面的蓋住後面的）。
          人物圖現在是跟「目前最上層（z-order 排序最前面）」的商品放在一起，
          不再鎖死「主品(中)」——使用者拖動商品的上下層箭頭換了誰在最上層，
-         人物圖互動的對象也會自動換成新的最上層商品，這裡 topIdxInZ 永遠是 0。 */
+         人物圖互動的對象也會自動換成新的最上層商品，這裡 topIdxInZ 永遠是 0。
+         現在最多可以有 2 個人物欄位，各自獨立比較「在最上層商品前面還後面」，
+         同一側(前面/後面)有多個人物時，依人物1、人物2的順序排列。 */
       var topIdxInZ = 0;
       broadcastCharacterVisibility(zSorted);
-      for(var zi=0; zi<zSorted.length; zi++){
-        var p = zSorted[zi];
 
-        /* 人物圖只跟「目前最上層」的商品放在一起，方便一起調整上下層——
-           不再被「上傳人物圖」按鈕隔開。依 aboveMain 決定插在它前面或後面。 */
-        if(window._bnCharacter && zi === topIdxInZ && window._bnCharacter.aboveMain !== false){
-          list.appendChild(buildCharacterRowEl());
+      var charSlotKeys = ['_bnCharacter', '_bnCharacter2'];
+      var activeCharKeys = charSlotKeys.filter(function(k){ return window[k]; });
+
+      if(activeCharKeys.length === 2){
+        /* 兩個人物都存在：一定緊鄰排在一起，不會被商品插在中間——
+           這時候商品本來就完全不顯示（2張人物->商品可見數=0），
+           跟商品比前後沒有意義，改成兩個人物互相比前後。 */
+        var firstKey = (window._bnCharPairFirst && activeCharKeys.indexOf(window._bnCharPairFirst) !== -1)
+          ? window._bnCharPairFirst : activeCharKeys[0];
+        var secondKey = activeCharKeys.filter(function(k){ return k !== firstKey; })[0];
+        list.appendChild(buildCharacterRowEl(firstKey,  {otherKey:secondKey, isFirst:true}));
+        list.appendChild(buildCharacterRowEl(secondKey, {otherKey:firstKey,  isFirst:false}));
+
+        /* 商品照常全部列出(方便管理/移除)，但不會有人物插在中間。 */
+        zSorted.forEach(function(p){
+          list.appendChild(buildProductRowEl(p, zSorted, null));
+        });
+      } else {
+        var singleCharKey = activeCharKeys[0] || null;
+        for(var zi=0; zi<zSorted.length; zi++){
+          var p = zSorted[zi];
+          /* 人物圖只跟「目前最上層」的商品放在一起，方便一起調整上下層——
+             不再被「上傳人物圖」按鈕隔開。依 aboveMain 決定插在它前面或後面。 */
+          if(singleCharKey && zi === topIdxInZ && window[singleCharKey].aboveMain !== false){
+            list.appendChild(buildCharacterRowEl(singleCharKey, null));
+          }
+          var swapKeyForThis = (singleCharKey && zi === topIdxInZ) ? singleCharKey : null;
+          list.appendChild(buildProductRowEl(p, zSorted, swapKeyForThis));
+          if(singleCharKey && zi === topIdxInZ && window[singleCharKey].aboveMain === false){
+            list.appendChild(buildCharacterRowEl(singleCharKey, null));
+          }
         }
+      }
+      /* 沒有商品、但有人物圖（理論上少見，人物預設是跟主品綁在一起顯示）：
+         至少讓人物卡片還是看得到、能編輯/移除。兩個人物同時存在、且沒有商品時
+         已經在上面的分支處理過了，這裡只補「剛好只有 1 個人物、沒有商品」的情況。 */
+      if(!zSorted.length && activeCharKeys.length === 1){
+        list.appendChild(buildCharacterRowEl(activeCharKeys[0], null));
+      }
+    }
 
+    /* 建立單一商品的清單卡片列。抽成獨立函式是因為現在有兩種呼叫情境：
+       ①一般情況(0或1個人物)：商品可能需要跟人物比前後(swapKey 有值)
+       ②兩個人物都存在時：商品照常列出但不跟人物比前後(swapKey傳null)。 */
+    function buildProductRowEl(p, zSorted, swapKey){
         var row=document.createElement('div');row.className='bn-prod-item';
         row.style.flexWrap='wrap';row.style.gap='4px';
 
@@ -1862,31 +1983,29 @@
         /* 依目前 sorted 裡的順序決定能否移動。
            人物插進清單後，實際上是跟「目前最上層那件商品(sortedIdx===0)」相鄰，
            所以只有這件商品的上/下箭頭需要额外判斷「隔壁是不是人物」；
-           其他商品(sortedIdx>0)完全不受人物影響，維持原本商品之間互相交換的邏輯。 */
+           其他商品(sortedIdx>0)完全不受人物影響，維持原本商品之間互相交換的邏輯。
+           swapKey 是 null 時(沒有人物，或兩個人物都存在時)，就完全不用考慮跟人物交換。 */
         var sortedIdx = zSorted.indexOf(p);
         var isTopmost = sortedIdx === 0;
         var isBottommost = sortedIdx === zSorted.length - 1;
-        var hasChar = !!window._bnCharacter;
-        /* 人物目前在這件商品「前面」(清單上人物排在這件商品之前) */
-        var charIsAboveThis = hasChar && isTopmost && window._bnCharacter.aboveMain !== false;
-        /* 人物目前在這件商品「後面」(清單上人物排在這件商品之後) */
-        var charIsBelowThis = hasChar && isTopmost && window._bnCharacter.aboveMain === false;
+        var swapUpKey = (swapKey && isTopmost && window[swapKey].aboveMain !== false) ? swapKey : null;
+        var swapDownKey = (swapKey && isTopmost && window[swapKey].aboveMain === false) ? swapKey : null;
 
-        upBtn.disabled   = isTopmost && !charIsAboveThis;   /* 最上層商品，且沒有人物擋在前面可以交換，才鎖死 */
-        downBtn.disabled = isBottommost && !charIsBelowThis; /* 最下層商品，且沒有人物擋在後面可以交換，才鎖死 */
+        upBtn.disabled   = isTopmost && !swapUpKey;   /* 最上層商品，且沒有人物擋在前面可以交換，才鎖死 */
+        downBtn.disabled = isBottommost && !swapDownKey; /* 最下層商品，且沒有人物擋在後面可以交換，才鎖死 */
         upBtn.style.opacity   = upBtn.disabled   ? '0.3' : '1';
         downBtn.style.opacity = downBtn.disabled ? '0.3' : '1';
-        if(charIsAboveThis) upBtn.title   = '往前（跟人物交換，蓋過人物）';
-        if(charIsBelowThis) downBtn.title = '往後（把人物換到前面）';
+        if(swapUpKey) upBtn.title   = '往前（跟'+charSlotLabel(swapUpKey)+'交換，蓋過人物）';
+        if(swapDownKey) downBtn.title = '往後（把'+charSlotLabel(swapDownKey)+'換到前面）';
 
-        upBtn.addEventListener('click',(function(pid, si, swapWithChar){ return function(){
-          if(swapWithChar){
+        upBtn.addEventListener('click',(function(pid, si, swapKeyForClick){ return function(){
+          if(swapKeyForClick){
             /* 這件商品已經是商品裡最上層，唯一能再往前的對象就是人物——
-               直接把人物切到「退到後面」，效果等同這件商品蓋過人物。 */
-            if(!window._bnCharacter) return;
-            window._bnCharacter.aboveMain = false;
+               直接把該人物切到「退到後面」，效果等同這件商品蓋過人物。 */
+            if(!window[swapKeyForClick]) return;
+            window[swapKeyForClick].aboveMain = false;
             renderProdList();
-            if(typeof broadcastCharacter === 'function') broadcastCharacter();
+            broadcastCharacter(swapKeyForClick);
             markStateDirty();
             return;
           }
@@ -1898,16 +2017,16 @@
           renderProdList();
           broadcastZOrder();
           markStateDirty();
-        };})(p.id, sortedIdx, charIsAboveThis));
+        };})(p.id, sortedIdx, swapUpKey));
 
-        downBtn.addEventListener('click',(function(pid, si, swapWithChar){ return function(){
-          if(swapWithChar){
-            /* 人物目前在這件商品後面——把人物切到「在前面」，
+        downBtn.addEventListener('click',(function(pid, si, swapKeyForClick){ return function(){
+          if(swapKeyForClick){
+            /* 人物目前在這件商品後面——把該人物切到「在前面」，
                效果等同這件商品退到人物後面。 */
-            if(!window._bnCharacter) return;
-            window._bnCharacter.aboveMain = true;
+            if(!window[swapKeyForClick]) return;
+            window[swapKeyForClick].aboveMain = true;
             renderProdList();
-            if(typeof broadcastCharacter === 'function') broadcastCharacter();
+            broadcastCharacter(swapKeyForClick);
             markStateDirty();
             return;
           }
@@ -1919,23 +2038,13 @@
           renderProdList();
           broadcastZOrder();
           markStateDirty();
-        };})(p.id, sortedIdx, charIsBelowThis));
+        };})(p.id, sortedIdx, swapDownKey));
 
         moveWrap.appendChild(upBtn);
         moveWrap.appendChild(downBtn);
 
         row.appendChild(img);row.appendChild(infoWrap);row.appendChild(moveWrap);row.appendChild(editBtn);row.appendChild(rmBtn);
-        list.appendChild(row);
-
-        if(window._bnCharacter && zi === topIdxInZ && window._bnCharacter.aboveMain === false){
-          list.appendChild(buildCharacterRowEl());
-        }
-      }
-      /* 沒有商品、但有人物圖（理論上少見，人物預設是跟主品綁在一起顯示）：
-         至少讓人物卡片還是看得到、能編輯/移除。 */
-      if(!zSorted.length && window._bnCharacter){
-        list.appendChild(buildCharacterRowEl());
-      }
+        return row;
     }
 
 
@@ -2596,9 +2705,6 @@
     var origOnReady=window._bnOnIframeReady;
     window._bnOnIframeReady=function(id){
       if(origOnReady)origOnReady(id);
-      if(window._bnStateApplying){
-        broadcastTo(id,{type:'bn-restore-lock',token:window._bnRestoreToken||null});
-      }
       setTimeout(function(){
         if(window._bnLogos&&window._bnLogos.length){
           broadcastTo(id,{type:'bn-logos',logos:window._bnLogos});
@@ -2606,20 +2712,26 @@
           broadcastTo(id,{type:'bn-logo',dataUrl:window._bnLogoDataUrl});
         }
         /* 先送 product-add，再送 zorder */
-        window._bnProducts.forEach(function(p,idx){broadcastTo(id,{type:'bn-product-add',id:p.id,src:p.src,ratio:p.ratio,name:p.name,index:idx,sizeScale:p.sizeScale,position:p.position||0,zOrder:p.zOrder||0,layoutById:p.layouts||null,layout:p.layout||null,restoreExact:!!window._bnStateApplying});});
+        window._bnProducts.forEach(function(p,idx){broadcastTo(id,{type:'bn-product-add',id:p.id,src:p.src,ratio:p.ratio,name:p.name,index:idx,sizeScale:p.sizeScale,position:p.position||0,zOrder:p.zOrder||0,layoutById:p.layouts||null,layout:p.layout||null});});
         setTimeout(function(){
           var order=window._bnProducts.slice().sort(function(a,b){return (a.zOrder||0)-(b.zOrder||0);}).map(function(p){return p.id;});
           broadcastTo(id,{type:'bn-product-zorder',order:order});
         },100);
         /* 人物圖：新 iframe 就緒後也要補送，否則新開的版位預覽會看不到人物圖 */
-        if(window._bnCharacter){
-          broadcastTo(id,{type:'bn-character-add', id:window._bnCharacter.id, src:window._bnCharacter.src,
-            ratio:window._bnCharacter.ratio, layoutById:window._bnCharacter.layouts||null,
-            aboveMain: window._bnCharacter.aboveMain !== false, restoreExact:!!window._bnStateApplying});
-        }
+        ['_bnCharacter','_bnCharacter2'].forEach(function(slotKey){
+          var slot = window[slotKey];
+          if(slot){
+            broadcastTo(id,{type:'bn-character-add', slot:slotKey, id:slot.id, src:slot.src,
+              ratio:slot.ratio, layoutById:slot.layouts||null,
+              aboveMain: slot.aboveMain !== false});
+          }
+        });
         var zSortedReady = window._bnProducts.slice().sort(function(a,b){return (a.zOrder||0)-(b.zOrder||0);});
-        broadcastTo(id, {type:'bn-character-visibility', hasChar: !!window._bnCharacter,
-          topId: zSortedReady.length ? zSortedReady[0].id : null});
+        var maxVisibleReady = getMaxProductsVisible();
+        var visibleIdsReady = zSortedReady.slice(0, maxVisibleReady).map(function(p){return p.id;});
+        broadcastTo(id, {type:'bn-character-visibility', hasChar: getCharacterCount()>0,
+          maxVisible: maxVisibleReady, visibleIds: visibleIdsReady,
+          topId: visibleIdsReady.length ? visibleIdsReady[0] : null});
       },200);
     };
 
@@ -2639,23 +2751,6 @@
     };
     window._bnRenderProdList = function(){ renderProdList(); };
     window._bnRequestProductLayouts = requestProductLayouts;
-    window._bnBroadcastRestoreLock = function(token, locked){
-      broadcast({type: locked ? 'bn-restore-lock' : 'bn-restore-unlock', token: token || null});
-    };
-    window._bnForceApplyAssetLayouts = function(){
-      (window._bnProducts||[]).forEach(function(p){
-        var layouts=p.layouts||{};
-        Object.keys(layouts).forEach(function(id){
-          broadcastTo(id,{type:'bn-product-layout-apply',id:p.id,layout:layouts[id],restoreExact:true});
-        });
-      });
-      if(window._bnCharacter && window._bnCharacter.layouts){
-        Object.keys(window._bnCharacter.layouts).forEach(function(id){
-          broadcastTo(id,{type:'bn-character-layout-apply',id:window._bnCharacter.id,layout:window._bnCharacter.layouts[id],restoreExact:true});
-        });
-      }
-    };
-
     window._bnRebroadcastProducts = function(){
       var ids = (window._bnProducts||[]).map(function(p){ return p.id; });
       ids.forEach(function(id){ broadcast({type:'bn-product-remove', id:id}); });
@@ -2666,7 +2761,7 @@
         reordered.forEach(function(p, idx){
           broadcast({type:'bn-product-add', id:p.id, src:p.src, ratio:p.ratio,
             name:p.name, index:idx, sizeScale:p.sizeScale||1,
-            position:p.position||0, zOrder:p.zOrder||0, layoutById:p.layouts||null, layout:p.layout||null, restoreExact:!!window._bnStateApplying});
+            position:p.position||0, zOrder:p.zOrder||0, layoutById:p.layouts||null, layout:p.layout||null});
         });
         /* z-index */
         var order = (window._bnProducts||[]).slice().sort(function(a,b){

@@ -305,16 +305,13 @@ cursor:pointer;font-weight:600;box-shadow:0 4px 14px rgba(0,0,0,.35);
 }
 #manual-btn{right:18px;bottom:18px;}
 #feedback-btn{right:18px;top:54px;}
-#manual-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.78);
-z-index:100002;align-items:center;justify-content:center;padding:24px;}
+#manual-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);
+z-index:100002;align-items:center;justify-content:center;}
 #manual-modal.show{display:flex;}
-#manual-box{position:relative;width:min(92vw,1500px);height:92vh;background:#fff;border-radius:14px;
-overflow:hidden;box-shadow:0 20px 70px rgba(0,0,0,.42);}
-#manual-pdf{width:100%;height:100%;display:block;border:0;background:#f3f4f6;}
-#manual-close{position:absolute;right:12px;top:12px;width:38px;height:38px;z-index:2;
-border-radius:50%;border:1px solid #d0d7de;background:#fff;font-size:22px;cursor:pointer;
-box-shadow:0 3px 12px rgba(0,0,0,.24);}
-@media(max-width:700px){#manual-modal{padding:10px;}#manual-box{width:96vw;height:94vh;}}
+#manual-box{position:relative;max-width:95vw;max-height:95vh;}
+#manual-box img{max-width:95vw;max-height:95vh;display:block;border-radius:10px;}
+#manual-close{position:absolute;right:-10px;top:-10px;width:34px;height:34px;
+border-radius:50%;border:none;background:#fff;font-size:20px;cursor:pointer;}
 </style>
 
 </head>
@@ -419,10 +416,10 @@ box-shadow:0 3px 12px rgba(0,0,0,.24);}
           </div>
         </div>
         <div class="s-field-inline">
-          <label> Search ICON 文案</label>
+          <label>ICON文案</label>
           <div class="s-field-row">
             <input type="text" id="txt-icon" data-limit="2" placeholder="ICON文案" value="文案" oninput="broadcastText()">
-            <span class="char-count-badge" id="badge-ICON獨立文案"></span>
+            <span class="char-count-badge" id="badge-ICON獨立文案"></span><div class="color-dot" id="dot-iconTextMirror" title="ICON文案顏色（跟主標共用同一個顏色，改這裡主標也會一起變，改主標這裡也會跟著變）"></div>
           </div>
         </div>
 
@@ -912,15 +909,13 @@ function onIframeLoad(id) {
 }
 
 
-function bnCalcTextUnits(text, allowComma){
+function bnCalcTextUnits(text){
   var units=0, str=String(text||'');
-  for(var i=0;i<str.length;i++){
-    if(allowComma && str[i]===',') continue;
-    units += (str.charCodeAt(i)>0x2E7F) ? 1 : 0.5;
-  }
+  for(var i=0;i<str.length;i++) if(allowComma && str[i]===','){ continue; }
+      units += (str.charCodeAt(i)>0x2E7F) ? 1 : 0.5;
   return Math.round(units*10)/10;
 }
-function bnTrimTextToLimit(text, limit, allowComma){
+function bnTrimTextToLimit(text, limit){
   if(!limit || !isFinite(limit)) return String(text||'');
   var out='', sum=0, str=String(text||'');
   for(var i=0;i<str.length;i++){
@@ -984,9 +979,8 @@ window.addEventListener('message', function (e) {
           }
         }
         var limit = bnFieldLimitByInputId(inputId);
-        var allowCommaForField = inputId === 'txt-date';
-        if(limit && bnCalcTextUnits(rawVal, allowCommaForField) > limit){
-          rawVal = bnTrimTextToLimit(rawVal, limit, allowCommaForField);
+        if(limit && bnCalcTextUnits(rawVal) > limit){
+          rawVal = bnTrimTextToLimit(rawVal, limit);
         }
         if(inp.value !== rawVal){
           inp.value = rawVal;
@@ -1420,6 +1414,19 @@ function renderColorPickers() {
     }
   });
 
+  /* ICON文案的顏色色點：故意不建立新的 colorState key，直接共用 mainText，
+     這樣「跟主標一起變、改 ICON文案也會連動主標」這件事不需要額外寫
+     同步邏輯就自動成立——兩邊本來就是同一個值，不會有兩邊各自改、
+     忘記同步的問題。點下去開的也是同一個 mainText 顏色面板。 */
+  var iconDot = document.getElementById('dot-iconTextMirror');
+  if(iconDot){
+    iconDot.style.background = colorState.mainText;
+    if(!iconDot.dataset.bound){
+      iconDot.dataset.bound = '1';
+      iconDot.addEventListener('click', function(e){ openPanel('mainText', e); });
+    }
+  }
+
   /* 建快速色票（原有） */
   var sw = document.getElementById('cp-swatches');
   sw.innerHTML = '';
@@ -1515,6 +1522,12 @@ function applyColor(color) {
   /* 更新圓點（sidebar 和 inline 共用同一個 id） */
   var dot = document.getElementById('dot-' + cpActiveKey);
   if (dot) dot.style.background = color;
+
+  /* ICON文案色點是 mainText 的鏡射，改主標顏色時這顆也要跟著變 */
+  if (cpActiveKey === 'mainText') {
+    var iconDot = document.getElementById('dot-iconTextMirror');
+    if (iconDot) iconDot.style.background = color;
+  }
 
   /* 更新面板 hex input 和 native color picker */
   var hexInp = document.getElementById('cp-hex-input');
@@ -1815,7 +1828,9 @@ document.addEventListener('DOMContentLoaded',function(){
   function calcUnits(text, allowComma){
     var units=0, str=String(text||'');
     for(var i=0;i<str.length;i++){
-      if(allowComma && str[i]===','){ continue; }
+      /* 日期欄位原本只有半形逗號 , 不算字數，這次補上全形逗號 ，也一樣不算，
+         兩種逗號都可以自由輸入使用。 */
+      if(allowComma && (str[i]===','||str[i]==='，')){ continue; }
       units += (str.charCodeAt(i)>0x2E7F) ? 1 : 0.5;
     }
     return Math.round(units*10)/10;
@@ -1823,7 +1838,7 @@ document.addEventListener('DOMContentLoaded',function(){
   function trimToLimit(text, limit, allowComma){
     var out='', sum=0, str=String(text||'');
     for(var i=0;i<str.length;i++){
-      var w=(allowComma && str[i]===',') ? 0 : ((str.charCodeAt(i)>0x2E7F) ? 1 : 0.5);
+      var w=(allowComma && (str[i]===','||str[i]==='，')) ? 0 : ((str.charCodeAt(i)>0x2E7F) ? 1 : 0.5);
       if(sum+w>limit) break;
       out+=str[i]; sum+=w;
     }
@@ -1897,29 +1912,25 @@ document.addEventListener('DOMContentLoaded',function(){
 
 <div id="feedback-btn">📝 使用反饋表</div>
 <div id="manual-btn">📖 使用說明書</div>
-<div id="manual-modal" role="dialog" aria-modal="true" aria-label="JBP 編輯器使用說明書">
+<div id="manual-modal">
   <div id="manual-box">
-    <button id="manual-close" type="button" aria-label="關閉使用說明書">×</button>
-    <iframe id="manual-pdf" src="JBP編輯器使用說明書.pdf#view=FitH" title="JBP 編輯器使用說明書"></iframe>
+    <button id="manual-close">×</button>
+    <img src="使用說明書.png" alt="使用說明書">
   </div>
 </div>
 
 <script>
 document.addEventListener("DOMContentLoaded",function(){
  const m=document.getElementById("manual-modal");
- const closeManual=function(){m.classList.remove("show");};
  document.getElementById("manual-btn").onclick=function(){m.classList.add("show");};
- document.getElementById("manual-close").onclick=closeManual;
- m.onclick=function(e){if(e.target===m)closeManual();};
- document.addEventListener("keydown",function(e){
-   if(e.key==="Escape"&&m.classList.contains("show"))closeManual();
- });
-
+ document.getElementById("manual-close").onclick=function(){m.classList.remove("show");};
+ m.onclick=function(e){if(e.target===m)m.classList.remove("show");};
+ document.getElementById("feedback-btn").onclick=function(){
+   window.open("https://docs.google.com/spreadsheets/d/1uCciWBKAqEDsAY3qeCqbYfLSrE7LshGo0L2pGdX0Zys/edit?gid=1634192695#gid=1634192695","_blank");
+ };
 });
 </script>
 
-<script src="js/feedback-config.js"></script>
-<script src="js/feedback-plugin.js"></script>
 </body>
 
 </html>
