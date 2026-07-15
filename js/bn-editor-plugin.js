@@ -652,11 +652,28 @@
       }
       broadcastCharacterVisibility();
     }
+    /* 兩個人物都存在時，誰在前面(蓋住誰)明確告知畫布——之前「往上/往下」
+       交換順序的按鈕，只有更新面板自己的 _bnCharPairFirst 狀態、重繪清單，
+       完全沒有通知畫布要重新排前後順序，導致面板上看起來換了，但畫布上
+       兩個人物的疊層順序其實根本沒有變。這裡把這個資訊也廣播出去，
+       畫布收到後才會真的調整兩個人物的 z-index。
+       只有兩個人物都存在時這則訊息才有意義；0或1個人物時 pairFirst 傳 null，
+       畫布端會用回原本「跟商品比前後」的邏輯。 */
+    function broadcastCharacterPairOrder(){
+      var activeCharKeys = ['_bnCharacter','_bnCharacter2'].filter(function(k){ return window[k]; });
+      var pairFirst = null;
+      if(activeCharKeys.length === 2){
+        pairFirst = (window._bnCharPairFirst && activeCharKeys.indexOf(window._bnCharPairFirst) !== -1)
+          ? window._bnCharPairFirst : activeCharKeys[0];
+      }
+      broadcast({type:'bn-character-pair-order', pairFirst: pairFirst});
+    }
     /* 有人物圖時，商品最多只顯示「目前最上層（z-order 排序最前面）」的幾件；
        規則：0張人物->最多3件(全開)，1張人物->最多2件，2張人物->完全不顯示。
        這件事完全由面板端決定並明確告知每個 iframe（用商品 id 清單，不用 position），
        不讓 iframe 自己用 DOM z-index 猜。
-       renderProdList() 每次重繪清單時都會呼叫這個函式，商品新增/移除/排序都會涵蓋到。 */
+       renderProdList() 每次重繪清單時都會呼叫這個函式，商品新增/移除/排序都會涵蓋到，
+       兩個人物前後順序也一併在這裡廣播，確保跟可見度同步更新、不會漏送。 */
     function broadcastCharacterVisibility(zSortedIn){
       var zSorted = zSortedIn || window._bnProducts.slice().sort(function(a,b){ return (a.zOrder||0)-(b.zOrder||0); });
       var maxVisible = getMaxProductsVisible();
@@ -664,6 +681,7 @@
       broadcast({type:'bn-character-visibility', hasChar: getCharacterCount()>0, maxVisible:maxVisible, visibleIds:visibleIds,
         /* 向下相容：topId 給還沒更新的舊版 layout-runtime.js 當備援 */
         topId: visibleIds.length ? visibleIds[0] : null});
+      broadcastCharacterPairOrder();
     }
     /* 只換圖片內容（去背/裁切/擦除/影子編輯完成後用），完全不動人物圖目前的
        位置/大小/上下層——避免像 bn-character-add 那樣整個重建造成畫面閃跳。 */
@@ -2732,6 +2750,14 @@
         broadcastTo(id, {type:'bn-character-visibility', hasChar: getCharacterCount()>0,
           maxVisible: maxVisibleReady, visibleIds: visibleIdsReady,
           topId: visibleIdsReady.length ? visibleIdsReady[0] : null});
+        /* 兩個人物的前後順序也要補送給新就緒的 iframe */
+        var activeCharKeysReady = ['_bnCharacter','_bnCharacter2'].filter(function(k){ return window[k]; });
+        var pairFirstReady = null;
+        if(activeCharKeysReady.length === 2){
+          pairFirstReady = (window._bnCharPairFirst && activeCharKeysReady.indexOf(window._bnCharPairFirst) !== -1)
+            ? window._bnCharPairFirst : activeCharKeysReady[0];
+        }
+        broadcastTo(id, {type:'bn-character-pair-order', pairFirst: pairFirstReady});
       },200);
     };
 

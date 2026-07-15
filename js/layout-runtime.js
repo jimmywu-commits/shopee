@@ -964,6 +964,16 @@
       applyCharacterVisibility(pzoneVis, e.data.visibleIds);
     }
 
+    /* 兩個人物都存在時，面板端告知誰排在前面(蓋住另一個)。
+       之前只更新面板自己的清單顯示，完全沒有送這則訊息給畫布，
+       導致面板上看起來順序換了，畫布上兩個人物實際疊層卻沒有跟著變——
+       這裡收到後重新套用一次 z-index，確保畫布跟面板呈現一致。 */
+    if (e.data.type === 'bn-character-pair-order') {
+      if(_bnCharExcludedTemplate) return;
+      _bnCharPairFirst = e.data.pairFirst || null;
+      applyCharacterZIndex();
+    }
+
     /* 人物圖新增/更新：
        - 掛在 #canvas 底下（不是商品範圍底下），所以可拖曳/放大到超出商品範圍。
        - #canvas 本身有 overflow:hidden，超出畫布的部分預覽時會自動裁掉，
@@ -1485,7 +1495,12 @@
      true＝人物在該商品前面（蓋住它），false＝人物在該商品後面（被蓋住）。
      現在最多可以有 2 個人物，各自的 aboveMain 狀態存在各自的 box
      dataset 上（data-above-main），不再共用同一個全域變數，
-     否則兩個人物的前後狀態會互相覆蓋。 */
+     否則兩個人物的前後狀態會互相覆蓋。
+     _bnCharPairFirst：兩個人物都存在時，面板端告知「誰排在前面」
+     （data-slot 值，'_bnCharacter' 或 '_bnCharacter2'）——這時候兩個
+     人物是互相比前後，不是各自跟商品比，商品這時候也完全不顯示。 */
+  var _bnCharPairFirst = null;
+
   function applyCharacterZIndex(){
     var pzone = getProductZone();
     var canvasEl = document.getElementById('canvas');
@@ -1498,8 +1513,23 @@
        這些問題完全不會影響到商品彼此之間的疊層，人物現在跟商品「同一國」，
        自然也不會再被影響。商品目前用到的 z-index 數字最高大概在 20 出頭
        （zorder 公式 total-i+10，total 最多 3），用 1000／0 保證一定在最前面
-       或最後面，不會跟任何商品的數字混在一起。兩個人物如果剛好都在前面
-       （或都在後面），彼此之間的前後順序就交給 DOM 順序決定，不特別處理。 */
+       或最後面，不會跟任何商品的數字混在一起。 */
+    if(charBoxes.length >= 2 && _bnCharPairFirst){
+      /* 兩個人物都存在：面板端明確告知誰排前面，這裡給「前面」的人物
+         比較高的 z-index(1001)，確保一定蓋過排在後面的人物(1000)——
+         不再看各自的 aboveMain，那個欄位這時候是跟商品比較用的，
+         商品這時候完全不顯示，比不出意義，繼續用它只會維持任意的
+         DOM順序，跟使用者按的「往前/往後」箭頭對不起來。 */
+      charBoxes.forEach(function(charBox){
+        var isFirst = charBox.dataset.slot === _bnCharPairFirst;
+        charBox.style.zIndex = isFirst ? '1001' : '1000';
+        if(window.console && window.console.debug){
+          console.debug('[bn-character]', charBox.dataset.slot, '配對模式 isFirst=', isFirst,
+            'applied z-index=', charBox.style.zIndex);
+        }
+      });
+      return;
+    }
     charBoxes.forEach(function(charBox){
       var aboveMain = charBox.dataset.aboveMain !== '0';
       charBox.style.zIndex = aboveMain ? '1000' : '0';
