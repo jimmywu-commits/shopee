@@ -93,34 +93,63 @@
 
   function _bnWaitUntilCanvasStable(canvas, strict) {
     if (!canvas) return Promise.resolve();
-    var textEl = null;
+    var textEls = [];
     if (strict) {
-      if (/searchicon_text/i.test(fname)) textEl = canvas.querySelector('.ICON獨立文案');
-      else textEl = canvas.querySelector('.副標案型七字內');
+      if (/searchicon_text/i.test(fname)) {
+        var iconText = canvas.querySelector('.ICON獨立文案');
+        if (iconText) textEls.push(iconText);
+      }
+      if (/search_image1/i.test(fname)) {
+        var subtitle = canvas.querySelector('.副標案型七字內');
+        if (subtitle) textEls.push(subtitle);
+      }
+      /* Search_Image1/2/3 共用的「官方旗艦店」也必須等實際字型與文字盒穩定。
+         否則重新整理後立刻下載時，html2canvas 可能用 fallback baseline，
+         造成下載結果與前端上下位置不同。 */
+      if (/search_image[123]/i.test(fname)) {
+        var official = canvas.querySelector('.官方旗艦店');
+        if (official) textEls.push(official);
+      }
+      /* Coin 方／橫 LOGO 的 CTA 在多張 ZIP 流程中會於輪到該 iframe 時
+         重新收到文字與顏色同步。原本穩定等待沒有監控「逛逛去」，只靠父層
+         固定 260ms 就立刻截圖，容易抓到 transform 與字型尚未完成最後排版的
+         中間狀態。把 CTA 納入實際字型與文字盒穩定檢查。 */
+      if (/coin[_-]?pagebn[_-]?app/i.test(fname) || /coin.*pagebn.*app/i.test(fname)) {
+        var coinCta = canvas.querySelector('.逛逛去');
+        if (coinCta) textEls.push(coinCta);
+      }
     }
-    var fontPromise = Promise.resolve();
-    if (textEl && document.fonts && typeof document.fonts.load === 'function') {
+    var fontPromises = textEls.map(function(textEl){
+      if (!(document.fonts && typeof document.fonts.load === 'function')) return Promise.resolve();
       var cs = getComputedStyle(textEl);
       var spec = (cs.fontStyle || 'normal') + ' ' + (cs.fontWeight || '700') + ' ' +
                  (cs.fontSize || '60px') + ' ' + (cs.fontFamily || 'sans-serif');
-      try { fontPromise = document.fonts.load(spec, textEl.textContent || '副標'); } catch(_) {}
-    }
+      try { return document.fonts.load(spec, textEl.textContent || '文字'); }
+      catch(_) { return Promise.resolve(); }
+    });
     var imgs = Array.prototype.slice.call(canvas.querySelectorAll('img')).map(_bnWaitImg);
     var bgs = _bnCssBgUrls(canvas).map(_bnWaitCssBg);
-    return _bnWaitWithTimeout(Promise.all([fontPromise].concat(imgs, bgs)), strict ? 10000 : 3500)
+    return _bnWaitWithTimeout(Promise.all(fontPromises.concat(imgs, bgs)), strict ? 10000 : 3500)
       .then(_bnNextFrame)
       .then(function(){
-        if (!textEl) return;
+        if (!textEls.length) return;
         /* 預設文字也強制重建文字節點，讓它與手動編輯後走相同瀏覽器排版路徑。 */
-        var t = textEl.textContent || '';
-        textEl.replaceChildren(document.createTextNode(t));
-        void textEl.offsetHeight;
-        return _bnWaitForStableElement(textEl, 10, 10000, window._siRelayout);
+        textEls.forEach(function(textEl){
+          var t = textEl.textContent || '';
+          textEl.replaceChildren(document.createTextNode(t));
+          void textEl.offsetHeight;
+        });
+        return Promise.all(textEls.map(function(textEl){
+          var relayout = textEl.classList.contains('副標案型七字內') ? window._siRelayout : null;
+          return _bnWaitForStableElement(textEl, 10, 10000, relayout);
+        }));
       });
   }
   window._bnWaitUntilCanvasStable = function(){
     var cv = document.getElementById('canvas');
-    return _bnWaitUntilCanvasStable(cv, /search_image1/i.test(fname) || /searchicon_text/i.test(fname));
+    var strictReady = /search_image[123]/i.test(fname) || /searchicon_text/i.test(fname) ||
+      /coin[_-]?pagebn[_-]?app/i.test(fname) || /coin.*pagebn.*app/i.test(fname);
+    return _bnWaitUntilCanvasStable(cv, strictReady);
   };
 
   function loadCSS(href, cb) {
@@ -1485,7 +1514,7 @@
           'transform', 'whiteSpace', 'lineHeight', 'fontSize', 'fontWeight',
           'fontFamily', 'color', 'overflow', 'display', 'borderRadius', 'textAlign'
         ];
-        ['.副標案型七字內', '.ICON獨立文案'].forEach(function(sel){
+        ['.副標案型七字內', '.ICON獨立文案', '.官方旗艦店'].forEach(function(sel){
           _cv.querySelectorAll(sel).forEach(function(el){
             var cs = window.getComputedStyle(el);
             _textStyleFixEls.push({el:el, cssText:el.style.cssText});
@@ -2410,15 +2439,91 @@
     var overlay = document.getElementById('_bn_bg_overlay');
     if(overlay) overlay.style.display = 'none';
 
-    /* Search_Image1logo 副標與 SearchICON_TEXT 文案都不交給 html2canvas
-       重新計算字型 baseline。先記錄前端實際位置與字型，截圖時隱藏，
-       最後用 Canvas 文字度量畫回完全相同的位置。 */
+    /* Search_Image1logo 副標、SearchICON_TEXT 文案，以及 Coin_pageBN_APP
+       方／橫 LOGO 的 CTA「逛逛去」，都不交給 html2canvas 重新計算字型
+       baseline。Coin CTA 原始 CSS 還帶有約 0.8088 的 transform 縮放，
+       html2canvas 在複製 DOM 時容易以未縮放字級重算基線，造成下載結果
+       明顯下移。這裡直接量取前端實際 bounding box，並將 transform 的
+       scale 納入實際字級與字距後，再畫回輸出 Canvas。 */
     var manualTexts = [];
     var manualEls = [];
     if(/search_image1/i.test(fname)) manualEls.push(cv.querySelector('.副標案型七字內'));
+    if(/search_image[123]/i.test(fname)) manualEls.push(cv.querySelector('.官方旗艦店'));
     if(/searchicon_text/i.test(fname)) manualEls.push(cv.querySelector('.ICON獨立文案'));
+    if(/coin[_-]?pagebn[_-]?app/i.test(fname) || /coin.*pagebn.*app/i.test(fname)) {
+      manualEls.push(cv.querySelector('.逛逛去'));
+    }
+
+    function getTransformScale(cs){
+      var sx = 1, sy = 1;
+      var tf = (cs && cs.transform) || 'none';
+      var m2 = tf.match(/^matrix\(([^)]+)\)$/);
+      var m3 = tf.match(/^matrix3d\(([^)]+)\)$/);
+      if(m2){
+        var a = m2[1].split(',').map(parseFloat);
+        if(a.length >= 4){
+          sx = Math.sqrt((a[0]||0)*(a[0]||0) + (a[1]||0)*(a[1]||0)) || 1;
+          sy = Math.sqrt((a[2]||0)*(a[2]||0) + (a[3]||0)*(a[3]||0)) || 1;
+        }
+      }else if(m3){
+        var b = m3[1].split(',').map(parseFloat);
+        if(b.length >= 16){
+          sx = Math.sqrt((b[0]||0)*(b[0]||0) + (b[1]||0)*(b[1]||0) + (b[2]||0)*(b[2]||0)) || 1;
+          sy = Math.sqrt((b[4]||0)*(b[4]||0) + (b[5]||0)*(b[5]||0) + (b[6]||0)*(b[6]||0)) || 1;
+        }
+      }
+      return {x:sx, y:sy};
+    }
+
+    /* 量取瀏覽器真正使用的文字 baseline，而不是用 glyph 上下界猜置中。
+       尤其 Coin CTA 有 transform scale，canvas measureText 的 ink box 中心並不等於
+       CSS line box 的 baseline；ZIP 連續截圖時差異會更明顯。 */
+    function measureDomBaselineOffset(el, cs){
+      try{
+        var probe = document.createElement('div');
+        probe.style.cssText = [
+          'position:fixed','left:-10000px','top:-10000px','visibility:hidden',
+          'pointer-events:none','margin:0','border:0',
+          /* baseline 必須沿用原文字盒的完整盒模型。SearchICON_TEXT 依靠
+             padding:15px 8px + line-height:90px 在 120px 圓形內垂直置中；
+             舊版把 padding 清成 0，手動畫回時就會固定少算上方 15px，
+             因而比前端明顯往上浮。 */
+          'box-sizing:'+cs.boxSizing,
+          'width:'+cs.width,
+          'height:'+cs.height,
+          'padding-top:'+cs.paddingTop,
+          'padding-right:'+cs.paddingRight,
+          'padding-bottom:'+cs.paddingBottom,
+          'padding-left:'+cs.paddingLeft,
+          'white-space:'+cs.whiteSpace,
+          'overflow:hidden',
+          'transform:none','transform-origin:0 0','display:block',
+          'font-family:'+cs.fontFamily,
+          'font-size:'+cs.fontSize,
+          'font-style:'+cs.fontStyle,
+          'font-weight:'+cs.fontWeight,
+          'line-height:'+cs.lineHeight,
+          'letter-spacing:'+cs.letterSpacing,
+          'text-align:'+cs.textAlign
+        ].join(';');
+        probe.appendChild(document.createTextNode(el.textContent || ''));
+        var marker = document.createElement('span');
+        marker.style.cssText='display:inline-block;width:0;height:0;padding:0;margin:0;border:0;vertical-align:baseline;';
+        probe.appendChild(marker);
+        document.body.appendChild(probe);
+        var pr = probe.getBoundingClientRect();
+        var mr = marker.getBoundingClientRect();
+        var off = mr.top - pr.top;
+        probe.remove();
+        return isFinite(off) ? off : null;
+      }catch(_){ return null; }
+    }
+
     manualEls.filter(Boolean).forEach(function(manualEl){
       var cr = cv.getBoundingClientRect(), tr = manualEl.getBoundingClientRect(), tcs = getComputedStyle(manualEl);
+      var ts = getTransformScale(tcs);
+      var baseFontSize = parseFloat(tcs.fontSize) || 60.08;
+      var baseLetterSpacing = parseFloat(tcs.letterSpacing) || 0;
       manualTexts.push({
         el: manualEl,
         text: manualEl.textContent || '',
@@ -2428,11 +2533,17 @@
         height: tr.height / scale,
         fontStyle: tcs.fontStyle || 'normal',
         fontWeight: tcs.fontWeight || '700',
-        fontSize: parseFloat(tcs.fontSize) || 60.08,
+        /* bounding box 已包含元素 transform；手動畫回時也必須使用縮放後字級。 */
+        fontSize: baseFontSize * ts.y,
         fontFamily: tcs.fontFamily || 'sans-serif',
         color: tcs.color || '#000',
-        letterSpacing: parseFloat(tcs.letterSpacing) || 0,
+        letterSpacing: baseLetterSpacing * ts.x,
         textAlign: tcs.textAlign || 'left',
+        /* DOM baseline offset 是未 transform 前的 CSS px，畫回時乘上實際 Y scale。 */
+        baselineOffset: (function(){
+          var off = measureDomBaselineOffset(manualEl, tcs);
+          return off === null ? null : off * ts.y;
+        })(),
         visibility: manualEl.style.visibility
       });
       manualEl.style.visibility = 'hidden';
@@ -2463,7 +2574,9 @@
             var mt = ctx.measureText(manualText.text);
             var asc = mt.actualBoundingBoxAscent || manualText.fontSize * 0.8;
             var desc = mt.actualBoundingBoxDescent || manualText.fontSize * 0.2;
-            var baseline = manualText.y + (manualText.height + asc - desc) / 2;
+            var baseline = manualText.baselineOffset !== null
+              ? manualText.y + manualText.baselineOffset
+              : manualText.y + (manualText.height + asc - desc) / 2;
             var startX = manualText.x;
             var measured = mt.width + Math.max(0, Array.from(manualText.text).length - 1) * manualText.letterSpacing;
             if(manualText.textAlign === 'center') startX += (manualText.width - measured) / 2;
