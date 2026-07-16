@@ -846,7 +846,7 @@
         var defaults = {
           'txt-brand': '品牌名不放圖$9字折內',
           'txt-main':  '滿$200享9折',
-          'txt-sub':   '副標$500折起',
+          'txt-sub':   '副標$500起',
           'txt-date':  '5/18 12:00 - 5/25 11:59 期間限定'
         };
         Object.keys(defaults).forEach(function(id){

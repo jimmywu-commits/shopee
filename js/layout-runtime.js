@@ -8,6 +8,120 @@
 (function () {
   var urlId = parseInt(new URLSearchParams(location.search).get('bnid')) || 0;
   var fname = decodeURIComponent(location.pathname.split('/').pop().replace(/\.html$/i, ''));
+  var _bnReadySent = false;
+
+  function _bnPostReadyOnce(W, H) {
+    if (_bnReadySent || window.parent === window || !urlId) return;
+    _bnReadySent = true;
+    window.parent.postMessage({type:'bn-iframe-ready',id:urlId,w:W,h:H},'*');
+  }
+
+  function _bnNextFrame() {
+    return new Promise(function(resolve){ requestAnimationFrame(function(){ requestAnimationFrame(resolve); }); });
+  }
+
+  function _bnWaitWithTimeout(promise, ms) {
+    return Promise.race([
+      Promise.resolve(promise).catch(function(){}),
+      new Promise(function(resolve){ setTimeout(resolve, ms); })
+    ]);
+  }
+
+  function _bnWaitImg(img) {
+    if (!img || !img.src || img.style.display === 'none') return Promise.resolve();
+    if (img.complete && img.naturalWidth > 0) {
+      if (typeof img.decode === 'function') return _bnWaitWithTimeout(img.decode(), 2500);
+      return Promise.resolve();
+    }
+    return _bnWaitWithTimeout(new Promise(function(resolve){
+      var done = function(){ resolve(); };
+      img.addEventListener('load', done, {once:true});
+      img.addEventListener('error', done, {once:true});
+    }), 3000);
+  }
+
+  function _bnCssBgUrls(root) {
+    var urls = [], seen = {};
+    if (!root) return urls;
+    [root].concat(Array.prototype.slice.call(root.querySelectorAll('*'))).forEach(function(el){
+      var bg = '';
+      try { bg = getComputedStyle(el).backgroundImage || ''; } catch(_) {}
+      var re = /url\(["']?([^"')]+)["']?\)/g, m;
+      while ((m = re.exec(bg))) {
+        var u = m[1];
+        if (u && u !== 'none' && !seen[u]) { seen[u] = true; urls.push(u); }
+      }
+    });
+    return urls;
+  }
+
+  function _bnWaitCssBg(url) {
+    if (!url) return Promise.resolve();
+    return _bnWaitWithTimeout(new Promise(function(resolve){
+      var img = new Image();
+      img.onload = img.onerror = resolve;
+      try { img.crossOrigin = 'anonymous'; } catch(_) {}
+      img.src = url;
+      if (img.complete) resolve();
+    }), 3000);
+  }
+
+  function _bnMetricSignature(el) {
+    if (!el) return '';
+    var r = el.getBoundingClientRect(), cs = getComputedStyle(el);
+    return [
+      r.left.toFixed(3), r.top.toFixed(3), r.width.toFixed(3), r.height.toFixed(3),
+      cs.fontFamily, cs.fontSize, cs.fontWeight, cs.lineHeight, cs.letterSpacing,
+      cs.transform, el.scrollWidth, el.scrollHeight, el.textContent
+    ].join('|');
+  }
+
+  function _bnWaitForStableElement(el, stableFrames, timeoutMs, relayout) {
+    stableFrames = stableFrames || 8; timeoutMs = timeoutMs || 9000;
+    return new Promise(function(resolve){
+      var started = performance.now(), last = '', stable = 0;
+      function step(){
+        try { if (typeof relayout === 'function') relayout(); } catch(_) {}
+        var sig = _bnMetricSignature(el);
+        if (sig && sig === last) stable++; else { stable = 0; last = sig; }
+        if (stable >= stableFrames || performance.now() - started >= timeoutMs) { resolve(); return; }
+        requestAnimationFrame(step);
+      }
+      requestAnimationFrame(step);
+    });
+  }
+
+  function _bnWaitUntilCanvasStable(canvas, strict) {
+    if (!canvas) return Promise.resolve();
+    var textEl = null;
+    if (strict) {
+      if (/searchicon_text/i.test(fname)) textEl = canvas.querySelector('.ICON獨立文案');
+      else textEl = canvas.querySelector('.副標案型七字內');
+    }
+    var fontPromise = Promise.resolve();
+    if (textEl && document.fonts && typeof document.fonts.load === 'function') {
+      var cs = getComputedStyle(textEl);
+      var spec = (cs.fontStyle || 'normal') + ' ' + (cs.fontWeight || '700') + ' ' +
+                 (cs.fontSize || '60px') + ' ' + (cs.fontFamily || 'sans-serif');
+      try { fontPromise = document.fonts.load(spec, textEl.textContent || '副標'); } catch(_) {}
+    }
+    var imgs = Array.prototype.slice.call(canvas.querySelectorAll('img')).map(_bnWaitImg);
+    var bgs = _bnCssBgUrls(canvas).map(_bnWaitCssBg);
+    return _bnWaitWithTimeout(Promise.all([fontPromise].concat(imgs, bgs)), strict ? 10000 : 3500)
+      .then(_bnNextFrame)
+      .then(function(){
+        if (!textEl) return;
+        /* 預設文字也強制重建文字節點，讓它與手動編輯後走相同瀏覽器排版路徑。 */
+        var t = textEl.textContent || '';
+        textEl.replaceChildren(document.createTextNode(t));
+        void textEl.offsetHeight;
+        return _bnWaitForStableElement(textEl, 10, 10000, window._siRelayout);
+      });
+  }
+  window._bnWaitUntilCanvasStable = function(){
+    var cv = document.getElementById('canvas');
+    return _bnWaitUntilCanvasStable(cv, /search_image1/i.test(fname) || /searchicon_text/i.test(fname));
+  };
 
   function loadCSS(href, cb) {
     var l = document.createElement('link');
@@ -149,8 +263,7 @@
     }
     window.addEventListener('resize', fit);
     fit();
-    if (window.parent !== window && urlId)
-      window.parent.postMessage({type:'bn-iframe-ready',id:urlId,w:W,h:H},'*');
+    /* 不在這裡太早回報 ready。Search_Image1logo 必須等字型、背景、圖片與副標排版穩定後才回報。 */
 
     /* 掛標：自動依目前版位檔名讀 html/img/tag/版位名_r 或 _w，預設紅色。
        修正版：同時建立紅/白兩張疊圖，切換時只控制 display，避免 iframe postMessage 時機與瀏覽器快取造成不切換。 */
@@ -518,21 +631,44 @@
           _siText.style.top = ((_siCanvasH - visTextH) / 2) + 'px';
         }
 
-        /* 等字型載完再算位置，避免 fallback 字型造成 scrollWidth 偏差 */
+        /* Search_Image1logo 只有「副標案型七字內」這一個主要文案。
+           清快取後第一次下載和編輯後不同，是因為第一次可能用 fallback 字型
+           量 scrollWidth；編輯後又重排一次才正常。初始化、文字更新與下載前
+           全部改走同一條流程：載入目前副標字形 -> 兩個 rAF -> siLayout。 */
         window._siRelayout = siLayout;
-        function runSiLayout() {
-          if (document.fonts && document.fonts.ready) {
-            document.fonts.ready.then(function() {
-              siLayout();
-            });
-          } else {
-            /* 不支援 document.fonts：延遲兩幀保守等待 */
-            requestAnimationFrame(function(){
-              requestAnimationFrame(siLayout);
-            });
+        var _siPrepareSeq = 0;
+        function prepareSiLayout(){
+          var seq = ++_siPrepareSeq;
+          var text = String(_siText.textContent || '');
+          var cs = window.getComputedStyle(_siText);
+          var fontSpec = (cs.fontWeight || '700') + ' ' +
+                         (cs.fontSize || '60.08px') + ' ' +
+                         (cs.fontFamily || '"ShopeeNotoSans (content)"');
+          var fontPromise = Promise.resolve();
+          if(document.fonts && typeof document.fonts.load === 'function'){
+            try{ fontPromise = document.fonts.load(fontSpec, text); }
+            catch(_){ fontPromise = document.fonts.ready || Promise.resolve(); }
+          }else if(document.fonts && document.fonts.ready){
+            fontPromise = document.fonts.ready;
           }
+          return Promise.resolve(fontPromise).catch(function(){}).then(function(){
+            return new Promise(function(resolve){
+              requestAnimationFrame(function(){
+                requestAnimationFrame(function(){
+                  if(seq === _siPrepareSeq) siLayout();
+                  resolve();
+                });
+              });
+            });
+          });
         }
-        runSiLayout();
+        window._siPrepareForCapture = prepareSiLayout;
+        prepareSiLayout();
+        setTimeout(prepareSiLayout, 120);
+        setTimeout(prepareSiLayout, 500);
+        if(document.fonts && typeof document.fonts.addEventListener === 'function'){
+          document.fonts.addEventListener('loadingdone', prepareSiLayout);
+        }
       }
     } /* end search_image */
 
@@ -556,6 +692,11 @@
 
     /* 啟用畫布文字直接編輯 */
     attachEditableToAll();
+
+    /* 真正 ready：一般版位等基本資產；Search_Image1logo 額外等副標字型與幾何位置連續穩定。 */
+    _bnWaitUntilCanvasStable(canvas, /search_image1/i.test(fname) || /searchicon_text/i.test(fname))
+      .then(function(){ _bnPostReadyOnce(W, H); })
+      .catch(function(){ _bnPostReadyOnce(W, H); });
   }
 
   window.addEventListener('message', function(e) {
@@ -575,12 +716,10 @@
           var siEl = document.querySelector('.副標案型七字內');
           if(siEl && !siEl.children.length) {
             siEl.textContent = d[cls];
-            if(typeof window._siRelayout === 'function'){
-              if(document.fonts && document.fonts.ready){
-                document.fonts.ready.then(function(){ window._siRelayout(); });
-              } else {
-                setTimeout(window._siRelayout, 150);
-              }
+            if(typeof window._siPrepareForCapture === 'function'){
+              window._siPrepareForCapture();
+            }else if(typeof window._siRelayout === 'function'){
+              setTimeout(window._siRelayout, 0);
             }
           }
         }
@@ -1360,27 +1499,9 @@
         });
       }
 
-      /* 上面的樣式烘焙解決了「意外換行、整段往下掉」的問題，但 Search_Image1logo
-         這裡拿掉 transform 之後，html2canvas 對這個元素的實際擷取位置，
-         跟瀏覽器活生生渲染出來的位置，還是有一個小落差（這次量到的方向是
-         往上飄，比畫布上看到的位置還高）——這是 html2canvas 本身處理
-         「原本有 transform、現在被移除」這種元素時的既有落差，不是樣式
-         疊加的問題，兩者要分開處理，不能只做其中一個。
-         這裡在樣式烘焙之後，額外針對這個元素量一次目前的 top，
-         往下微調一個固定量做位置補償。如果之後測試發現落差數字跑掉，
-         只需要調整 SEARCH_IMAGE1_SUBTITLE_OFFSET 這個數字即可。 */
-      var SEARCH_IMAGE1_SUBTITLE_OFFSET = 14;
+      /* 不再對 Search_Image1logo 副標套固定 +14px / -14px 補償。
+         最終位置只採用字型完成後 siLayout() 在前端算出的 left/top。 */
       var _captureAdjustEls = [];
-      var _fnameLower = (fname || '').toLowerCase();
-      if(_fnameLower.indexOf('search_image1') !== -1 && _cv){
-        _cv.querySelectorAll('.副標案型七字內').forEach(function(el){
-          var oldTop = el.style.top || '';
-          var oldPriority = el.style.getPropertyPriority('top') || '';
-          var currentTop = parseFloat(window.getComputedStyle(el).top) || 0;
-          _captureAdjustEls.push({el:el, top:oldTop, priority:oldPriority});
-          el.style.setProperty('top', (currentTop + SEARCH_IMAGE1_SUBTITLE_OFFSET) + 'px', 'important');
-        });
-      }
 
       captureCanvas(function(dataUrl){
         _editEls.forEach(function(o){ o.el.style.display = o.disp; });
@@ -1403,11 +1524,17 @@
          只是這兩個版位的文字框比較窄、字數限制抓得比較剛好，換行機率才特別高。
          這裡改成截圖前先確定字型完全就緒再截圖，從根本解決，不用再逐一針對
          每個版位加減固定位移這種治標的做法。 */
-      if(document.fonts && document.fonts.ready){
-        document.fonts.ready.then(_doCaptureNow).catch(_doCaptureNow);
-      } else {
-        _doCaptureNow();
+      /* Search_Image1logo 下載前，強制走與編輯後相同的副標排版流程。 */
+      var _prepare = Promise.resolve();
+      if(typeof window._siPrepareForCapture === 'function') {
+        _prepare = _prepare.then(function(){ return window._siPrepareForCapture(); });
       }
+      if(typeof window._bnWaitUntilCanvasStable === 'function') {
+        _prepare = _prepare.then(function(){ return window._bnWaitUntilCanvasStable(); });
+      } else if(document.fonts && document.fonts.ready) {
+        _prepare = _prepare.then(function(){ return document.fonts.ready; });
+      }
+      _prepare.then(_doCaptureNow).catch(_doCaptureNow);
     }
   });
 
@@ -2283,6 +2410,34 @@
     var overlay = document.getElementById('_bn_bg_overlay');
     if(overlay) overlay.style.display = 'none';
 
+    /* Search_Image1logo 副標與 SearchICON_TEXT 文案都不交給 html2canvas
+       重新計算字型 baseline。先記錄前端實際位置與字型，截圖時隱藏，
+       最後用 Canvas 文字度量畫回完全相同的位置。 */
+    var manualTexts = [];
+    var manualEls = [];
+    if(/search_image1/i.test(fname)) manualEls.push(cv.querySelector('.副標案型七字內'));
+    if(/searchicon_text/i.test(fname)) manualEls.push(cv.querySelector('.ICON獨立文案'));
+    manualEls.filter(Boolean).forEach(function(manualEl){
+      var cr = cv.getBoundingClientRect(), tr = manualEl.getBoundingClientRect(), tcs = getComputedStyle(manualEl);
+      manualTexts.push({
+        el: manualEl,
+        text: manualEl.textContent || '',
+        x: (tr.left - cr.left) / scale,
+        y: (tr.top - cr.top) / scale,
+        width: tr.width / scale,
+        height: tr.height / scale,
+        fontStyle: tcs.fontStyle || 'normal',
+        fontWeight: tcs.fontWeight || '700',
+        fontSize: parseFloat(tcs.fontSize) || 60.08,
+        fontFamily: tcs.fontFamily || 'sans-serif',
+        color: tcs.color || '#000',
+        letterSpacing: parseFloat(tcs.letterSpacing) || 0,
+        textAlign: tcs.textAlign || 'left',
+        visibility: manualEl.style.visibility
+      });
+      manualEl.style.visibility = 'hidden';
+    });
+
     requestAnimationFrame(function(){
       requestAnimationFrame(function(){
         html2canvas(cv,{
@@ -2298,11 +2453,38 @@
           if(overlay) overlay.style.display = '';
           var out = document.createElement('canvas');
           out.width = W; out.height = H;
-          out.getContext('2d').drawImage(c, 0, 0, out.width, out.height);
+          var ctx = out.getContext('2d');
+          ctx.drawImage(c, 0, 0, out.width, out.height);
+          manualTexts.forEach(function(manualText){
+            ctx.save();
+            ctx.fillStyle = manualText.color;
+            ctx.font = manualText.fontStyle + ' ' + manualText.fontWeight + ' ' + manualText.fontSize + 'px ' + manualText.fontFamily;
+            ctx.textBaseline = 'alphabetic';
+            var mt = ctx.measureText(manualText.text);
+            var asc = mt.actualBoundingBoxAscent || manualText.fontSize * 0.8;
+            var desc = mt.actualBoundingBoxDescent || manualText.fontSize * 0.2;
+            var baseline = manualText.y + (manualText.height + asc - desc) / 2;
+            var startX = manualText.x;
+            var measured = mt.width + Math.max(0, Array.from(manualText.text).length - 1) * manualText.letterSpacing;
+            if(manualText.textAlign === 'center') startX += (manualText.width - measured) / 2;
+            else if(manualText.textAlign === 'right' || manualText.textAlign === 'end') startX += manualText.width - measured;
+            if(manualText.letterSpacing){
+              var xx = startX;
+              Array.from(manualText.text).forEach(function(ch){
+                ctx.fillText(ch, xx, baseline);
+                xx += ctx.measureText(ch).width + manualText.letterSpacing;
+              });
+            }else{
+              ctx.fillText(manualText.text, startX, baseline);
+            }
+            ctx.restore();
+          });
+          manualTexts.forEach(function(item){ item.el.style.visibility = item.visibility; });
           if(cb) cb(out.toDataURL('image/png'));
         })
         .catch(function(){
           if(overlay) overlay.style.display = '';
+          manualTexts.forEach(function(item){ item.el.style.visibility = item.visibility; });
           if(cb) cb(null);
         });
       });
