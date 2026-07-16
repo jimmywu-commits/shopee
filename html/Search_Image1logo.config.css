@@ -10,7 +10,7 @@
   --bg-img:    ;
 
   /* 圖層清單：依 z-index 由低到高 */
-  --layers: "底色|,蝦皮商城logo紅底|,蝦皮商城logo圖|,主logo橫線_左|,主logo橫線_右|,官方旗艦店|官方旗艦店,logo範圍|,副標案型七字內|副標$500折起,cta圓底|,cta白線|,cta三角箭頭|";
+  --layers: "底色|,蝦皮商城logo紅底|,蝦皮商城logo圖|,主logo橫線_左|,主logo橫線_右|,官方旗艦店|官方旗艦店,logo範圍|,副標案型七字內|副標$500起,cta圓底|,cta白線|,cta三角箭頭|";
 }
 
 * { transform-origin: 0 0; }
