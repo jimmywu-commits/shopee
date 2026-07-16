@@ -1925,11 +1925,12 @@ document.addEventListener("DOMContentLoaded",function(){
  document.getElementById("manual-btn").onclick=function(){m.classList.add("show");};
  document.getElementById("manual-close").onclick=function(){m.classList.remove("show");};
  m.onclick=function(e){if(e.target===m)m.classList.remove("show");};
- document.getElementById("feedback-btn").onclick=function(){
-   window.open("https://docs.google.com/spreadsheets/d/1uCciWBKAqEDsAY3qeCqbYfLSrE7LshGo0L2pGdX0Zys/edit?gid=1634192695#gid=1634192695","_blank");
- };
 });
 </script>
+
+<!-- Firebase 使用反饋：按鈕事件與浮動視窗由 feedback-plugin.js 建立 -->
+<script src="js/feedback-config.js"></script>
+<script src="js/feedback-plugin.js"></script>
 
 </body>
 
