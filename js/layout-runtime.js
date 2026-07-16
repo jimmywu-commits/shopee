@@ -582,8 +582,7 @@
           var elH = parseFloat(window.getComputedStyle(el).height) || 55;
           el.style.top = ((_si23H - elH) / 2) + 'px';
         });
-        return;
-      }
+      } else {
       var _siLogo = canvas.querySelector('.logo範圍');
       var _siText = canvas.querySelector('.副標案型七字內');
       if(_siLogo && _siText){
@@ -669,6 +668,7 @@
         if(document.fonts && typeof document.fonts.addEventListener === 'function'){
           document.fonts.addEventListener('loadingdone', prepareSiLayout);
         }
+      }
       }
     } /* end search_image */
 
