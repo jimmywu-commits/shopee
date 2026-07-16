@@ -912,17 +912,19 @@ function onIframeLoad(id) {
 }
 
 
-function bnCalcTextUnits(text){
+function bnCalcTextUnits(text, allowComma){
   var units=0, str=String(text||'');
-  for(var i=0;i<str.length;i++) if(allowComma && str[i]===','){ continue; }
-      units += (str.charCodeAt(i)>0x2E7F) ? 1 : 0.5;
+  for(var i=0;i<str.length;i++){
+    if(allowComma && (str[i]===',' || str[i]==='，')) continue;
+    units += (str.charCodeAt(i)>0x2E7F) ? 1 : 0.5;
+  }
   return Math.round(units*10)/10;
 }
-function bnTrimTextToLimit(text, limit){
+function bnTrimTextToLimit(text, limit, allowComma){
   if(!limit || !isFinite(limit)) return String(text||'');
   var out='', sum=0, str=String(text||'');
   for(var i=0;i<str.length;i++){
-    var w=(allowComma && str[i]===',') ? 0 : ((str.charCodeAt(i)>0x2E7F) ? 1 : 0.5);
+    var w=(allowComma && (str[i]===',' || str[i]==='，')) ? 0 : ((str.charCodeAt(i)>0x2E7F) ? 1 : 0.5);
     if(sum+w>limit) break;
     out+=str[i]; sum+=w;
   }
@@ -940,9 +942,12 @@ window.addEventListener('message', function (e) {
   /* iframe 就緒，回傳畫布尺寸 */
   /* 畫布文字直接編輯後同步回左側輸入框（含 banword 轉換） */
   if (e.data.type === 'bn-text-update') {
+    /* Search Image 的「副標案型七字內」本質上也是副標，先統一欄位名稱，
+       才能回寫左側工具列並同步其他所有版位。 */
+    var syncField = e.data.field === '副標案型七字內' ? '副標' : e.data.field;
     var fieldMap = { '品牌名':'txt-brand', '主標':'txt-main', '副標':'txt-sub', '日期':'txt-date', 'ICON獨立文案':'txt-icon' };
     var roleMap  = { '品牌名':'品牌名',    '主標':'主標',     '副標':'副標',    '日期':'date',    'ICON獨立文案':'ICON獨立文案' };
-    var inputId  = fieldMap[e.data.field];
+    var inputId  = fieldMap[syncField];
     if(inputId){
       var inp = document.getElementById(inputId);
       if(inp){
@@ -964,7 +969,7 @@ window.addEventListener('message', function (e) {
             document.body.appendChild(shadow);
           }
           var roleMap3 = {'品牌名':'品牌名','主標':'主標','副標':'副標','日期':'date','ICON獨立文案':'ICON獨立文案'};
-          shadow.dataset.role = roleMap3[e.data.field] || '';
+          shadow.dataset.role = roleMap3[syncField] || '';
           shadow.textContent = rawVal;
           /* 豁免清單傳給 shadow，applyToElement 讀 dataset.dollarExempt */
           if(Array.isArray(e.data.dollarExempt) && e.data.dollarExempt.length){
@@ -982,19 +987,24 @@ window.addEventListener('message', function (e) {
           }
         }
         var limit = bnFieldLimitByInputId(inputId);
-        if(limit && bnCalcTextUnits(rawVal) > limit){
-          rawVal = bnTrimTextToLimit(rawVal, limit);
+        var allowCommaForField = inputId === 'txt-date';
+        if(limit && bnCalcTextUnits(rawVal, allowCommaForField) > limit){
+          rawVal = bnTrimTextToLimit(rawVal, limit, allowCommaForField);
         }
         if(inp.value !== rawVal){
           inp.value = rawVal;
+          /* 讓左側既有的 banwords、字數提示與本機暫存監聽都收到更新。 */
+          try{ inp.dispatchEvent(new Event('input', {bubbles:true})); }catch(_){}
+          try{ inp.dispatchEvent(new Event('change', {bubbles:true})); }catch(_){}
         }
+        try{ document.dispatchEvent(new CustomEvent('bn-state-dirty')); }catch(_){}
         broadcastText();
         /* 把轉換後的文字送回 iframe 更新畫布 */
         document.querySelectorAll('.preview-block iframe').forEach(function(iframe){
           try{
             iframe.contentWindow.postMessage({
               type: 'bn-text-set',
-              field: e.data.field,
+              field: syncField,
               value: rawVal
             }, '*');
           }catch(_){}

@@ -27,15 +27,20 @@
   }
 
   function waitFontsAndInit() {
-    /* 統一入口：CSS 載入完成或 window load fallback 都必須等字型 ready。
-       避免慢速電腦先用 fallback 字型完成排版，造成畫布文字位置/寬度錯誤。 */
+    /* 字型正常完成時立即初始化；同時保留逾時保護。
+       某些 file://、公司網路或字型路徑失敗時 document.fonts.ready 可能長時間不回來，
+       若沒有保護，所有版位都不會送出 bn-iframe-ready，主頁便會永遠停在 0 / N。 */
+    var fired = false;
     function doInit() {
+      if (fired) return;
+      fired = true;
       requestAnimationFrame(function(){ requestAnimationFrame(init); });
     }
+    var timer = setTimeout(doInit, 2200);
     if (document.fonts && document.fonts.ready) {
-      document.fonts.ready.then(doInit).catch(doInit);
+      document.fonts.ready.then(function(){ clearTimeout(timer); doInit(); }).catch(function(){ clearTimeout(timer); doInit(); });
     } else {
-      setTimeout(doInit, 300);
+      setTimeout(function(){ clearTimeout(timer); doInit(); }, 300);
     }
   }
 
@@ -43,6 +48,12 @@
   loadCSS(fname + '.config.css', onBothLoaded);
   window.addEventListener('load', function(){ setTimeout(waitFontsAndInit, 600); });
   var inited = false;
+
+  window.addEventListener('message', function(e){
+    if (e && e.data && e.data.type === 'bn-force-ready') init();
+  });
+  /* 最後一道保護：即使 CSS 的 load/error 事件都沒有觸發，也要啟動版位。 */
+  setTimeout(function(){ if(!inited) init(); }, 3200);
 
   function init() {
     if (inited) return;

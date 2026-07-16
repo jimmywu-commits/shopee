@@ -385,7 +385,8 @@
   }
 
   function initBanwords(){
-    loadScript('js/banwords-engine-hbn.js', function(){
+    /* 強制載入最新 banwords engine，避免瀏覽器沿用舊快取，造成修正後看起來仍沒生效。 */
+    loadScript('js/banwords-engine-hbn.js?t=' + Date.now(), function(){
       loadBanwordsExcel();
     });
   }

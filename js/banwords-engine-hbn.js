@@ -539,6 +539,48 @@
     return out;
   }
 
+  /*
+   * 蝦幣金額必須先於 banwords.xlsx 規則保護。
+   * Excel 內有「\$\d+\s*蝦幣 -> 蝦幣」等規則；若直接執行，
+   * `$2000蝦幣` 會整段被替換成「蝦幣」，連 2000 都消失。
+   * 這裡只針對「蝦幣＋數字」或「數字＋蝦幣」完整片段建立暫存 token，
+   * 正規化為不含 $ 的千分位格式，再讓其他禁用語繼續處理。
+   */
+  function protectShopeeCoinAmounts(text){
+    let out = String(text || '');
+    const protectedMap = [];
+
+    function keep(value){
+      const token = makeAlphaToken('COINAMOUNT', protectedMap.length);
+      protectedMap.push({ token: token, value: value });
+      return token;
+    }
+
+    /* 蝦幣$2000／蝦幣 2,000／蝦幣回饋$2000 */
+    out = out.replace(/(蝦幣回饋|蝦幣)\s*\$?\s*([\d,]+)/g, function(match, keyword, digits){
+      const clean = String(digits || '').replace(/,/g, '');
+      if (!/^\d+$/.test(clean)) return match;
+      return keep(keyword + formatNumericToken(clean, false));
+    });
+
+    /* $2000蝦幣／2,000 蝦幣／$2000蝦幣回饋 */
+    out = out.replace(/\$?\s*([\d,]+)\s*(蝦幣回饋|蝦幣)/g, function(match, digits, keyword){
+      const clean = String(digits || '').replace(/,/g, '');
+      if (!/^\d+$/.test(clean)) return match;
+      return keep(formatNumericToken(clean, false) + keyword);
+    });
+
+    return { text: out, protectedMap: protectedMap };
+  }
+
+  function restoreProtectedMap(text, protectedMap){
+    let out = String(text || '');
+    (protectedMap || []).forEach(function(item){
+      out = out.split(item.token).join(item.value);
+    });
+    return out;
+  }
+
   function transformText(text, role, options){
     const original = String(text || '');
     let out = original;
@@ -551,6 +593,10 @@
       out = sanitizedBeforeRules;
       changed = true;
     }
+
+    /* 先保護蝦幣金額，避免 Excel 的正規式替換把數字整段吃掉。 */
+    const shopeeCoinProtected = protectShopeeCoinAmounts(out);
+    out = shopeeCoinProtected.text;
 
     getRules().forEach(function(rule){
       if (!rule.keyword) return;
@@ -585,6 +631,9 @@
 
       out = restoreExcludedSegments(workingText, protectedMap);
     });
+
+    /* 還原已正規化的蝦幣金額，再執行其他一般數字規則。 */
+    out = restoreProtectedMap(out, shopeeCoinProtected.protectedMap);
 
     const adjusted = applyNumericRules(out, role, options);
     if (adjusted !== out) {
