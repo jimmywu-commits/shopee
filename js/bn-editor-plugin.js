@@ -1420,12 +1420,12 @@
              ≈62.5%。這個「4等分格子」是我依你的描述推算的，如果實際
              畫面上的格子劃分方式不是這樣切，麻煩告訴我正確的格子寬度，
              我可以重新換算這個百分比。 */
-          return { fit: 'width100', scale: 25, x: 62.5, y: 50 };
+          return { fit: 'width100', scale: 43, x: 71, y: 81 };
         }
         if(isFbPost(id, ifrEl)){
           /* FB_POST 吃直式背景圖時：位置在畫面右半部（水平置中點在畫面
              75% 的位置，也就是右半邊的正中間），放大 20%（scale:120）。 */
-          return { fit: 'width100', scale: 120, x: 75, y: 50 };
+          return { fit: 'width100', scale: 58, x: 110, y: 82 };
         }
         return { fit: fit, scale: 100, x: 50, y: 50 };
       }
