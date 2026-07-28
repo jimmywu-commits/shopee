@@ -318,6 +318,11 @@
 
     // HBN 格式：{ EL: { hbn:[...], ddcard:[...] } }
     if(catData.hbn || catData.HBN){
+      // 資料夾名稱的大小寫，直接跟著 index.json 裡實際出現的 key 走，
+      // 這樣不管實際資料夾是 hbn/ddcard（小寫）還是 HBN/DDCARD（大寫），
+      // 只要跟 json 的 key 一致，組出來的網址都會對。
+      var hbnKey = ('hbn' in catData) ? 'hbn' : 'HBN';
+      var ddKey = ('ddcard' in catData) ? 'ddcard' : (('ddCard' in catData) ? 'ddCard' : 'DDCARD');
       var hbnList = catData.hbn || catData.HBN || [];
       var ddList = catData.ddcard || catData.DDCARD || catData.ddCard || [];
       hbnList.forEach(function(file){
@@ -328,8 +333,8 @@
           name: cleanFileName(file),
           fileName: file,
           cat: cat,
-          horizontalSrc: IMG_BASE_URL + cat + '/HBN/' + file,
-          verticalSrc: dd ? IMG_BASE_URL + cat + '/DDCARD/' + dd : null,
+          horizontalSrc: IMG_BASE_URL + cat + '/' + hbnKey + '/' + file,
+          verticalSrc: dd ? IMG_BASE_URL + cat + '/' + ddKey + '/' + dd : null,
           num: num
         });
       });
