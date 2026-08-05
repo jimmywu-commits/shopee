@@ -2341,6 +2341,36 @@
         });
         if(exportZOrder.length) sendToIframe(iframeEl, {type:'bn-product-zorder', order:exportZOrder});
 
+        /* ★ 人物圖也要重新同步給這個 iframe，跟商品/LOGO/文案一樣——之前這裡完全
+           沒有送 bn-character-*，下載時商品又是整批用 bn-product-add 重新建立
+           （每次都是全新的 DOM 節點，不會留著先前 bn-character-visibility 隱藏
+           的 display:none 狀態），等於下載那一刻人物圖的「商品最多顯示幾件」
+           限制完全失效，導致例如「1張人物→應該只顯示2件商品」，下載出來卻
+           變成3件全開。這裡照著 broadcastCharacter/broadcastCharacterVisibility/
+           broadcastCharacterPairOrder 同一套規則，改成只發給這個 iframe。 */
+        ['_bnCharacter','_bnCharacter2'].forEach(function(slotKey){
+          var slot = window[slotKey];
+          if(slot){
+            sendToIframe(iframeEl, {type:'bn-character-add', slot:slotKey, id:slot.id, src:slot.src,
+              ratio:slot.ratio, layoutById:slot.layouts||null, aboveMain: slot.aboveMain !== false});
+          } else {
+            sendToIframe(iframeEl, {type:'bn-character-remove', slot:slotKey});
+          }
+        });
+        var exportZSorted = exportProducts.slice().sort(function(a,b){ return (a.zOrder||0)-(b.zOrder||0); });
+        var exportMaxVisible = getMaxProductsVisible();
+        var exportVisibleIds = exportZSorted.slice(0, exportMaxVisible).map(function(p){ return p.id; });
+        sendToIframe(iframeEl, {type:'bn-character-visibility', hasChar: getCharacterCount()>0,
+          maxVisible:exportMaxVisible, visibleIds:exportVisibleIds,
+          topId: exportVisibleIds.length ? exportVisibleIds[0] : null});
+        var exportActiveCharKeys = ['_bnCharacter','_bnCharacter2'].filter(function(k){ return window[k]; });
+        var exportPairFirst = null;
+        if(exportActiveCharKeys.length === 2){
+          exportPairFirst = (window._bnCharPairFirst && exportActiveCharKeys.indexOf(window._bnCharPairFirst) !== -1)
+            ? window._bnCharPairFirst : exportActiveCharKeys[0];
+        }
+        sendToIframe(iframeEl, {type:'bn-character-pair-order', pairFirst: exportPairFirst});
+
         /* 背景圖精準同步到目標 iframe。不要用全域刷新，避免下載某一張時
            把其他尚未 ready 的 iframe 背景/底色送成空值。 */
         if(typeof window._bnSendBgToIframe === 'function' && id){

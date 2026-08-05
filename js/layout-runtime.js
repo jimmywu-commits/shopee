@@ -9,6 +9,12 @@
   var urlId = parseInt(new URLSearchParams(location.search).get('bnid')) || 0;
   var fname = decodeURIComponent(location.pathname.split('/').pop().replace(/\.html$/i, ''));
 
+  /* 這個版位（依檔名判斷）只能顯示「目前最上層（z-index最高）」的一張商品圖，
+     人物圖完全不顯示——不管人物圖數量或商品可見度規則怎麼變，都要蓋掉。
+     統一在這裡（layout-runtime.js）判斷，不用各版位自己攔截商品/人物相關
+     訊息，行為才會一致、也才不會漏掉哪個訊息類型沒攔到。 */
+  var _bnSingleProductOnlyTemplate = /searchicon_product/i.test(fname || '');
+
   function loadCSS(href, cb) {
     var l = document.createElement('link');
     l.rel = 'stylesheet'; l.href = href;
@@ -97,6 +103,23 @@
           'object-fit:cover;pointer-events:none;z-index:4;';
         bgLayer.insertAdjacentElement('afterend', card);
       }
+
+      /* CTA（色塊／文字／三角標）必須永遠疊在整個版面最上層，不可被商品圖／
+         人物圖／LOGO 蓋住。PS 匯出的 CSS z-index 不保證比商品範圍/logo範圍高
+         （商品範圍/logo範圍本身的 z-index 常常比 cta底 還高），這裡明確把
+         CTA 相關圖層固定拉到最上面，跟商品/人物/logo 的疊放順序完全脫鉤，
+         彼此之間的相對前後順序（色塊在下、文字居中、三角在上）維持不變。 */
+      var CTA_TOP_CLASSES = [
+        'cta底','逛逛去底','cta圓底',                 /* CTA 色塊（背景），這組最底 */
+        'cta白線',                                     /* 裝飾線 */
+        '放心買_安心退','逛逛去','cta符號',            /* CTA 文字／符號 */
+        'cta三角標','cta三角箭頭','逛逛去三角標'        /* 三角標，這組最上面 */
+      ];
+      CTA_TOP_CLASSES.forEach(function(cls, i){
+        canvas.querySelectorAll('.'+cls).forEach(function(el){
+          el.style.zIndex = String(9000 + i);
+        });
+      });
     }
 
     /* ── 讀 --canvas-bg 套用初始背景色（--layers DOM 建立後才做，.bg/.背景色 已存在）
@@ -556,9 +579,11 @@
       var isHBN = _isLeftAlign;
       /* 多張置中：logo範圍是橫條 且 不是左對齊版位 → flex 置中並排（ddcard橫、IG橫等）*/
       var isMultiCenter = !isHBN && !!_logoIsWide;
-      /* IG方/ddcard方/Search_Image：單張 contain 置中 */
+      /* IG方/ddcard方/Search_Image/SearchICON 系列：單張 contain 置中。
+         SearchICON_LOGO、SearchICON_120 這類小圓形 ICON 版位只有一個小圖示位，
+         不管上傳幾張 LOGO，都只能放進第一張，不然多張擠在一起會裁切、看不清楚。 */
       var isIGSquare = !isHBN && !isMultiCenter &&
-        (fn.indexOf('方') !== -1 || fnLow.indexOf('search_image') !== -1);
+        (fn.indexOf('方') !== -1 || fnLow.indexOf('search_image') !== -1 || fnLow.indexOf('searchicon') !== -1);
       /* ddcard：檔名含 ddcard */
       var isDDCard = fnLow.indexOf('ddcard') !== -1;
       /* 方 Logo 系列：不依「橫 Logo」文字判斷，而是針對實際上傳圖片比例做 fit。 */
@@ -738,6 +763,7 @@
       setupProdDrag(box, pzone);
       layoutProducts(pzone);
       applyCharacterZ();
+      applySingleProductOnlyIfNeeded(pzone);
     }
 
     if (e.data.type === 'bn-product-remove') {
@@ -750,6 +776,7 @@
       if(!remaining.length && !pzone.querySelector('.bn-char-box')) { pzone.style.background=''; pzone.style.opacity=''; }
       else if(remaining.length) layoutProducts(pzone);
       applyCharacterZ();
+      applySingleProductOnlyIfNeeded(pzone);
     }
 
     /* z-index 順序更新：order[0] = 最上層（z 最高） */
@@ -762,6 +789,7 @@
         if(box) box.style.zIndex = String(total - i + 10);
       });
       applyCharacterZ();
+      applySingleProductOnlyIfNeeded(pzone);
     }
 
     /* ════════════════════════════════════════════════════
@@ -775,8 +803,10 @@
          aboveMain 決定（true=蓋住商品，false=被商品蓋住）。
        - 2 個人物都存在：商品此時已被 bn-character-visibility 隱藏，兩個人物
          改成只跟彼此比前後，由 bn-character-pair-order 的 pairFirst 決定。
-       ════════════════════════════════════════════════════ */
+       ★ _bnSingleProductOnlyTemplate（例如 SearchICON_PRODUCT）這個版位完全
+         不顯示人物圖，不管全域人物圖狀態如何，一律忽略 bn-character-add。 ════════════════════════════════════════════════════ */
     if (e.data.type === 'bn-character-add') {
+      if(_bnSingleProductOnlyTemplate) return; /* 這個版位固定只顯示商品，完全不顯示人物圖 */
       var czone = getProductZone(); if(!czone) return;
       var slotKey = e.data.slot;
       if(slotKey !== '_bnCharacter' && slotKey !== '_bnCharacter2') return;
@@ -821,9 +851,12 @@
     }
 
     /* 有人物圖時，商品最多只顯示「目前最上層」的幾件，其餘隱藏（不是移除，
-       只是 display:none，移除人物圖後可以直接復原，不用重新排版）。 */
+       只是 display:none，移除人物圖後可以直接復原，不用重新排版）。
+       _bnSingleProductOnlyTemplate 的版位無視這則訊息帶來的可見度規則，
+       固定套用自己的「只留最上層 1 張商品、人物圖完全不顯示」規則。 */
     if (e.data.type === 'bn-character-visibility') {
       var czone4 = getProductZone(); if(!czone4) return;
+      if(_bnSingleProductOnlyTemplate){ applySingleProductOnlyIfNeeded(czone4); return; }
       var visibleIds = e.data.visibleIds;
       var hasChar = !!e.data.hasChar;
       czone4.querySelectorAll('.bn-prod-box').forEach(function(b){
@@ -1010,6 +1043,31 @@
         });
       }
 
+      /* CTA 文字（放心買_安心退／逛逛去）下載補償：
+         這兩個文字都是「position:absolute + line-height:1」直接定位，沒有用
+         flex 或固定高度置中，html2canvas 計算文字行框內上下留白比例，跟瀏覽器
+         即時渲染不一致，導致下載出來文字位置偏移、看起來不是上下置中。
+
+         ★ 這個係數是「用系統預設字型」量出來的估計值。實際字型（ShopeeNotoSans）
+         的行高/基準線量測方式跟預設字型不一定一樣，所以下面這個數字很可能還
+         需要再微調——如果下載出來文字還是偏下，把 CTA_TEXT_OFFSET_RATIO 調大；
+         如果變成偏上（跑過頭），把它調小；抓到剛好置中為止。抓到之後同一個
+         數字對其他版位、其他字級應該都適用（是按字級比例算的，不是固定px）。
+         暫時先給一個保守的小值，避免像剛才 0.10 那樣跑過頭。 */
+      var CTA_TEXT_OFFSET_RATIO = 0.03;
+      if(_cv){
+        _cv.querySelectorAll('.放心買_安心退, .逛逛去').forEach(function(el){
+          var oldTop = el.style.top || '';
+          var oldPriority = el.style.getPropertyPriority('top') || '';
+          var cs = window.getComputedStyle(el);
+          var currentTop = parseFloat(cs.top) || 0;
+          var fontSize = parseFloat(cs.fontSize) || 0;
+          if(!fontSize) return;
+          _captureAdjustEls.push({el:el, top:oldTop, priority:oldPriority});
+          el.style.setProperty('top', (currentTop - fontSize * CTA_TEXT_OFFSET_RATIO) + 'px', 'important');
+        });
+      }
+
       /* LOGO / 商品範圍：若尚未上傳任何圖片，畫布上會顯示淡紅色提示範圍（方便編輯時定位）。
          下載截圖時，若該範圍仍是空的（沒有 logo 圖 / 沒有商品圖），
          暫時把提示色改成透明再截圖，讓下載出來的圖片不會帶有這塊淡紅色；
@@ -1030,10 +1088,58 @@
       _bnHideEmptyPlaceholder('.logo範圍, .LOGO範圍, .logo範圍_左, .logo範圍_中, .logo範圍_右', 'img.bn-logo-img');
       _bnHideEmptyPlaceholder('.商品範圍, .商品圖範圍', '.bn-prod-box, .bn-char-box');
 
+      /* object-fit:contain 下載補償：
+         html2canvas 不支援 <img> 的 object-fit:contain——不管圖片比例跟外框
+         比例是否一致，畫面上瀏覽器會正確「等比縮小、置中、露出底色」，
+         但 html2canvas 會整張圖硬拉伸去塞滿外框，造成圖片變形、被拉滿。
+         最常見的情況：使用者換了一張比例不同的圖，但外框沿用了「上一張圖」
+         儲存下來的大小（LOGO / 商品圖 都有「記住使用者上次調整過的大小」
+         這個機制），外框比例就會跟新圖片對不上，露餡在下載這一刻。
+         修法：截圖前，用「圖片真實比例＋目前外框大小」手動算出等比縮放後
+         應該有的實際寬高與置中位置，直接把這個結果寫死成 <img> 的
+         width/height/position/left/top（不再依賴 object-fit)，
+         html2canvas 就只是照著這組已經算好的絕對數字截圖，不會拉伸。
+         截圖完成後全部還原，畫面上的即時編輯行為完全不受影響。 */
+      var _objectFitAdjustEls = [];
+      function _bnFixObjectFitForCapture(selector){
+        document.querySelectorAll(selector).forEach(function(img){
+          if(!img || img.tagName !== 'IMG') return;
+          var box = img.parentElement;
+          if(!box) return;
+          var bw = box.clientWidth, bh = box.clientHeight;
+          var nw = img.naturalWidth, nh = img.naturalHeight;
+          if(!bw || !bh || !nw || !nh) return;
+          var boxRatio = bw / bh, imgRatio = nw / nh;
+          var dispW, dispH;
+          if(imgRatio > boxRatio){ dispW = bw; dispH = bw / imgRatio; }
+          else { dispH = bh; dispW = bh * imgRatio; }
+          /* 比例已經吻合（差距在1px內），不用特別處理，減少不必要的 style 改動 */
+          if(Math.abs(dispW - bw) < 1 && Math.abs(dispH - bh) < 1) return;
+          _objectFitAdjustEls.push({
+            el: img, width: img.style.width, height: img.style.height,
+            left: img.style.left, top: img.style.top, position: img.style.position,
+            maxWidth: img.style.maxWidth, maxHeight: img.style.maxHeight
+          });
+          img.style.position = 'absolute';
+          img.style.width  = dispW + 'px';
+          img.style.height = dispH + 'px';
+          img.style.maxWidth  = 'none';
+          img.style.maxHeight = 'none';
+          img.style.left = Math.round((bw - dispW) / 2) + 'px';
+          img.style.top  = Math.round((bh - dispH) / 2) + 'px';
+        });
+      }
+      _bnFixObjectFitForCapture('.bn-logo-box img, .bn-prod-box img, .bn-char-box img, .logo範圍_左 img.bn-logo-img, .logo範圍_中 img.bn-logo-img, .logo範圍_右 img.bn-logo-img');
+
       captureCanvas(function(dataUrl){
         _editEls.forEach(function(o){ o.el.style.display = o.disp; });
         _captureAdjustEls.forEach(function(o){ o.el.style.setProperty('top', o.top, o.priority || ''); });
         _emptyZoneEls.forEach(function(o){ o.el.style.background = o.bg; o.el.style.opacity = o.op; });
+        _objectFitAdjustEls.forEach(function(o){
+          o.el.style.position = o.position; o.el.style.width = o.width; o.el.style.height = o.height;
+          o.el.style.left = o.left; o.el.style.top = o.top;
+          o.el.style.maxWidth = o.maxWidth; o.el.style.maxHeight = o.maxHeight;
+        });
         window.parent.postMessage({type:'bn-snapshot',msgId:e.data.msgId,dataUrl:dataUrl},'*');
       });
     }
@@ -1493,6 +1599,22 @@
       var above = box.dataset.aboveMain !== '0';
       box.style.zIndex = above ? String(topZ + 5) : String(Math.max(1, topZ - 5));
     });
+  }
+
+  /* 部分版位（目前是 SearchICON_PRODUCT，依檔名判斷，見 _bnSingleProductOnlyTemplate）
+     不管全域人物圖/商品狀態如何，固定套用「人物圖完全不顯示、商品只顯示『主品』
+     （position===0，主品（中），跟左配品/右配品區分）那一張」的規則。
+     用 display:none 隱藏，不用 remove() 整個刪掉——之後如果使用者把主品換掉、
+     或重新上傳，隱藏的商品可以立刻恢復，不會憑空消失。
+     如果目前根本沒有主品（例如只上傳了左配品/右配品，或主品被移除），
+     這個版位就固定不顯示任何商品，不會拿配品頂替。 */
+  function applySingleProductOnlyIfNeeded(zone){
+    if(!_bnSingleProductOnlyTemplate || !zone) return;
+    zone.querySelectorAll('.bn-char-box').forEach(function(b){ b.style.display = 'none'; });
+    var boxes = Array.prototype.slice.call(zone.querySelectorAll('.bn-prod-box'));
+    if(!boxes.length) return;
+    var main = boxes.filter(function(b){ return (b.dataset.position || '0') === '0'; })[0] || null;
+    boxes.forEach(function(b){ b.style.display = (b === main) ? '' : 'none'; });
   }
 
   /* ── 畫布文字直接點擊編輯 ── */
