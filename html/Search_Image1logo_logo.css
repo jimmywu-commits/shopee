@@ -46,7 +46,9 @@ svg.main-logo-auto-lines {
   left: 35px !important;
   top: 115px !important;
   width: 30px !important;
-  height: 1.5px !important;
+  height: 2px !important; /* 原本 1.5px 是次像素高度，html2canvas 光柵化時容易四捨五入成
+                              忽厚忽薄（實測畫面上是2列像素，下載出來常只剩1列），
+                              改成整數 2px 讓截圖跟畫面顯示一致，不會變細/消失。 */
   background: #fff !important;
   border: none !important;
   display: block !important;
@@ -60,7 +62,7 @@ svg.main-logo-auto-lines {
   left: 223px !important;
   top: 115px !important;
   width: 30px !important;
-  height: 1.5px !important;
+  height: 2px !important; /* 同左側，理由一樣：改成整數高度避免 html2canvas 次像素四捨五入 */
   background: #fff !important;
   border: none !important;
   display: block !important;

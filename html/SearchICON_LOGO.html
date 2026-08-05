@@ -220,17 +220,29 @@ html, body {
     var canvas = document.getElementById('canvas');
     if(!zone || !canvas) return;
 
-    /* 完全清空重建，不依賴/不沿用共用 handler 產生的任何舊元素 */
-    zone.innerHTML = '';
-    Array.prototype.slice.call(canvas.querySelectorAll('.bn-logo-handle-layer')).forEach(function(b){ b.remove(); });
     zone.style.overflow = 'hidden';
     zone.style.borderRadius = '50%';
 
-    if(!src) return;
+    /* 每次呼叫都發一個新的版本號。圖片是非同步載入（img.onload），如果連續
+       快速呼叫多次 buildLogoBox（例如使用者連續上傳/替換 LOGO），舊呼叫的
+       img 可能在新呼叫「清空重建」之後才慢慢讀完、才 onload——如果沒有這道
+       檢查，舊的 onload 還是會把自己的框插進去，跟新的疊在一起，永遠只清
+       一次、卻插入好幾次。清空重建的動作也搬到 onload 裡（真正要畫上去的
+       那一刻才清），確保任何時候畫面上最多只會有一張 LOGO。 */
+    var callToken = (buildLogoBox._token = (buildLogoBox._token || 0) + 1);
+
+    function clearZone(){
+      zone.innerHTML = '';
+      Array.prototype.slice.call(canvas.querySelectorAll('.bn-logo-handle-layer')).forEach(function(b){ b.remove(); });
+    }
+
+    if(!src){ clearZone(); return; }
 
     var img = new Image();
     img.className = 'bn-logo-img';
     img.onload = function(){
+      if(callToken !== buildLogoBox._token) return; /* 已經被更新的呼叫取代，這個舊結果直接放棄 */
+      clearZone();
       var zw = zone.clientWidth || 120, zh = zone.clientHeight || 120;
       var ratio = (img.naturalWidth && img.naturalHeight) ? (img.naturalWidth / img.naturalHeight) : 1;
       var boxW, boxH, boxLeft, boxTop;
