@@ -1068,6 +1068,27 @@
         });
       }
 
+      /* SearchICON_TEXT（.ICON獨立文案）下載補償：
+         這裡用 line-height（固定90px，見 .css 註解）置中，不是絕對 top 定位，
+         所以補償方式改用 transform:translateY，不影響原本的置中計算。
+         實測（使用者真實環境截圖量出來）：往上偏移約字級的 22%，這裡用同樣
+         比例往下位移抵銷。這組是照真實下載結果量的，理論上比 CTA 文字那組
+         （只能先用系統字型估）準；如果實際測試後還有落差，調整
+         ICON_TEXT_OFFSET_RATIO 這個數字即可：往上跑就調大、往下跑過頭就調小。 */
+      var ICON_TEXT_OFFSET_RATIO = 0.22;
+      var _transformAdjustEls = [];
+      if(_cv){
+        _cv.querySelectorAll('.ICON獨立文案').forEach(function(el){
+          var oldTransform = el.style.transform || '';
+          var oldPriority = el.style.getPropertyPriority('transform') || '';
+          var cs = window.getComputedStyle(el);
+          var fontSize = parseFloat(cs.fontSize) || 0;
+          if(!fontSize) return;
+          _transformAdjustEls.push({el:el, transform:oldTransform, priority:oldPriority});
+          el.style.setProperty('transform', 'translateY(' + (fontSize * ICON_TEXT_OFFSET_RATIO) + 'px)', 'important');
+        });
+      }
+
       /* LOGO / 商品範圍：若尚未上傳任何圖片，畫布上會顯示淡紅色提示範圍（方便編輯時定位）。
          下載截圖時，若該範圍仍是空的（沒有 logo 圖 / 沒有商品圖），
          暫時把提示色改成透明再截圖，讓下載出來的圖片不會帶有這塊淡紅色；
@@ -1140,6 +1161,7 @@
           o.el.style.left = o.left; o.el.style.top = o.top;
           o.el.style.maxWidth = o.maxWidth; o.el.style.maxHeight = o.maxHeight;
         });
+        _transformAdjustEls.forEach(function(o){ o.el.style.setProperty('transform', o.transform, o.priority || ''); });
         window.parent.postMessage({type:'bn-snapshot',msgId:e.data.msgId,dataUrl:dataUrl},'*');
       });
     }
