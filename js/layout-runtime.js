@@ -779,6 +779,23 @@
       applySingleProductOnlyIfNeeded(pzone);
     }
 
+    /* 只換圖片內容（去背/裁切/擦除/影子外掛編輯器完成後用），完全不動商品目前的
+       位置/大小/上下層——跟 bn-character-update-image 是同一套邏輯，避免像
+       bn-product-remove+bn-product-add 那樣整個重建造成畫面閃跳、跳回預設位置。
+       ★ 這是修補「編輯去背/影子後，畫面沒有變、下載卻是對的」這個問題的關鍵：
+       bn-editor-plugin.js 編輯完成後只會發這則訊息，過去這裡完全沒有處理，
+       畫面上的圖片永遠不會更新，只有下載時透過 bn-product-add 重新整批送一次
+       商品資料，才會不小心把正確結果帶出來。 */
+    if (e.data.type === 'bn-product-update-image') {
+      var pzoneU = getProductZone(); if(!pzoneU) return;
+      var boxU = pzoneU.querySelector('.bn-prod-box[data-id="'+e.data.id+'"]');
+      if(boxU){
+        if(e.data.ratio) boxU.dataset.ratio = e.data.ratio;
+        var imgU = boxU.querySelector('img');
+        if(imgU && e.data.src) imgU.src = e.data.src;
+      }
+    }
+
     /* z-index 順序更新：order[0] = 最上層（z 最高） */
     if (e.data.type === 'bn-product-zorder') {
       var pzone = getProductZone(); if(!pzone) return;
