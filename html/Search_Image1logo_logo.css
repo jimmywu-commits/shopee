@@ -44,7 +44,8 @@ svg.main-logo-auto-lines {
 .主logo橫線_左 {
   position: absolute !important;
   left: 35px !important;
-  top: 115px !important;
+  top: 110.4px !important; /* 原本 115px，跟「官方旗艦店」文字垂直中心（96.4+30/2=111.4）對齊：
+                               110.4 + 2(高度)/2 = 111.4，跟文字水平置中，不再偏低。 */
   width: 30px !important;
   height: 2px !important; /* 原本 1.5px 是次像素高度，html2canvas 光柵化時容易四捨五入成
                               忽厚忽薄（實測畫面上是2列像素，下載出來常只剩1列），
@@ -60,7 +61,7 @@ svg.main-logo-auto-lines {
 .主logo橫線_右 {
   position: absolute !important;
   left: 223px !important;
-  top: 115px !important;
+  top: 110.4px !important; /* 理由同左側 */
   width: 30px !important;
   height: 2px !important; /* 同左側，理由一樣：改成整數高度避免 html2canvas 次像素四捨五入 */
   background: #fff !important;
