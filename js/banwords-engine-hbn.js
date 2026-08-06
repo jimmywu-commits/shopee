@@ -202,7 +202,7 @@
     clone.querySelectorAll('.counter,.audit-tip').forEach(function(node){
       node.remove();
     });
-    return (clone.textContent || '').replace(/\u00A0/g, ' ').trim();
+    return (clone.textContent || '').replace(/ /g, ' ').trim();
   }
 
   function addThousandsSeparator(digits){
@@ -248,7 +248,7 @@
       commaMap.forEach(function(item){ out = out.split(item.token).join(item.value); });
     }
 
-    out = out.replace(/\u00A0/g, ' ');
+    out = out.replace(/ /g, ' ');
 
     return out;
   }
@@ -581,6 +581,43 @@
     return out;
   }
 
+  /*
+   * 全域「永遠保留」清單：不論 Excel 規則的排除欄怎麼設定，
+   * 這裡列出的詞一律會在所有禁用語規則套用前被保護起來，
+   * 處理完畢後再還原，確保像「百搭」這種詞不會被「百」這類
+   * 單字禁用語誤傷。可用 banwordEngine.setAlwaysAllowedTerms()
+   * 動態調整清單。
+   */
+  let alwaysAllowedTerms = ['百搭'];
+
+  function getAlwaysAllowedTerms(){
+    return alwaysAllowedTerms.slice();
+  }
+
+  function setAlwaysAllowedTerms(terms){
+    alwaysAllowedTerms = Array.isArray(terms)
+      ? terms.map(function(t){ return String(t || '').trim(); }).filter(Boolean)
+      : [];
+    return alwaysAllowedTerms.slice();
+  }
+
+  function protectAlwaysAllowedTerms(text){
+    let out = String(text || '');
+    const protectedMap = [];
+
+    alwaysAllowedTerms.forEach(function(term){
+      if (!term) return;
+      const pattern = new RegExp(escapeRegExp(term), 'g');
+      out = out.replace(pattern, function(match){
+        const token = makeAlphaToken('ALWAYSOK', protectedMap.length);
+        protectedMap.push({ token: token, value: match });
+        return token;
+      });
+    });
+
+    return { text: out, protectedMap: protectedMap };
+  }
+
   function transformText(text, role, options){
     const original = String(text || '');
     let out = original;
@@ -597,6 +634,10 @@
     /* 先保護蝦幣金額，避免 Excel 的正規式替換把數字整段吃掉。 */
     const shopeeCoinProtected = protectShopeeCoinAmounts(out);
     out = shopeeCoinProtected.text;
+
+    /* 再保護全域永遠允許的詞（例如「百搭」），避免被單字禁用語誤傷。 */
+    const alwaysAllowedProtected = protectAlwaysAllowedTerms(out);
+    out = alwaysAllowedProtected.text;
 
     getRules().forEach(function(rule){
       if (!rule.keyword) return;
@@ -631,6 +672,9 @@
 
       out = restoreExcludedSegments(workingText, protectedMap);
     });
+
+    /* 還原全域永遠允許的詞。 */
+    out = restoreProtectedMap(out, alwaysAllowedProtected.protectedMap);
 
     /* 還原已正規化的蝦幣金額，再執行其他一般數字規則。 */
     out = restoreProtectedMap(out, shopeeCoinProtected.protectedMap);
@@ -717,7 +761,7 @@
     clone.querySelectorAll('.counter,.audit-tip').forEach(function(node){
       node.remove();
     });
-    return (clone.textContent || '').replace(/\u00A0/g, ' ');
+    return (clone.textContent || '').replace(/ /g, ' ');
   }
 
   function setEditableText(el, text){
@@ -820,6 +864,8 @@
     applyToElement: applyToElement,
     sanitizeAllowedCharacters: sanitizeAllowedCharacters,
     calcUnits: calcUnits,
-    trimTextToLimit: trimTextToLimit
+    trimTextToLimit: trimTextToLimit,
+    getAlwaysAllowedTerms: getAlwaysAllowedTerms,
+    setAlwaysAllowedTerms: setAlwaysAllowedTerms
   };
 })(window);
