@@ -18,21 +18,6 @@
   if(global.__BN_LOGO_MENU_PLUGIN__) return;
   global.__BN_LOGO_MENU_PLUGIN__ = true;
 
-  /* ── 載入自動去邊外掛（算 logo 邊界用） ── */
-  var _trimLoad = null;
-  function loadTrimPlugin(){
-    if(global.BNLogoTrim) return Promise.resolve();
-    if(_trimLoad) return _trimLoad;
-    _trimLoad = new Promise(function(resolve, reject){
-      var s = document.createElement('script');
-      s.src = 'js/logo-autotrim-plugin.js';
-      s.onload = function(){ resolve(); };
-      s.onerror = function(){ _trimLoad = null; reject(new Error('load failed')); };
-      document.head.appendChild(s);
-    });
-    return _trimLoad;
-  }
-
   /* ── 載入 CropperJS ── */
   function loadCropper(cb){
     if(global.Cropper){ cb(); return; }
@@ -168,38 +153,6 @@
   color:#777 !important;
   line-height:1.5 !important;
 }
-#logoCropModal .cropper-trim-row{
-  display:flex !important;
-  align-items:center !important;
-  gap:8px !important;
-  margin-top:6px !important;
-  flex-wrap:wrap !important;
-}
-#logoCropModal .cropper-trim-row button{
-  border:1px solid #ddd !important;
-  background:#fff !important;
-  color:#111 !important;
-  border-radius:6px !important;
-  padding:4px 10px !important;
-  font-size:12px !important;
-  cursor:pointer !important;
-}
-#logoCropModal .cropper-trim-row button:hover{ background:#f4f4f4 !important; }
-#logoCropModal .cropper-trim-row label{
-  display:flex !important;
-  align-items:center !important;
-  gap:6px !important;
-  font-size:12px !important;
-  color:#777 !important;
-  margin:0 !important;
-}
-#logoCropModal .cropper-trim-row input[type=range]{ width:96px !important; }
-#logoCropModal #logoCropTolVal{
-  font-size:12px !important;
-  color:#111 !important;
-  min-width:18px !important;
-  text-align:right !important;
-}
 #logoCropModal .cropper-buttons{
   display:flex !important;
   gap:8px !important;
@@ -228,15 +181,7 @@
     </header>
     <div class="body"><img id="logoCropImg" alt="Logo 裁切" /></div>
     <div class="actions">
-      <div class="cropper-help">
-        同等比裁切：按住 shift 鍵再用滑鼠拉框線
-        <div class="cropper-trim-row">
-          <button id="logoCropAutoTrim" type="button" title="自動把裁切框縮到 logo 邊界，去掉多餘留白">自動去邊</button>
-          <button id="logoCropReset" type="button" title="裁切框恢復成整張圖">全選</button>
-          <label>靈敏度<input id="logoCropTol" type="range" min="4" max="40" step="2" value="12"></label>
-          <span id="logoCropTolVal">12</span>
-        </div>
-      </div>
+      <div class="cropper-help">同等比裁切：按住 shift 鍵再用滑鼠拉框線</div>
       <div class="cropper-buttons">
         <button id="logoCropCancel" class="btn secondary" type="button">取消</button>
         <button id="logoCropApply" class="btn" type="button">套用</button>
@@ -389,49 +334,6 @@
           if(typeof done === 'function'){ done(url); }
         });
       }
-      /* 「自動去邊」：算出 logo 實際邊界，直接把裁切框設定過去（使用者還能再微調） */
-      var trimBtn = document.getElementById('logoCropAutoTrim');
-      var tolInp  = document.getElementById('logoCropTol');
-      var tolVal  = document.getElementById('logoCropTolVal');
-      var resetBtn= document.getElementById('logoCropReset');
-
-      if(tolInp && tolInp.dataset.bnBound !== '1'){
-        tolInp.dataset.bnBound = '1';
-        tolInp.addEventListener('input', function(){
-          if(tolVal) tolVal.textContent = this.value;
-        });
-      }
-      if(resetBtn && resetBtn.dataset.bnBound !== '1'){
-        resetBtn.dataset.bnBound = '1';
-        resetBtn.addEventListener('click', function(){
-          if(activeCropper) activeCropper.reset();
-        });
-      }
-      if(trimBtn && trimBtn.dataset.bnBound !== '1'){
-        trimBtn.dataset.bnBound = '1';
-        trimBtn.addEventListener('click', function(){
-          if(!activeCropper) return;
-          var btn = this;
-          var old = btn.textContent;
-          btn.disabled = true; btn.textContent = '計算中…';
-          loadTrimPlugin().then(function(){
-            var target = document.getElementById('logoCropImg');
-            var tol = tolInp ? +tolInp.value : 12;
-            /* findBox 回傳的是「原圖座標」，跟 cropper.setData 用的座標系一致 */
-            var box = global.BNLogoTrim.findBox(target, { tolerance: tol });
-            if(!box){
-              alert('偵測不到明顯的單色或透明留白。\n可以把靈敏度調高一點再試，或直接手動拉框。');
-              return;
-            }
-            activeCropper.setData({ x:box.x, y:box.y, width:box.width, height:box.height });
-          })['catch'](function(){
-            alert('自動去邊失敗，請確認 js/logo-autotrim-plugin.js 已放進 js 資料夾。');
-          }).then(function(){
-            btn.disabled = false; btn.textContent = old;
-          });
-        });
-      }
-
       /* 「關閉 / 取消」按鈕 */
       if(close && close.dataset.bnBound !== '1'){
         close.dataset.bnBound = '1';

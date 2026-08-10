@@ -92,14 +92,7 @@
       if(light.background.legacySrc) light.background.legacySrc = '__BN_IDB__';
     }
     if(light.products){ light.products.forEach(function(p){ if(p && p.src) p.src='__BN_IDB__'; }); }
-    /* logo 自動去邊會多存一份 srcOriginal（未去邊的上傳原圖），也是完整 dataURL，
-       跟 src 一樣重。不一起換成佔位字串的話，localStorage 很快就會被塞爆
-       （QuotaExceededError → 整份暫存寫不進去，使用者重新整理後全部設定消失）。 */
-    if(light.logos){ light.logos.forEach(function(l){
-      if(!l) return;
-      if(l.src) l.src='__BN_IDB__';
-      if(l.srcOriginal) l.srcOriginal='__BN_IDB__';
-    }); }
+    if(light.logos){ light.logos.forEach(function(l){ if(l && l.src) l.src='__BN_IDB__'; }); }
     if(light.character && light.character.src){ light.character.src='__BN_IDB__'; }
     if(light.character2 && light.character2.src){ light.character2.src='__BN_IDB__'; }
     return light;
@@ -232,7 +225,15 @@
 
     if(result && result.text !== undefined && result.text !== inp.value){
       inp.value = result.text;
+      /* 補上 $ 與千分位後才超過上限時，標記為系統造成，
+         讓左側 input 監聽不要把文字截掉（改用紅框＋擋下載提醒）。 */
+      if(typeof global.bnMarkFmtOver === 'function'){
+        try{ global.bnMarkFmtOver(inp); }catch(_){}
+      }
       inp.dispatchEvent(new Event('input', {bubbles:true}));
+      if(typeof global.bnRefreshLimitAlert === 'function'){
+        try{ global.bnRefreshLimitAlert(); }catch(_){}
+      }
     }
 
     /* Toast 提示 */
@@ -605,11 +606,6 @@
     if(state.logos&&Array.isArray(state.logos)){
       if(!heavyStripped || state.logos.some(function(l){ return l && hasRealDataUrl(l.src); })){
         global._bnLogos=state.logos.filter(function(l){ return !l || l.src !== '__BN_IDB__'; });
-        /* srcOriginal 是給「還原上傳原圖」用的備份。若它剛好是被瘦身掉的佔位字串，
-           一定要清掉，否則按下還原會把 logo 的 src 設成 '__BN_IDB__'，圖直接變破圖。 */
-        global._bnLogos.forEach(function(l){
-          if(l && l.srcOriginal === '__BN_IDB__'){ l.srcOriginal = null; l.trimmed = false; }
-        });
         global._bnLogoDataUrl=global._bnLogos.length?global._bnLogos[0].src:null;
         if(typeof global._bnRenderLogoList==='function') global._bnRenderLogoList();
         if(typeof global._bnBroadcastLogos==='function') global._bnBroadcastLogos();

@@ -384,11 +384,8 @@
           });
         }
 
-        /* 「自動去邊 / 還原原圖」的文字要看這張 logo 目前是不是去邊後的版本 */
-        var lgCur = window._bnLogos.find(function(x){return x.id===lid;}) || {};
         var items = [
           { label:'裁切', action:'crop' },
-          { label: lgCur.trimmed ? '還原上傳原圖' : '自動去邊', action:'trimtoggle' },
           { label:'加圓邊', action:'round' },
         ];
 
@@ -432,46 +429,12 @@
           if(!newSrc) return;
           var lo = window._bnLogos.find(function(x){return x.id===lid;});
           if(lo){
-            if(!lo.srcOriginal) lo.srcOriginal = lo.src;
             lo.src = newSrc;
-            /* 手動裁過也算「已不是上傳原圖」，選單才會提供還原 */
-            lo.trimmed = true;
             imgEl.src = newSrc;
             window._bnLogoDataUrl = window._bnLogos[0].src;
-            renderLogoList();
             broadcast({type:'bn-logos', logos:window._bnLogos});
           }
         });
-      } else if(action === 'trimtoggle'){
-        var loT = window._bnLogos.find(function(x){return x.id===lid;});
-        if(!loT) return;
-        if(loT.trimmed){
-          /* 還原成剛上傳時的原圖 */
-          loT.src = loT.srcOriginal || loT.src;
-          loT.trimmed = false;
-          imgEl.src = loT.src;
-          window._bnLogoDataUrl = window._bnLogos[0].src;
-          renderLogoList();
-          broadcast({type:'bn-logos', logos:window._bnLogos});
-        } else {
-          ensureLogoTrim().then(function(){
-            return window.BNLogoTrim.trim(loT.srcOriginal || loT.src);
-          }).then(function(r){
-            if(!r.trimmed){
-              alert('這張圖偵測不到明顯的單色或透明留白，已保持原樣。\n（若確定要縮小範圍，請改用「裁切」手動拉框）');
-              return;
-            }
-            if(!loT.srcOriginal) loT.srcOriginal = loT.src;
-            loT.src = r.src;
-            loT.trimmed = true;
-            imgEl.src = r.src;
-            window._bnLogoDataUrl = window._bnLogos[0].src;
-            renderLogoList();
-            broadcast({type:'bn-logos', logos:window._bnLogos});
-          })['catch'](function(){
-            alert('自動去邊失敗，請確認 js/logo-autotrim-plugin.js 已放進 js 資料夾。');
-          });
-        }
       } else if(action === 'swap'){
         var idx = window._bnLogos.findIndex(function(x){return x.id===lid;});
         if(idx >= 0){
@@ -548,35 +511,15 @@
       }
     }
 
-    /* logo 自動去邊外掛：第一次要用到才載入，載入過就快取住 */
-    function ensureLogoTrim(){
-      if(window.BNLogoTrim) return Promise.resolve();
-      return loadScriptOnce('js/logo-autotrim-plugin.js');
-    }
-
     function doLoadLogo(file){
       if(window._bnLogos.length>=MAX_LOGOS)return;
       readFile(file).then(function(s){
-        /* 同時上傳多張時 Date.now() 可能撞號，補一段隨機碼確保 id 唯一 */
-        var id='logo_'+Date.now()+'_'+Math.random().toString(36).slice(2,6);
-
-        function push(src, trimmed){
-          /* srcOriginal 一定留著：使用者覺得裁過頭時可以從編輯選單「還原原圖」 */
-          window._bnLogos.push({id:id, src:src, srcOriginal:s, trimmed:!!trimmed});
-          window._bnLogoDataUrl=window._bnLogos[0].src;
-          renderLogoList();
-          /* 廣播：送出全部 logos */
-          broadcast({type:'bn-logos',logos:window._bnLogos});
-        }
-
-        /* 上傳完先自動去掉多餘留白，去邊失敗就用原圖，不擋流程 */
-        ensureLogoTrim().then(function(){
-          return window.BNLogoTrim.trim(s);
-        }).then(function(r){
-          push(r.src, r.trimmed);
-        })['catch'](function(){
-          push(s, false);
-        });
+        var id='logo_'+Date.now();
+        window._bnLogos.push({id:id,src:s});
+        window._bnLogoDataUrl=window._bnLogos[0].src;
+        renderLogoList();
+        /* 廣播：送出全部 logos */
+        broadcast({type:'bn-logos',logos:window._bnLogos});
       });
     }
 
@@ -2346,6 +2289,14 @@
     }
 
     function downloadAll(){
+      /* 字數硬擋：任何欄位（含系統補上 $ 與千分位後）超過上限就不給下載，
+         跳提醒視窗請使用者先修改。 */
+      if(typeof window.bnCanDownload === 'function' && !window.bnCanDownload()){
+        setProgress('文字超出字數上限，請修改後再下載');
+        setTimeout(function(){ setProgress(''); }, 4000);
+        return;
+      }
+
       /* 多圖恢復 ZIP：1 張直接 PNG；2 張以上先逐張截圖，最後打包 ZIP。 */
       var iframes=Array.from(document.querySelectorAll('.preview-block iframe'));
       if(!iframes.length){setProgress('沒有版位可下載');return;}

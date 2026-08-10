@@ -457,6 +457,7 @@
           /* 副標案型七字內 編輯時不反向同步到其他版位的 .副標，由 bn-text-update 統一處理 */
         }
       });
+      setTimeout(function(){ try{ refreshOverflowAll(); }catch(_){} }, 0);
     }
 
     /* 畫布直接編輯完成後，父層轉換好再推回來 */
@@ -471,6 +472,11 @@
         if(ct) ct.textContent = val;
         else if(!el.children.length) el.textContent = val;
       });
+      setTimeout(function(){ try{ refreshOverflowAll(); }catch(_){} }, 0);
+    }
+
+    if (e.data.type === 'bn-overflow-check') {
+      try{ refreshOverflowAll(); }catch(_){}
     }
 
     if (e.data.type === 'bn-color') {
@@ -1031,6 +1037,17 @@
 
     if (e.data.type === 'bn-capture') {
       var _cv = document.getElementById('canvas');
+
+      /* 保險：截圖前先拿掉超字紅框，避免紅框被畫進圖裡 */
+      var _overEls = [];
+      if(_cv){
+        _cv.querySelectorAll('.bn-over-limit').forEach(function(el){
+          _overEls.push(el); el.classList.remove('bn-over-limit');
+        });
+        setTimeout(function(){
+          _overEls.forEach(function(el){ el.classList.add('bn-over-limit'); });
+        }, 3000);
+      }
 
       /* 隱藏所有編輯用控制元素（縮放點等），截完再還原 */
       var _editEls = [];
@@ -1720,6 +1737,7 @@
   function enforceLimit(el, cls){
     var limit = CHAR_LIMITS[cls];
     if(!limit) return;
+    if(el.__fmtOver) return;   /* 系統補 $／千分位造成的超字：保留原文 */
     var text = el.textContent;
     var units = calcUnits(text);
     if(units <= limit) return;
@@ -1760,6 +1778,40 @@
     return calcUnits(next) > limit;
   }
 
+  /* ── 系統補 $／千分位造成的超字：不截斷，改用紅框常駐 ── */
+  function ensureOverflowStyle(){
+    if(document.getElementById('_bn_overflow_style')) return;
+    var st=document.createElement('style');
+    st.id='_bn_overflow_style';
+    st.textContent='.bn-over-limit{outline:3px solid #ff4d4f !important;'
+      +'background:rgba(255,77,79,.14) !important;border-radius:2px;}';
+    (document.head||document.documentElement).appendChild(st);
+  }
+  function isOverLimit(el, cls){
+    var limit = CHAR_LIMITS[cls];
+    if(!limit) return false;
+    return calcUnits(el.textContent) > limit + 0.001;
+  }
+  function markOverflow(el, cls){
+    if(!CHAR_LIMITS[cls]) return false;
+    ensureOverflowStyle();
+    var over = isOverLimit(el, cls);
+    el.classList.toggle('bn-over-limit', over);
+    if(!over) el.__fmtOver = false;
+    return over;
+  }
+  /* 父層把格式化後的文字推回畫布時呼叫：標記成「系統造成的超字」 */
+  function refreshOverflowAll(){
+    EDITABLE_CLASSES.forEach(function(cls){
+      if(!CHAR_LIMITS[cls]) return;
+      document.querySelectorAll('.'+cls).forEach(function(el){
+        if(el.children.length) return;
+        if(markOverflow(el, cls)) el.__fmtOver = true;
+      });
+    });
+  }
+  window.__bnRefreshOverflow = refreshOverflowAll;
+
   function flashEditLimit(el){
     el.style.outline = '1.5px solid #ef4444';
     clearTimeout(el._bnLimitTimer);
@@ -1797,6 +1849,7 @@
       el.contentEditable = 'false';
       el.style.outline = 'none';
       hideCounter(cls);
+      markOverflow(el, cls);
       _sendUpdate(el, cls);
     }
 
@@ -1821,18 +1874,8 @@
     el.addEventListener('paste', function(e){
       var text = (e.clipboardData || window.clipboardData).getData('text') || '';
       if(!wouldExceedLimit(el, cls, text)) return;
+      /* 貼上後會超過上限：整段擋掉，不做截斷 */
       e.preventDefault();
-      var limit = CHAR_LIMITS[cls];
-      var cur = el.textContent || '';
-      var pos = getEditableSelectionOffsets(el);
-      var prefix = cur.slice(0, pos.start);
-      var suffix = cur.slice(pos.end);
-      var remaining = limit - calcUnits(prefix + suffix);
-      var safe = trimToLimit(text, remaining);
-      if(safe){
-        try{ document.execCommand('insertText', false, safe); }
-        catch(_){ el.textContent = prefix + safe + suffix; }
-      }
       flashEditLimit(el);
       updateCharCounter(el, cls);
       showCounter(el, cls);
@@ -1840,13 +1883,10 @@
 
     el.addEventListener('input', function(){
       updateCharCounter(el, cls);
-      var limit = CHAR_LIMITS[cls];
-      if(limit && calcUnits(el.textContent) > limit){
-        enforceLimit(el, cls);
-        updateCharCounter(el, cls);
-        el.style.outline = '1.5px solid #ef4444';
-        setTimeout(function(){ if(_editing) el.style.outline='1.5px solid rgba(74,144,226,.55)'; }, 400);
-      }
+      /* 不截斷文字：超過上限一律保留原文，改用紅框常駐＋擋下載 */
+      var over = markOverflow(el, cls);
+      if(over) el.style.outline = '2px solid #ef4444';
+      else if(_editing) el.style.outline = '1.5px solid rgba(74,144,226,.55)';
       showCounter(el, cls);
     });
 

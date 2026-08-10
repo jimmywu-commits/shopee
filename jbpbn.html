@@ -271,6 +271,17 @@ html, body { height: 100%; background: var(--bg0); color: var(--text);
 .char-count-badge.warn { color:#f59e0b; }
 .char-count-badge.over { color:#ef4444;font-weight:700; }
 .s-field-row.over-limit input { border-color:#ef4444 !important; box-shadow:0 0 0 2px rgba(239,68,68,.2); }
+/* 系統補上 $ 與千分位後才超字：紅框常駐，不截斷文字 */
+.s-field-row.fmt-over input { border-color:#ef4444 !important; box-shadow:0 0 0 2px rgba(239,68,68,.32) !important; background:rgba(239,68,68,.10) !important; }
+#bnLimitAlert{position:fixed;left:50%;transform:translateX(-50%);top:12px;z-index:99998;background:#dc2626;color:#fff;font-size:13px;line-height:1.6;padding:10px 16px;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.4);display:none;max-width:80vw;}
+#bnLimitModal{position:fixed;inset:0;z-index:2147483000;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;}
+#bnLimitModal.show{display:flex;}
+#bnLimitModal .box{background:#fff;color:#111;border-radius:14px;padding:22px 24px;max-width:460px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,.4);font-size:14px;line-height:1.7;}
+#bnLimitModal h3{margin:0 0 10px;font-size:17px;color:#dc2626;}
+#bnLimitModal ul{margin:10px 0 14px;padding-left:20px;}
+#bnLimitModal .hint{font-size:12.5px;color:#666;margin:0 0 12px;line-height:1.75;}
+#bnLimitModal button{width:100%;padding:11px;border:0;border-radius:8px;background:#2176ff;color:#fff;font-size:14px;cursor:pointer;}
+#bnLimitModal button:hover{background:#1b62d8;}
 #cp-hex-row {
   display: flex; align-items: center; gap: 7px; margin-bottom: 10px;
 }
@@ -935,6 +946,109 @@ function bnFieldLimitByInputId(inputId){
   return el ? parseFloat(el.dataset.limit||'') : 0;
 }
 
+/* ════════════════════════════════════════
+   字數超限：系統補上 $ 與千分位後才超字時，
+   不截斷文字，改用紅框＋常駐提醒＋擋下載
+════════════════════════════════════════ */
+var BN_LIMIT_FIELDS=[
+  ['txt-brand','品牌名'],['txt-main','主標'],['txt-sub','副標'],
+  ['txt-date','日期'],['txt-icon','SearchICON文案']
+];
+function bnFieldAllowComma(inputId){ return inputId==='txt-date'; }
+function bnFieldUnits(inp){ return bnCalcTextUnits(inp.value, bnFieldAllowComma(inp.id)); }
+function bnIsFieldOver(inp){
+  if(!inp) return false;
+  var lim=parseFloat(inp.dataset.limit||'');
+  if(!lim) return false;
+  return bnFieldUnits(inp) > lim + 0.001;
+}
+/* 標記某欄位「目前的超字是系統格式化造成的」→ 之後不再截斷它 */
+function bnMarkFmtOver(inp){
+  if(!inp) return false;
+  var over=bnIsFieldOver(inp);
+  inp.__fmtOver=over;
+  var row=inp.closest ? inp.closest('.s-field-row') : null;
+  if(row) row.classList.toggle('fmt-over', over);
+  return over;
+}
+function bnSyncFieldOverUI(inp){
+  if(!inp) return;
+  var over=bnIsFieldOver(inp);
+  if(!over) inp.__fmtOver=false;
+  var row=inp.closest ? inp.closest('.s-field-row') : null;
+  if(row) row.classList.toggle('fmt-over', over);
+}
+function bnGetOverLimitFields(){
+  var out=[];
+  BN_LIMIT_FIELDS.forEach(function(f){
+    var inp=document.getElementById(f[0]);
+    if(!inp) return;
+    var lim=parseFloat(inp.dataset.limit||'');
+    if(lim && bnIsFieldOver(inp)){
+      out.push({ id:f[0], label:f[1], used:bnFieldUnits(inp), limit:lim, value:inp.value });
+    }
+  });
+  return out;
+}
+function bnEnsureLimitAlert(){
+  var el=document.getElementById('bnLimitAlert');
+  if(!el){
+    el=document.createElement('div');
+    el.id='bnLimitAlert';
+    document.body.appendChild(el);
+  }
+  return el;
+}
+/* 常駐提醒：只要還有欄位超字就一直顯示，不會自己消失 */
+function bnRefreshLimitAlert(){
+  BN_LIMIT_FIELDS.forEach(function(f){ bnSyncFieldOverUI(document.getElementById(f[0])); });
+  var bar=bnEnsureLimitAlert();
+  var list=bnGetOverLimitFields();
+  if(!list.length){ bar.style.display='none'; bar.innerHTML=''; return; }
+  bar.innerHTML='⚠ 有 '+list.length+' 個欄位超出字數上限，無法下載：<br>'
+    + list.map(function(f){ return f.label+'　'+(Math.round(f.used*10)/10)+' / '+f.limit+' 字'; }).join('　｜　');
+  bar.style.display='block';
+}
+/* 下載前的提醒視窗（硬擋，沒有強制下載的出口） */
+function bnShowLimitBlockModal(list){
+  var m=document.getElementById('bnLimitModal');
+  if(!m){
+    m=document.createElement('div');
+    m.id='bnLimitModal';
+    m.innerHTML='<div class="box">'
+      +'<h3>⚠ 文字超出字數上限，無法下載</h3>'
+      +'<p class="hint">系統會自動為數字加上 $ 與千分位符號，加上後可能就超過上限。請調整下列欄位後再下載：</p>'
+      +'<ul id="bnLimitModalList"></ul>'
+      +'<p class="hint">建議做法：縮短文字，或在該欄位上按右鍵選擇「暫時不加$和千分位符號」。</p>'
+      +'<button type="button" id="bnLimitModalOk">知道了，我去修改</button>'
+      +'</div>';
+    document.body.appendChild(m);
+    m.addEventListener('click',function(e){ if(e.target===m) m.classList.remove('show'); });
+    m.querySelector('#bnLimitModalOk').addEventListener('click',function(){ m.classList.remove('show'); });
+    document.addEventListener('keydown',function(e){ if(e.key==='Escape') m.classList.remove('show'); });
+  }
+  var ul=m.querySelector('#bnLimitModalList');
+  ul.innerHTML=(list||[]).map(function(f){
+    return '<li><b>'+f.label+'</b>　'+(Math.round(f.used*10)/10)+' / '+f.limit+' 字<br>'
+         + '<span style="color:#666;font-size:12.5px;">目前內容：'+String(f.value||'').replace(/</g,'&lt;')+'</span></li>';
+  }).join('');
+  m.classList.add('show');
+  var first=list&&list[0]?document.getElementById(list[0].id):null;
+  if(first){ try{ first.focus(); first.scrollIntoView({block:'center'}); }catch(_){} }
+}
+/* 給下載流程呼叫：回傳 true 才允許下載 */
+function bnCanDownload(){
+  bnRefreshLimitAlert();
+  var list=bnGetOverLimitFields();
+  if(list.length){ bnShowLimitBlockModal(list); return false; }
+  return true;
+}
+window.bnGetOverLimitFields=bnGetOverLimitFields;
+window.bnRefreshLimitAlert=bnRefreshLimitAlert;
+window.bnMarkFmtOver=bnMarkFmtOver;
+window.bnCanDownload=bnCanDownload;
+document.addEventListener('DOMContentLoaded',function(){ setTimeout(bnRefreshLimitAlert,300); });
+
 /* 接收 iframe 傳回的尺寸與就緒通知 */
 window.addEventListener('message', function (e) {
   if (!e.data) return;
@@ -986,17 +1100,19 @@ window.addEventListener('message', function (e) {
             window._bnStatePlugin.toast(bwResult.message,'err',bwResult.duration||4000);
           }
         }
-        var limit = bnFieldLimitByInputId(inputId);
-        var allowCommaForField = inputId === 'txt-date';
-        if(limit && bnCalcTextUnits(rawVal, allowCommaForField) > limit){
-          rawVal = bnTrimTextToLimit(rawVal, limit, allowCommaForField);
-        }
+        /* 系統補上 $ 與千分位後才超過上限時，不截斷文字：
+           保留完整內容，改用紅框＋常駐提醒，並在下載時擋下來。
+           （使用者自己手打超過上限，仍然由 beforeinput/paste 硬擋） */
         if(inp.value !== rawVal){
           inp.value = rawVal;
+          bnMarkFmtOver(inp);   /* 先標記，input 監聽才知道不要截斷 */
           /* 讓左側既有的 banwords、字數提示與本機暫存監聽都收到更新。 */
           try{ inp.dispatchEvent(new Event('input', {bubbles:true})); }catch(_){}
           try{ inp.dispatchEvent(new Event('change', {bubbles:true})); }catch(_){}
+        } else {
+          bnMarkFmtOver(inp);
         }
+        bnRefreshLimitAlert();
         try{ document.dispatchEvent(new CustomEvent('bn-state-dirty')); }catch(_){}
         broadcastText();
         /* 把轉換後的文字送回 iframe 更新畫布 */
@@ -1895,29 +2011,25 @@ document.addEventListener('DOMContentLoaded',function(){
     input.addEventListener('paste',function(e){
       var text=(e.clipboardData||window.clipboardData).getData('text')||'';
       if(calcUnits(nextValue(input,text), allowComma)<=limit) return;
+      /* 貼上後會超過上限：整段擋掉，不做截斷（避免貼進殘缺的文字） */
       e.preventDefault();
-      var start=input.selectionStart==null ? input.value.length : input.selectionStart;
-      var end=input.selectionEnd==null ? input.value.length : input.selectionEnd;
-      var prefix=input.value.slice(0,start);
-      var suffix=input.value.slice(end);
-      var remaining=limit-calcUnits(prefix+suffix, allowComma);
-      var safe=trimToLimit(text,remaining, allowComma);
-      if(safe){
-        input.value=prefix+safe+suffix;
-        setCaretToEnd(input);
-        broadcastText();
-      }
       flashLimit(input,badge);
     });
 
     input.addEventListener('input',function(){
-      if(calcUnits(input.value, allowComma)>limit){
-        input.value=trimToLimit(input.value,limit, allowComma);
-        setCaretToEnd(input);
-        broadcastText();
-        flashLimit(input,badge);
+      /* 一律不截斷文字：
+         手打由 beforeinput 擋住、貼上整段擋住；
+         其餘（輸入法漏網、系統補 $／千分位、預設值）保留原文，
+         改用紅框＋常駐提醒＋擋下載處理。 */
+      if(calcUnits(input.value, allowComma)<=limit) input.__fmtOver=false;
+      if(badge){
+        var u=calcUnits(input.value, allowComma);
+        var over=u>limit+0.001;
+        badge.textContent=u.toFixed(1)+'/'+limit;
+        badge.className='char-count-badge'+(over?' over':(u>limit*0.85?' warn':''));
+        if(u>=limit) badge.title='已達輸入上限';
       }
-      if(calcUnits(input.value, allowComma)>=limit && badge) badge.title='已達輸入上限';
+      if(typeof bnRefreshLimitAlert==='function') bnRefreshLimitAlert();
     });
   });
 });
