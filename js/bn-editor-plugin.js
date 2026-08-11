@@ -281,17 +281,14 @@
       var inp=document.getElementById('bn-logo-inp');
       var drop=document.getElementById('bn-logo-drop');
       inp.addEventListener('change',function(){
-        var remaining=MAX_LOGOS-window._bnLogos.length;
-        Array.from(this.files).slice(0,remaining).forEach(function(f){doLoadLogo(f);});
+        doLoadLogos(this.files);
         inp.value='';
       });
       drop.addEventListener('dragover',function(e){e.preventDefault();this.classList.add('drag');});
       drop.addEventListener('dragleave',function(){this.classList.remove('drag');});
       drop.addEventListener('drop',function(e){
         e.preventDefault();this.classList.remove('drag');
-        var remaining=MAX_LOGOS-window._bnLogos.length;
-        Array.from(e.dataTransfer.files).filter(function(f){return f.type.startsWith('image/');})
-          .slice(0,remaining).forEach(function(f){doLoadLogo(f);});
+        doLoadLogos(Array.from(e.dataTransfer.files).filter(function(f){return f.type.startsWith('image/');}));
       });
     }
 
@@ -511,16 +508,64 @@
       }
     }
 
+    /* ══ Logo 自動去白邊 ══
+       上傳的 logo 原圖常常四周留一大片白底或透明區域，直接放到版位上，
+       實際看到的 logo 會比框小很多。這裡在「存進 _bnLogos 之前」先把多餘
+       留白裁掉，後續裁切／圓邊／廣播到 iframe 用的都是裁好的版本，
+       整個流程其他地方完全不用改。
+
+       判斷邏輯放在 js/logo-autotrim-plugin.js（window.BNLogoTrim），
+       刻意不沿用上面商品圖用的 autoTrim()：那一版會無條件把接近純白的
+       像素當留白，白色 logo（白蝦皮、白字 logo）套下去會被整張切爛。
+
+       這是「加分功能」，所以每一層都留退路：plugin 載入失敗、canvas 被
+       跨網域汙染、判斷不出邊界 → 一律回原圖，絕不擋住上傳。 */
+    function logoAutoTrimSrc(src){
+      function run(){
+        if(!window.BNLogoTrim) return Promise.resolve(null);
+        return window.BNLogoTrim.trim(src).then(function(r){
+          return (r && r.trimmed && r.src) ? r.src : null;
+        })['catch'](function(){ return null; });
+      }
+      if(window.BNLogoTrim) return run();
+      return loadScriptOnce('js/logo-autotrim-plugin.js')
+        .then(run)['catch'](function(){ return null; });
+    }
+
+    /* 回傳 Promise，讓多檔上傳可以「一張處理完再處理下一張」，
+       維持使用者選檔的順序（去白邊是非同步的，同時併發跑完成順序不保證，
+       Logo1 / Logo2 / Logo3 會亂掉）。 */
     function doLoadLogo(file){
-      if(window._bnLogos.length>=MAX_LOGOS)return;
-      readFile(file).then(function(s){
-        var id='logo_'+Date.now();
-        window._bnLogos.push({id:id,src:s});
-        window._bnLogoDataUrl=window._bnLogos[0].src;
-        renderLogoList();
-        /* 廣播：送出全部 logos */
-        broadcast({type:'bn-logos',logos:window._bnLogos});
-      });
+      if(window._bnLogos.length>=MAX_LOGOS)return Promise.resolve();
+      return readFile(file).then(function(s){
+        return logoAutoTrimSrc(s).then(function(trimmed){
+          if(window._bnLogos.length>=MAX_LOGOS)return;
+          var id='logo_'+Date.now()+'_'+(++_bnLogoSeq);
+          var lg={id:id,src:trimmed||s};
+          /* 保留剛上傳、還沒去邊的原圖：之後若要做「還原原圖」或除錯，
+             不必請使用者重新上傳。 */
+          lg.uploadSrc=s;
+          if(trimmed) lg.autoTrimmed=true;
+          window._bnLogos.push(lg);
+          window._bnLogoDataUrl=window._bnLogos[0].src;
+          renderLogoList();
+          /* 廣播：送出全部 logos */
+          broadcast({type:'bn-logos',logos:window._bnLogos});
+        });
+      })['catch'](function(){});
+    }
+
+    /* 同一毫秒內連續上傳兩張圖時 Date.now() 會一樣，id 撞號會讓
+       移除／排序抓錯那一列，補一個序號確保唯一。 */
+    var _bnLogoSeq=0;
+
+    /* 依序處理多個檔案（含上限） */
+    function doLoadLogos(files){
+      var remaining=MAX_LOGOS-window._bnLogos.length;
+      Array.prototype.slice.call(files,0,Math.max(0,remaining))
+        .reduce(function(chain,f){
+          return chain.then(function(){ return doLoadLogo(f); });
+        }, Promise.resolve());
     }
 
     /* ══ 人物上傳（單張；可超出商品範圍與畫布；有人物圖時商品僅顯示第1張） ══ */

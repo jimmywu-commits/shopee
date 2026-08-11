@@ -1921,7 +1921,7 @@ window.loadChecked        = function(){ var checked={}; loadLayouts().forEach(fu
    動態插入的 script 預設是非同步、載入完成順序不保證，一定要手動關掉。 */
 (function(){
   var _t = Date.now();
-  ['js/bn-editor-plugin.js','js/bn-state-plugin.js','js/bn-workorder-upload-plugin.js','js/bn-bg-library-plugin.js'].forEach(function(src){
+  ['js/logo-autotrim-plugin.js','js/bn-editor-plugin.js','js/bn-state-plugin.js','js/bn-workorder-upload-plugin.js','js/bn-bg-library-plugin.js'].forEach(function(src){
     var s = document.createElement('script');
     s.src = src + '?t=' + _t;
     s.async = false;
