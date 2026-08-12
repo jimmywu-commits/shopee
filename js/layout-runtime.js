@@ -1178,7 +1178,12 @@
          4. 截圖完成後移除 canvas、還原文字色，畫布預覽不受影響。 */
       var _iconRasterEls = [];
       if(_cv){
-        _cv.querySelectorAll('.ICON獨立文案, .副標案型七字內').forEach(function(el){
+        /* .官方旗艦店（2026-08 加入）：字級 29.63px 配 line-height 30px，
+           字型內容高度 43.85px > 行框 → 負半行距約 -7px。html2canvas 處理
+           負半行距的行為不穩定，實測下載會整行往上跳 8px（預覽正常），
+           造成跟左右橫白線對不齊。納入點陣化後下載 = 預覽，橫線本身是
+           靜態色塊本來就不會漂，兩者就永遠對齊。 */
+        _cv.querySelectorAll('.ICON獨立文案, .副標案型七字內, .官方旗艦店').forEach(function(el){
           var txt = (el.textContent || '').trim();
           if(!txt) return;
           var w = el.offsetWidth, h = el.offsetHeight;
