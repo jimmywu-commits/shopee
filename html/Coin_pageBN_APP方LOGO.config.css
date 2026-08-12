@@ -86,13 +86,15 @@
   position: absolute;
   left: 642.3px;
   top: 0;
-  width: 70px;
+  width: 78px;
   height: 391px;
   background: linear-gradient(
     to right,
     #4fb5eb 0%,
-    transparent 100%
+    rgba(79, 181, 235, 0) 89.744%,
+    rgba(79, 181, 235, 0) 100%
   );
+  background-repeat: no-repeat;   /* ★ 防止最後 1px 露出下一塊 tile 的不透明起始色 */
   pointer-events: none;
   z-index: 3;  /* 背景圖(2)之上，文字(6+)之下 */
   /* JS 用這個屬性同步顏色 */
@@ -121,15 +123,17 @@
 .漸層右 {
   display: none;
   position: absolute;
-  left: 974.3px;
+  left: 966.3px;
   top: 0;
-  width: 70px;
+  width: 78px;
   height: 391px;
   background: linear-gradient(
     to left,
     #4fb5eb 0%,
-    transparent 100%
+    rgba(79, 181, 235, 0) 89.744%,
+    rgba(79, 181, 235, 0) 100%
   );
+  background-repeat: no-repeat;   /* ★ 防止最後 1px 露出下一塊 tile 的不透明起始色 */
   pointer-events: none;
   z-index: 3;
   --grad-dir: to left;
@@ -145,12 +149,14 @@
   left: 0;
   top: 0;
   width: 1200px;
-  height: 80px;  /* ← 漸層範圍高度 */
+  height: 88px;  /* ← 漸層範圍高度 */
   background: linear-gradient(
     to bottom,
     #6ec6e8 0%,
-    transparent 100%
+    rgba(110, 198, 232, 0) 90.909%,
+    rgba(110, 198, 232, 0) 100%
   );
+  background-repeat: no-repeat;   /* ★ 防止最後 1px 露出下一塊 tile 的不透明起始色 */
   pointer-events: none;
   z-index: 100;
 }
@@ -165,12 +171,14 @@
   left: 0;
   bottom: 0;
   width: 1200px;
-  height: 80px;  /* ← 漸層範圍高度 */
+  height: 88px;  /* ← 漸層範圍高度 */
   background: linear-gradient(
     to top,
     #6ec6e8 0%,
-    transparent 100%
+    rgba(110, 198, 232, 0) 90.909%,
+    rgba(110, 198, 232, 0) 100%
   );
+  background-repeat: no-repeat;   /* ★ 防止最後 1px 露出下一塊 tile 的不透明起始色 */
   pointer-events: none;
   z-index: 100;
 }
