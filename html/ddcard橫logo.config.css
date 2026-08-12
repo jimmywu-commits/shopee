@@ -66,8 +66,10 @@
 .漸層上 {
   position: absolute;
   left: 0; top: 293px;
-  width: 531px; height: 70px;
-  background: linear-gradient(to bottom, #6ec6e8 0%, transparent 100%);
+  width: 531px; height: 78px;
+  background: linear-gradient(to bottom, #6ec6e8 0%, transparent 89.744%,
+    transparent 100%);
+  background-repeat: no-repeat;   /* ★ 防止最後 1px 露出下一塊 tile 的不透明起始色 */
   pointer-events: none;
   z-index: 3;
   --grad-dir: to bottom;
@@ -76,9 +78,11 @@
 /* ── 漸層下：起點 y=676px ── */
 .漸層下 {
   position: absolute;
-  left: 0; top: 676px;
-  width: 531px; height: 70px;
-  background: linear-gradient(to top, #6ec6e8 0%, transparent 100%);
+  left: 0; top: 668px;
+  width: 531px; height: 78px;
+  background: linear-gradient(to top, #6ec6e8 0%, transparent 89.744%,
+    transparent 100%);
+  background-repeat: no-repeat;   /* ★ 防止最後 1px 露出下一塊 tile 的不透明起始色 */
   pointer-events: none;
   z-index: 3;
   --grad-dir: to top;

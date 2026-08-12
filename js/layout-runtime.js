@@ -501,7 +501,32 @@
           if(!gel) return;
           var dir = _dirsRt[cls] || window.getComputedStyle(gel).getPropertyValue('--grad-dir').trim();
           if(dir){
-            gel.style.background = 'linear-gradient(' + dir + ', ' + c.canvasBg + ' 0%, ' + _toRgba0rt(c.canvasBg) + ' 100%)';
+            /* ────────── 漸層 1px 接縫修正 ──────────
+               症狀：漸層區塊的「最後 1 像素列/行」會整條變成不透明的畫布底色，
+                     在底圖上看起來就是一條橫線／直線。只有部分使用者會遇到。
+               主因：background-image 預設 background-repeat: repeat。
+                     當漸層 tile 的尺寸換算成裝置像素出現小數（畫布 scale 為
+                     任意小數、或 Windows 顯示縮放 125%/150% 使 devicePixelRatio
+                     非整數）時，元素最後一列會取樣到「下一塊 tile 的 0%」，
+                     也就是完全不透明的底色 → 出現色帶。
+                     這裡原本用 background 簡寫，簡寫會把 background-repeat
+                     重設回 repeat，就算 CSS 有寫 no-repeat 也會被蓋掉。
+               修正 1：改用 backgroundImage，並明確指定 no-repeat。
+               修正 2：漸層的 alpha 提早在邊緣前 GRAD_SAFE_PX 就歸零，
+                     讓元素邊緣是純透明，抗鋸齒也不會有殘影。
+               ──────────────────────────────────── */
+            var GRAD_SAFE_PX = 8;
+            var _vert = (dir === 'to bottom' || dir === 'to top');
+            var _size = _vert ? gel.offsetHeight : gel.offsetWidth;
+            var _stop = (_size > GRAD_SAFE_PX)
+                        ? (((_size - GRAD_SAFE_PX) / _size) * 100).toFixed(3)
+                        : 100;
+            var _c0 = _toRgba0rt(c.canvasBg);
+            gel.style.backgroundColor  = 'transparent';
+            gel.style.backgroundImage  = 'linear-gradient(' + dir + ', ' + c.canvasBg + ' 0%, '
+                                         + _c0 + ' ' + _stop + '%, ' + _c0 + ' 100%)';
+            gel.style.backgroundRepeat = 'no-repeat';
+            gel.style.backgroundSize   = '100% 100%';
           }
         });
         /* 所有保護色塊跟著背景色同步 */
@@ -1062,12 +1087,16 @@
          只保留副標下載補償。左側紅底共用區（官方旗艦店/橫線/商城logo）
          改為完全所見即所得，不再於下載時針對 1/2/3 做不同位移。
       */
-      var SEARCH_IMAGE1_SUBTITLE_OFFSET = 14;
+      /* ★ 2026-08：+14px 補償已停用（設為 0）。
+         副標位置改由下方「文字點陣化」機制鎖死（跟 SearchICON_TEXT 同一套），
+         下載 = 預覽，不再需要用固定位移去猜 html2canvas 的誤差；
+         繼續留著 +14 反而會讓下載結果偏下（使用者回報的「有時往下掉」）。 */
+      var SEARCH_IMAGE1_SUBTITLE_OFFSET = 0;
       var _captureAdjustEls = [];
       var _fnameLower = (fname || '').toLowerCase();
       var _isSearchImage1 = _fnameLower.indexOf('search_image1') !== -1;
 
-      if(_isSearchImage1 && _cv){
+      if(SEARCH_IMAGE1_SUBTITLE_OFFSET && _isSearchImage1 && _cv){
         _cv.querySelectorAll('.副標案型七字內').forEach(function(el){
           var oldTop = el.style.top || '';
           var oldPriority = el.style.getPropertyPriority('top') || '';
@@ -1088,8 +1117,15 @@
          如果變成偏上（跑過頭），把它調小；抓到剛好置中為止。抓到之後同一個
          數字對其他版位、其他字級應該都適用（是按字級比例算的，不是固定px）。
          暫時先給一個保守的小值，避免像剛才 0.10 那樣跑過頭。 */
-      var CTA_TEXT_OFFSET_RATIO = 0.03;
-      if(_cv){
+      /* ★ 2026-08 修正：此補償已停用（設為 0）。
+         原因：這個係數當初是「用系統預設字型」估出來的，實際字型
+         ShopeeNotoSans 載入後 html2canvas 的基準線算法並不需要補償，
+         繼續套用等於平白把 CTA 文字往上推 fontSize×3%（SCBN_APP、
+         Coin_pageBN、HBN 的「逛逛去」下載後偏上就是這個造成的）。
+         若日後真的又出現偏移，再調整這個數字即可：偏下調大、偏上調小；
+         設為 0 時完全不會動到 top，畫布與下載結果一致。 */
+      var CTA_TEXT_OFFSET_RATIO = 0;
+      if(_cv && CTA_TEXT_OFFSET_RATIO){
         _cv.querySelectorAll('.放心買_安心退, .逛逛去').forEach(function(el){
           var oldTop = el.style.top || '';
           var oldPriority = el.style.getPropertyPriority('top') || '';
@@ -1109,9 +1145,15 @@
          比例往下位移抵銷。這組是照真實下載結果量的，理論上比 CTA 文字那組
          （只能先用系統字型估）準；如果實際測試後還有落差，調整
          ICON_TEXT_OFFSET_RATIO 這個數字即可：往上跑就調大、往下跑過頭就調小。 */
-      var ICON_TEXT_OFFSET_RATIO = 0.22;
+      /* ★ 2026-08 修正：此補償已停用（設為 0）。
+         .ICON獨立文案 是用 line-height:90px 做垂直置中，畫布上本來就是正的；
+         這裡再往下推 fontSize×22%（字級 50px → 11px），下載出來就會整段偏下。
+         實測 120x120 的輸出，文字中心比畫布中心低約 13px，量級與此補償相符。
+         設為 0 時完全不會寫入 transform，也不會蓋掉 config.css 的
+         transform:none !important。 */
+      var ICON_TEXT_OFFSET_RATIO = 0;
       var _transformAdjustEls = [];
-      if(_cv){
+      if(_cv && ICON_TEXT_OFFSET_RATIO){
         _cv.querySelectorAll('.ICON獨立文案').forEach(function(el){
           var oldTransform = el.style.transform || '';
           var oldPriority = el.style.getPropertyPriority('transform') || '';
@@ -1120,6 +1162,68 @@
           if(!fontSize) return;
           _transformAdjustEls.push({el:el, transform:oldTransform, priority:oldPriority});
           el.style.setProperty('transform', 'translateY(' + (fontSize * ICON_TEXT_OFFSET_RATIO) + 'px)', 'important');
+        });
+      }
+
+      /* ★ 文字位置寫死（2026-08）：SearchICON_TEXT、Search_Image 副標
+         不再用「猜偏移量」補償 html2canvas 的文字基準線誤差——那個誤差跟
+         字型載入狀態、版本、字級都有關，怎麼調都會在環境間漂移。
+         改成截圖前把文字「畫成 canvas 點陣圖」蓋在原文字上：
+         1. 先用「零尺寸 inline-block 探針」量出瀏覽器實際把基準線放在
+            元素內的哪個 y（探針底部貼齊 baseline，offsetTop 就是答案），
+            所以畫出來的位置 = 螢幕預覽位置，所見即所得。
+         2. 用同字型同字級畫進 2x canvas（防糊），原文字暫設 color:transparent。
+         3. html2canvas 對 canvas 是像素複製，沒有字型/基準線計算空間
+            → 下載結果永遠等於預覽。
+         4. 截圖完成後移除 canvas、還原文字色，畫布預覽不受影響。 */
+      var _iconRasterEls = [];
+      if(_cv){
+        _cv.querySelectorAll('.ICON獨立文案, .副標案型七字內').forEach(function(el){
+          var txt = (el.textContent || '').trim();
+          if(!txt) return;
+          var w = el.offsetWidth, h = el.offsetHeight;
+          if(!w || !h) return;
+          var cs = window.getComputedStyle(el);
+          var fontSize = parseFloat(cs.fontSize) || 50;
+
+          /* 基準線探針：inline-block 的下緣對齊文字 baseline */
+          var probe = document.createElement('span');
+          probe.style.cssText = 'display:inline-block;width:0;height:0;padding:0;margin:0;border:0;';
+          el.appendChild(probe);
+          var baseY = probe.offsetTop;
+          el.removeChild(probe);
+          if(!baseY || baseY <= 0 || baseY > h * 2){
+            /* 探針失敗就退回字型比例估算，不中斷截圖 */
+            baseY = h / 2 + fontSize * 0.38;
+          }
+
+          var RES = 2;
+          var cnv = document.createElement('canvas');
+          cnv.width = w * RES; cnv.height = h * RES;
+          cnv.style.cssText = 'position:absolute;left:0;top:0;width:' + w + 'px;height:' + h + 'px;pointer-events:none;';
+          var ctx = cnv.getContext('2d');
+          ctx.scale(RES, RES);
+          ctx.font = cs.fontStyle + ' ' + cs.fontWeight + ' ' + fontSize + 'px ' + cs.fontFamily;
+          if(cs.letterSpacing && cs.letterSpacing !== 'normal' && 'letterSpacing' in ctx){
+            ctx.letterSpacing = cs.letterSpacing;
+          }
+          ctx.fillStyle = cs.color;
+          ctx.textBaseline = 'alphabetic';
+          var padL = parseFloat(cs.paddingLeft) || 0;
+          var padR = parseFloat(cs.paddingRight) || 0;
+          if(cs.textAlign === 'center'){
+            ctx.textAlign = 'center';
+            ctx.fillText(txt, padL + (w - padL - padR) / 2, baseY);
+          } else if(cs.textAlign === 'right' || cs.textAlign === 'end'){
+            ctx.textAlign = 'right';
+            ctx.fillText(txt, w - padR, baseY);
+          } else {
+            ctx.textAlign = 'left';
+            ctx.fillText(txt, padL, baseY);
+          }
+          _iconRasterEls.push({el: el, color: el.style.color || '', priority: el.style.getPropertyPriority('color') || '', cnv: cnv});
+          el.style.setProperty('color', 'transparent', 'important');
+          el.appendChild(cnv);
         });
       }
 
@@ -1196,6 +1300,7 @@
           o.el.style.maxWidth = o.maxWidth; o.el.style.maxHeight = o.maxHeight;
         });
         _transformAdjustEls.forEach(function(o){ o.el.style.setProperty('transform', o.transform, o.priority || ''); });
+        _iconRasterEls.forEach(function(o){ o.el.style.setProperty('color', o.color, o.priority || ''); if(o.cnv.parentNode) o.cnv.parentNode.removeChild(o.cnv); });
         window.parent.postMessage({type:'bn-snapshot',msgId:e.data.msgId,dataUrl:dataUrl},'*');
       });
     }

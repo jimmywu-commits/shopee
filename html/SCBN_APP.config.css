@@ -68,9 +68,11 @@
   position: absolute;
   left: 541px;
   top: 46px;
-  width: 70px;
+  width: 78px;
   height: 154px;
-  background: linear-gradient(to right, #6bc0ec 0%, transparent 100%);
+  background: linear-gradient(to right, #6bc0ec 0%, transparent 89.744%,
+    transparent 100%);
+  background-repeat: no-repeat;   /* ★ 防止最後 1px 露出下一塊 tile 的不透明起始色 */
   pointer-events: none;
   z-index: 3;
   --grad-dir: to right;
@@ -79,11 +81,13 @@
 /* ── 漸層右：起點 903px，在 .背景色 範圍內 ── */
 .漸層右 {
   position: absolute;
-  left: 903px;
+  left: 895px;
   top: 46px;
-  width: 70px;
+  width: 78px;
   height: 154px;
-  background: linear-gradient(to left, #6bc0ec 0%, transparent 100%);
+  background: linear-gradient(to left, #6bc0ec 0%, transparent 89.744%,
+    transparent 100%);
+  background-repeat: no-repeat;   /* ★ 防止最後 1px 露出下一塊 tile 的不透明起始色 */
   pointer-events: none;
   z-index: 3;
   --grad-dir: to left;

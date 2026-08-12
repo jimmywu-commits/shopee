@@ -76,8 +76,10 @@
 .漸層左 {
   position: absolute;
   left: 600px; top: 0;
-  width: 70px; height: 391px;
-  background: linear-gradient(to right, #4fb5eb 0%, transparent 100%);
+  width: 78px; height: 391px;
+  background: linear-gradient(to right, #4fb5eb 0%, transparent 89.744%,
+    transparent 100%);
+  background-repeat: no-repeat;   /* ★ 防止最後 1px 露出下一塊 tile 的不透明起始色 */
   pointer-events: none; z-index: 3;
   --grad-dir: to right;
 }
