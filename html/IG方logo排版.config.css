@@ -57,8 +57,8 @@
   top: 683.9px;
   width: 900px;
   height: 78px;
-  background: linear-gradient(to bottom, #6ec6e8 0%, transparent 89.744%,
-    transparent 100%);
+  background: linear-gradient(to bottom, #6ec6e8 0%, rgba(110, 198, 232, 0) 89.744%,
+    rgba(110, 198, 232, 0) 100%);
   background-repeat: no-repeat;   /* ★ 防止最後 1px 露出下一塊 tile 的不透明起始色 */
   pointer-events: none;
   z-index: 3;
@@ -72,8 +72,8 @@
   top: 1342px;
   width: 900px;
   height: 78px;
-  background: linear-gradient(to top, #6ec6e8 0%, transparent 89.744%,
-    transparent 100%);
+  background: linear-gradient(to top, #6ec6e8 0%, rgba(110, 198, 232, 0) 89.744%,
+    rgba(110, 198, 232, 0) 100%);
   background-repeat: no-repeat;   /* ★ 防止最後 1px 露出下一塊 tile 的不透明起始色 */
   pointer-events: none;
   z-index: 3;

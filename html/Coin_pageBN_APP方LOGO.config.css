@@ -91,8 +91,8 @@
   background: linear-gradient(
     to right,
     #4fb5eb 0%,
-    transparent 89.744%,
-    transparent 100%
+    rgba(79, 181, 235, 0) 89.744%,
+    rgba(79, 181, 235, 0) 100%
   );
   background-repeat: no-repeat;   /* ★ 防止最後 1px 露出下一塊 tile 的不透明起始色 */
   pointer-events: none;
@@ -130,8 +130,8 @@
   background: linear-gradient(
     to left,
     #4fb5eb 0%,
-    transparent 89.744%,
-    transparent 100%
+    rgba(79, 181, 235, 0) 89.744%,
+    rgba(79, 181, 235, 0) 100%
   );
   background-repeat: no-repeat;   /* ★ 防止最後 1px 露出下一塊 tile 的不透明起始色 */
   pointer-events: none;
@@ -153,8 +153,8 @@
   background: linear-gradient(
     to bottom,
     #6ec6e8 0%,
-    transparent 90.909%,
-    transparent 100%
+    rgba(110, 198, 232, 0) 90.909%,
+    rgba(110, 198, 232, 0) 100%
   );
   background-repeat: no-repeat;   /* ★ 防止最後 1px 露出下一塊 tile 的不透明起始色 */
   pointer-events: none;
@@ -175,8 +175,8 @@
   background: linear-gradient(
     to top,
     #6ec6e8 0%,
-    transparent 90.909%,
-    transparent 100%
+    rgba(110, 198, 232, 0) 90.909%,
+    rgba(110, 198, 232, 0) 100%
   );
   background-repeat: no-repeat;   /* ★ 防止最後 1px 露出下一塊 tile 的不透明起始色 */
   pointer-events: none;

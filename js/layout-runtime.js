@@ -1232,6 +1232,65 @@
         });
       }
 
+      /* ★ 漸層點陣化（2026-08）：漸層藍線的最終解。
+         歷程：某些使用者下載的圖，在漸層元素上會多一條藍/暗線。
+         第一輪：background-repeat 預設 repeat，元素尺寸換算成裝置像素有
+                 小數時，最後 1px 會取樣到下一塊 tile 的不透明起始色
+                 → 加 no-repeat 解掉「元素邊緣」的線。
+         第二輪：線移到了「alpha 歸零的停點」（實測 x=680 = 611+70）。
+                 原因：CSS 關鍵字 transparent 的計算值是 rgba(0,0,0,0)
+                 「透明黑」。瀏覽器預覽用 premultiplied 插值看不出來，
+                 但 html2canvas 自己重畫漸層時往黑色插值，在停點處硬切，
+                 亮底（氣球）上就是一條明顯的暗線 → 預覽正常、下載有線。
+         治本：跟文字一樣，不讓 html2canvas 畫漸層。截圖前用 2D canvas
+         把漸層畫成點陣圖蓋上去（我們控制色標：透明端用同 RGB 的
+         rgba(r,g,b,0)，插值路徑顏色恆定），html2canvas 只能像素複製。
+         截圖完成後移除、還原，預覽不受影響。 */
+      var _gradRasterEls = [];
+      if(_cv){
+        _cv.querySelectorAll('.漸層左, .漸層右, .漸層上, .漸層下').forEach(function(gel){
+          var w = gel.offsetWidth, h = gel.offsetHeight;
+          if(!w || !h) return; /* display:none（未使用的漸層）直接跳過 */
+          var cs = window.getComputedStyle(gel);
+          if(cs.display === 'none' || cs.visibility === 'hidden') return;
+          var bgi = cs.backgroundImage || '';
+          if(bgi.indexOf('linear-gradient') === -1) return;
+
+          /* 從計算樣式抓「第一個不透明色」與「alpha 歸零停點」 */
+          var colorM = bgi.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)\s*0%/);
+          if(!colorM) colorM = bgi.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/);
+          if(!colorM) return;
+          var r = colorM[1], g = colorM[2], b = colorM[3];
+          var stopM = bgi.match(/rgba\(\d+,\s*\d+,\s*\d+,\s*0\)\s*([\d.]+)%/);
+          var stop = stopM ? parseFloat(stopM[1]) / 100 : 1;
+
+          var dir = (window.getComputedStyle(gel).getPropertyValue('--grad-dir') || '').trim();
+          if(!dir){
+            var _dirs = {'漸層左':'to right','漸層右':'to left','漸層上':'to bottom','漸層下':'to top'};
+            for(var cls in _dirs){ if(gel.classList.contains(cls)){ dir = _dirs[cls]; break; } }
+          }
+          if(!dir) dir = 'to right';
+
+          var cnv = document.createElement('canvas');
+          cnv.width = w; cnv.height = h; /* 漸層平滑，1x 就夠、也最不會有縮放取樣差 */
+          cnv.style.cssText = 'position:absolute;left:0;top:0;width:' + w + 'px;height:' + h + 'px;pointer-events:none;';
+          var ctx = cnv.getContext('2d');
+          var coords = {'to right':[0,0,w,0],'to left':[w,0,0,0],'to bottom':[0,0,0,h],'to top':[0,h,0,0]}[dir];
+          var grad = ctx.createLinearGradient(coords[0], coords[1], coords[2], coords[3]);
+          var solid = 'rgb(' + r + ',' + g + ',' + b + ')';
+          var clear = 'rgba(' + r + ',' + g + ',' + b + ',0)';
+          grad.addColorStop(0, solid);
+          grad.addColorStop(Math.min(1, stop), clear);
+          grad.addColorStop(1, clear);
+          ctx.fillStyle = grad;
+          ctx.fillRect(0, 0, w, h);
+
+          _gradRasterEls.push({el: gel, background: gel.style.background || '', priority: gel.style.getPropertyPriority('background') || '', cnv: cnv});
+          gel.style.setProperty('background', 'none', 'important');
+          gel.appendChild(cnv);
+        });
+      }
+
       /* LOGO / 商品範圍：若尚未上傳任何圖片，畫布上會顯示淡紅色提示範圍（方便編輯時定位）。
          下載截圖時，若該範圍仍是空的（沒有 logo 圖 / 沒有商品圖），
          暫時把提示色改成透明再截圖，讓下載出來的圖片不會帶有這塊淡紅色；
@@ -1306,6 +1365,7 @@
         });
         _transformAdjustEls.forEach(function(o){ o.el.style.setProperty('transform', o.transform, o.priority || ''); });
         _iconRasterEls.forEach(function(o){ o.el.style.setProperty('color', o.color, o.priority || ''); if(o.cnv.parentNode) o.cnv.parentNode.removeChild(o.cnv); });
+        _gradRasterEls.forEach(function(o){ o.el.style.setProperty('background', o.background, o.priority || ''); if(o.cnv.parentNode) o.cnv.parentNode.removeChild(o.cnv); });
         window.parent.postMessage({type:'bn-snapshot',msgId:e.data.msgId,dataUrl:dataUrl},'*');
       });
     }

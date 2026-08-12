@@ -86,8 +86,8 @@
   position: absolute;
   left: 611px; top: 0;
   width: 78px; height: 360px;
-  background: linear-gradient(to right, #6ec6e8 0%, transparent 89.744%,
-    transparent 100%);
+  background: linear-gradient(to right, #6ec6e8 0%, rgba(110, 198, 232, 0) 89.744%,
+    rgba(110, 198, 232, 0) 100%);
   background-repeat: no-repeat;   /* ★ 防止最後 1px 露出下一塊 tile 的不透明起始色 */
   pointer-events: none;
   z-index: 3;
