@@ -398,9 +398,41 @@
           _siLogo.style.left = startX + 'px';
           _siText.style.left = (startX + _siLogoW + 26) + 'px';
 
-          /* 上下置中：logo 和文字各自垂直置中 */
+          /* 上下置中。
+             ★ 2026-08 修正（第二版）：文字改用「墨水實測置中」。
+             第一版拿字級當視覺高度 → CJK 墨水偏下，整行低 16px；
+             改回 CSS top 又發現那個值是配 PS matrix 調的，現在樣式已被
+             覆寫（transform:none / 等效字級），基準對不上 → 偏高 12px。
+             不再依賴任何寫死的 top：
+             1. 零尺寸探針量出瀏覽器把 baseline 放在元素內的哪個 y
+                （負半行距等怪癖全都如實反映）。
+             2. measureText 的 actualBoundingBox 量出「這串字」真實墨水
+                的上下緣 → 墨水中心相對元素頂端的偏移。
+             3. top = 畫布中心 - 墨水中心偏移 → 墨水中心永遠 = 畫布中心。
+             改字、改字級、換字型全都自動成立，預覽即所得，
+             下載端點陣化畫的是同一個位置，兩邊永遠一致。 */
           _siLogo.style.top = ((_siCanvasH - _siLogoH) / 2) + 'px';
-          _siText.style.top = ((_siCanvasH - visTextH) / 2) + 'px';
+          try {
+            var _pb = document.createElement('span');
+            _pb.style.cssText = 'display:inline-block;width:0;height:0;padding:0;margin:0;border:0;';
+            _siText.appendChild(_pb);
+            var _baseOff = _pb.offsetTop;           /* baseline 在元素內的 y */
+            _siText.removeChild(_pb);
+            var _tcs = window.getComputedStyle(_siText);
+            var _mctx = document.createElement('canvas').getContext('2d');
+            _mctx.font = _tcs.fontStyle + ' ' + _tcs.fontWeight + ' ' + parseFloat(_tcs.fontSize) + 'px ' + _tcs.fontFamily;
+            var _tm = _mctx.measureText((_siText.textContent || '').trim());
+            if(_tm.actualBoundingBoxAscent !== undefined && _baseOff > 0){
+              /* 墨水中心（相對元素頂端）= baseline + (descent - ascent)/2，
+                 若元素帶 matrix 縮放要等比換算 */
+              var _inkMid = (_baseOff + (_tm.actualBoundingBoxDescent - _tm.actualBoundingBoxAscent) / 2) * matScale;
+              _siText.style.top = (_siCanvasH / 2 - _inkMid) + 'px';
+            } else {
+              _siText.style.top = ''; /* 量不到就退回 CSS 預設 */
+            }
+          } catch(e) {
+            _siText.style.top = '';
+          }
         }
 
         /* 等字型載完再算位置，避免 fallback 字型造成 scrollWidth 偏差 */
