@@ -784,6 +784,22 @@ function checkAll(val) {
   renderPreviews();
 }
 
+/* 共用外掛批次切換版位時，必須直接更新本頁 renderPreviews() 使用的
+   checked 變數，不能透過 window.checked 猜測全域綁定。 */
+function setLayoutChecks(nextById) {
+  nextById = nextById || {};
+  var changed = false;
+  Object.keys(nextById).forEach(function(id){
+    var next = !!nextById[id];
+    if(checked[id] !== next){
+      checked[id] = next;
+      changed = true;
+    }
+  });
+  if(changed){ renderChecks(); renderPreviews(); }
+  return changed;
+}
+
 /* ════════════════════════════════════════
    前台 — 畫版預覽
 ════════════════════════════════════════ */
@@ -1905,6 +1921,7 @@ window.renderColorPickers = renderColorPickers;
 window.broadcastColors    = broadcastColors;
 window.renderChecks       = renderChecks;
 window.renderPreviews     = renderPreviews;
+window.setLayoutChecks    = setLayoutChecks;
 window.saveChecked        = function(c){ var ls=loadLayouts(); ls.forEach(function(l){ if(c[l.id]!==undefined) l.checked=c[l.id]; }); saveLayouts(ls); };
 window.loadChecked        = function(){ var checked={}; loadLayouts().forEach(function(l){ checked[l.id]=l.checked!==false; }); return checked; };
 </script>

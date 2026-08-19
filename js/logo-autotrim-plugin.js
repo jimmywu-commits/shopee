@@ -38,6 +38,10 @@
  *     minGain        至少要省下多少面積才真的裁，預設 0.02
  * ─────────────────────────────────────────────────────────────
  */
+/* Upload-time policy override (2026-08): trim() only auto-crops an opaque
+   white/near-white background. Transparent, colored, gradient, and photo
+   backgrounds keep the original upload. findBox() remains background-agnostic
+   so the explicit manual crop tool can still assist with any image. */
 (function (global) {
   if (global.__BN_LOGO_AUTOTRIM_PLUGIN__) return;
   global.__BN_LOGO_AUTOTRIM_PLUGIN__ = true;
@@ -45,6 +49,7 @@
   var DEFAULTS = {
     tolerance: 12,
     alphaThreshold: 10,
+    whiteThreshold: 245,
     padRatio: 0.02,
     scanMax: 1000,
     minGain: 0.02,
@@ -102,6 +107,7 @@
     var hasAlpha = clearCount > total * 0.005;
 
     var bg = null;
+    var whiteBackground = false;
     if (!hasAlpha) {
       var pts = [[0, 0], [w - 1, 0], [0, h - 1], [w - 1, h - 1]];
       var cs = [];
@@ -124,6 +130,10 @@
       });
       if (spread > opt(opts, 'cornerSpreadMax')) return null;
       bg = avg;
+      var whiteTh = opt(opts, 'whiteThreshold');
+      whiteBackground = cs.every(function (pp) {
+        return pp[0] >= whiteTh && pp[1] >= whiteTh && pp[2] >= whiteTh;
+      });
     }
 
     var tol3 = opt(opts, 'tolerance') * 3;   /* 三通道絕對差相加，門檻等比放大 */
@@ -165,7 +175,7 @@
 
     return {
       x: bx, y: by, width: bw, height: bh,
-      hasAlpha: hasAlpha,
+      hasAlpha: hasAlpha, background: bg, whiteBackground: whiteBackground,
       natural: { width: nw, height: nh }
     };
   }
@@ -178,6 +188,10 @@
 
       var box = findBox(img, opts);
       if (!box) { out.reason = 'no-box'; return out; }
+      if (!box.whiteBackground) {
+        out.reason = 'non-white-background';
+        return out;
+      }
 
       var area = box.width * box.height;
       var full = nw * nh;

@@ -225,6 +225,90 @@
         broadcastTo(tid, {type:'bn-character-layout-apply', id:slot.id, layout:cloned});
       });
     }
+
+    /* Logo 版型自動切換：
+       - 只有 1 顆且高 >= 寬：有方／橫雙版本的版位一律選方版、取消橫版。
+       - 2 顆以上，或只有 1 顆但寬 > 高：一律選橫版、取消方版。
+
+       配對不寫死版位清單，而是沿用 normalizePairName()。因此目前的 IG、HBN、
+       DDCard、Coin Page、FB Post，以及日後新增的同名方／橫版都會自動套用；
+       SearchICON 等只有單一版本的版位完全不受影響。 */
+    var _bnLogoLayoutSelectSeq = 0;
+    function getLogoLayoutVariant(layout){
+      var name = String((layout && (layout.name || layout.file)) || '');
+      if(/橫|横|horizontal|landscape/i.test(name)) return 'horizontal';
+      if(/方|square|vertical|portrait/i.test(name)) return 'square';
+      return '';
+    }
+    function applyLogoLayoutVariant(mode){
+      if(mode !== 'square' && mode !== 'horizontal') return false;
+      if(typeof window.loadLayouts !== 'function') return false;
+      var layouts = window.loadLayouts() || [];
+      var groups = {};
+      layouts.forEach(function(layout){
+        if(layout.enabled === false) return;
+        var variant = getLogoLayoutVariant(layout);
+        if(!variant) return;
+        var key = normalizePairName(layout.name || layout.file);
+        if(!key) return;
+        if(!groups[key]) groups[key] = {square:[], horizontal:[]};
+        groups[key][variant].push(layout);
+      });
+
+      var desiredById = {};
+      Object.keys(groups).forEach(function(key){
+        var pair = groups[key];
+        if(!pair.square.length || !pair.horizontal.length) return;
+        pair.square.forEach(function(layout){
+          desiredById[layout.id] = mode === 'square';
+        });
+        pair.horizontal.forEach(function(layout){
+          desiredById[layout.id] = mode === 'horizontal';
+        });
+      });
+
+      var changed = false;
+      if(typeof window.setLayoutChecks === 'function'){
+        /* 由主編輯器直接更新 renderPreviews() 真正使用的 checked 變數。 */
+        changed = window.setLayoutChecks(desiredById);
+      }else{
+        /* 舊版入口的相容備援。 */
+        var nextChecked = window.checked || (window.checked = {});
+        Object.keys(desiredById).forEach(function(id){
+          var next = desiredById[id];
+          if(nextChecked[id] !== next){ nextChecked[id] = next; changed = true; }
+        });
+        if(changed){
+          if(typeof window.renderChecks === 'function') window.renderChecks();
+          if(typeof window.renderPreviews === 'function' && !window._bnExporting) window.renderPreviews();
+        }
+      }
+      if(changed){
+        markStateDirty();
+      }
+      return changed;
+    }
+    function syncLogoLayoutSelection(){
+      var seq = ++_bnLogoLayoutSelectSeq;
+      var logos = window._bnLogos || [];
+      if(!logos.length) return Promise.resolve(false);
+      if(logos.length > 1) return Promise.resolve(applyLogoLayoutVariant('horizontal'));
+
+      var logo = logos[0];
+      function applyRatio(ratio){
+        if(seq !== _bnLogoLayoutSelectSeq || window._bnLogos.length !== 1 || window._bnLogos[0] !== logo) return false;
+        ratio = Number(ratio);
+        if(!(ratio > 0)) return false;
+        logo.ratio = ratio;
+        if(ratio <= 1) return applyLogoLayoutVariant('square');
+        if(ratio > 1) return applyLogoLayoutVariant('horizontal');
+      }
+
+      if(Number(logo.ratio) > 0) return Promise.resolve(applyRatio(logo.ratio));
+      return loadImg(logo.uploadSrc || logo.src).then(function(img){
+        return applyRatio(img.naturalWidth / img.naturalHeight);
+      })['catch'](function(){ return false; });
+    }
     window.addEventListener('message', function(ev){
       var d = ev.data || {};
       if(d.type === 'bn-character-layout-update' && d.layout){
@@ -347,6 +431,7 @@
           renderLogoList();
           broadcast({type:'bn-logo-remove',id:lid});
           broadcast({type:'bn-logos',logos:window._bnLogos});
+          syncLogoLayoutSelection();
         };})(lg.id));
         row.appendChild(img);row.appendChild(name);row.appendChild(moveWrap);row.appendChild(editBtn);row.appendChild(btn);
         list.appendChild(row);
@@ -430,6 +515,10 @@
             imgEl.src = newSrc;
             window._bnLogoDataUrl = window._bnLogos[0].src;
             broadcast({type:'bn-logos', logos:window._bnLogos});
+            loadImg(newSrc).then(function(img){
+              lo.ratio = img.naturalWidth / img.naturalHeight;
+              syncLogoLayoutSelection();
+            })['catch'](function(){ syncLogoLayoutSelection(); });
           }
         });
       } else if(action === 'swap'){
@@ -458,6 +547,7 @@
         renderLogoList();
         broadcast({type:'bn-logo-remove', id:lid});
         broadcast({type:'bn-logos', logos:window._bnLogos});
+        syncLogoLayoutSelection();
       }
     }
 
@@ -475,6 +565,10 @@
               el.src = newSrc;
               window._bnLogoDataUrl = window._bnLogos[0].src;
               broadcast({type:'bn-logos', logos:window._bnLogos});
+              loadImg(newSrc).then(function(img){
+                lo.ratio = img.naturalWidth / img.naturalHeight;
+                syncLogoLayoutSelection();
+              })['catch'](function(){ syncLogoLayoutSelection(); });
             }
           },
           onSwap: function(){
@@ -495,6 +589,7 @@
             renderLogoList();
             broadcast({type:'bn-logo-remove', id:lid});
             broadcast({type:'bn-logos', logos:window._bnLogos});
+            syncLogoLayoutSelection();
           },
           onRound: function(el, isOn){
             broadcast({type:'bn-logos', logos:window._bnLogos});
@@ -538,13 +633,18 @@
     function doLoadLogo(file){
       if(window._bnLogos.length>=MAX_LOGOS)return Promise.resolve();
       return readFile(file).then(function(s){
-        return logoAutoTrimSrc(s).then(function(trimmed){
+        return Promise.all([logoAutoTrimSrc(s), loadImg(s)['catch'](function(){ return null; })]).then(function(results){
+          var trimmed = results[0];
+          var sourceImg = results[1];
           if(window._bnLogos.length>=MAX_LOGOS)return;
           var id='logo_'+Date.now()+'_'+(++_bnLogoSeq);
           var lg={id:id,src:trimmed||s};
           /* 保留剛上傳、還沒去邊的原圖：之後若要做「還原原圖」或除錯，
              不必請使用者重新上傳。 */
           lg.uploadSrc=s;
+          if(sourceImg && sourceImg.naturalWidth && sourceImg.naturalHeight){
+            lg.ratio=sourceImg.naturalWidth/sourceImg.naturalHeight;
+          }
           if(trimmed) lg.autoTrimmed=true;
           window._bnLogos.push(lg);
           window._bnLogoDataUrl=window._bnLogos[0].src;
@@ -562,10 +662,11 @@
     /* 依序處理多個檔案（含上限） */
     function doLoadLogos(files){
       var remaining=MAX_LOGOS-window._bnLogos.length;
-      Array.prototype.slice.call(files,0,Math.max(0,remaining))
+      return Array.prototype.slice.call(files,0,Math.max(0,remaining))
         .reduce(function(chain,f){
           return chain.then(function(){ return doLoadLogo(f); });
-        }, Promise.resolve());
+        }, Promise.resolve())
+        .then(function(){ return syncLogoLayoutSelection(); });
     }
 
     /* ══ 人物上傳（單張；可超出商品範圍與畫布；有人物圖時商品僅顯示第1張） ══ */
@@ -2533,9 +2634,64 @@
         img.src = dataUrl;
       }
 
-      function compressDataUrlToTargetKb(dataUrl, targetKb, cb){
+      /* ★ 選擇性壓縮（2026-08）：
+         layers = {bgUrl, fgUrl}（由 iframe 分層截圖提供，可能為空）。
+         策略：先只降「背景層」解析度（照片最吃體積），商品圖/logo/文字
+         維持原樣，以高品質 JPEG(0.9) 合成輸出；背景降到 30% 仍塞不進
+         目標 KB 才退回舊的「整張一起壓」流程。
+         → 大多數情況：背景稍微變軟，商品圖完全不受影響。 */
+      function compressSelectiveBgFirst(layers, targetKb, cb){
+        var maxBytes = targetKb * 1024;
+        var bgImg = new Image(), fgImg = new Image();
+        var loaded = 0, failed = false;
+        function onFail(){ if(!failed){ failed = true; cb(null); } }
+        function onLoad(){
+          if(failed || ++loaded < 2) return;
+          try{
+            var W = bgImg.naturalWidth, H = bgImg.naturalHeight;
+            if(!W || !H || fgImg.naturalWidth !== W || fgImg.naturalHeight !== H){ cb(null); return; }
+            var BG_SCALES = [1, 0.85, 0.7, 0.55, 0.4, 0.3];
+            var Q = 0.9; /* 高品質：商品圖幾乎無損 */
+            for(var i = 0; i < BG_SCALES.length; i++){
+              var sc = BG_SCALES[i];
+              var c = document.createElement('canvas');
+              c.width = W; c.height = H;
+              var ctx = c.getContext('2d');
+              ctx.fillStyle = '#fff';
+              ctx.fillRect(0, 0, W, H);
+              if(sc < 1){
+                /* 背景先縮小再放大 = 去掉高頻細節，JPEG 體積大降，視覺只是稍微變軟 */
+                var tw = Math.max(1, Math.round(W * sc)), th = Math.max(1, Math.round(H * sc));
+                var tmp = document.createElement('canvas');
+                tmp.width = tw; tmp.height = th;
+                tmp.getContext('2d').drawImage(bgImg, 0, 0, tw, th);
+                ctx.imageSmoothingEnabled = true;
+                ctx.drawImage(tmp, 0, 0, W, H);
+              }else{
+                ctx.drawImage(bgImg, 0, 0);
+              }
+              ctx.drawImage(fgImg, 0, 0); /* 前景原解析度疊上 */
+              var out = canvasToJpegDataUrl(c, Q);
+              if(out && dataUrlByteSize(out) <= maxBytes){ cb(out); return; }
+            }
+            cb(null); /* 背景壓到底仍超標 → 交回整張壓縮 */
+          }catch(e){ cb(null); }
+        }
+        bgImg.onload = onLoad; bgImg.onerror = onFail;
+        fgImg.onload = onLoad; fgImg.onerror = onFail;
+        bgImg.src = layers.bgUrl; fgImg.src = layers.fgUrl;
+      }
+
+      function compressDataUrlToTargetKb(dataUrl, targetKb, cb, layers){
         targetKb = parseInt(targetKb,10) || 0;
         if(!targetKb || !dataUrl){ cb(dataUrl); return; }
+        if(layers && layers.bgUrl && layers.fgUrl){
+          compressSelectiveBgFirst(layers, targetKb, function(selUrl){
+            if(selUrl){ cb(selUrl); return; }
+            compressDataUrlToTargetKb(dataUrl, targetKb, cb); /* 退回整張壓縮 */
+          });
+          return;
+        }
         var maxBytes = targetKb * 1024;
         var img = new Image();
         img.onload = function(){
@@ -2687,28 +2843,28 @@
         });
       }
 
-      function captureOne(iframeEl, fileName, cb){
+      function captureOne(iframeEl, fileName, cb, wantLayers){
         var msgId='dl_'+Date.now()+'_'+Math.random().toString(36).slice(2);
         var settled=false;
         var timer;
 
-        function settle(dataUrl){
+        function settle(res){
           if(settled) return;
           settled=true;
           clearTimeout(timer);
           window.removeEventListener('message',onMsg);
-          cb(dataUrl||null);
+          cb(res||null);
         }
 
         function onMsg(e){
           if(!e.data || e.data.type!=='bn-snapshot' || e.data.msgId!==msgId) return;
-          settle(e.data.dataUrl || null);
+          settle(e.data.dataUrl ? e.data : null);
         }
 
         window.addEventListener('message',onMsg);
 
         try{
-          iframeEl.contentWindow.postMessage({type:'bn-capture',msgId:msgId},'*');
+          iframeEl.contentWindow.postMessage({type:'bn-capture',msgId:msgId,layers:!!wantLayers},'*');
         }catch(e){
           settle(null);
           return;
@@ -2728,8 +2884,11 @@
         var blockEl=iframe.closest('.preview-block');
         var baseName=safeName(blockEl ? ((blockEl.querySelector('.pname')||{}).textContent||'layout') : 'layout');
 
+        var isSearchIcon0 = /SearchICON/i.test(iframe.src || '');
+        var kbLimit0 = isSearchIcon0 ? null : getDownloadKbLimitByName(baseName);
         syncIframeForExport(iframe, function(){
-          captureOne(iframe, baseName+'.png', function(dataUrl){
+          captureOne(iframe, baseName+'.png', function(res){
+            var dataUrl = res && res.dataUrl || null;
             done++;
 
             function afterCompress(outUrl, outName){
@@ -2757,8 +2916,8 @@
             }
 
             if(dataUrl){
-              var isSearchIcon = /SearchICON/i.test(iframe.src || '');
-              var kbLimit = isSearchIcon ? null : getDownloadKbLimitByName(baseName);
+              var isSearchIcon = isSearchIcon0;
+              var kbLimit = kbLimit0;
               var outName = baseName + (kbLimit ? '.jpg' : '.png');
 
               function afterMainReady(mainUrl, mainName){
@@ -2778,14 +2937,14 @@
                 setProgress('壓縮 '+baseName+' 至 '+kbLimit+'KB 以下…');
                 compressDataUrlToTargetKb(dataUrl, kbLimit, function(jpgUrl){
                   afterMainReady(jpgUrl, outName);
-                });
+                }, {bgUrl: res && res.bgUrl, fgUrl: res && res.fgUrl});
               }else{
                 afterMainReady(dataUrl, outName);
               }
             }else{
               afterCompress(null, baseName+'.png');
             }
-          });
+          }, !!kbLimit0);
         });
       }
 
@@ -2806,6 +2965,9 @@
     var origOnReady=window._bnOnIframeReady;
     window._bnOnIframeReady=function(id){
       if(origOnReady)origOnReady(id);
+      /* 舊暫存 Logo 若沒有 ratio，第一個 iframe ready 時補量測並套版。
+         sync 只有在勾選真的改變時才重建預覽，不會造成 ready 迴圈。 */
+      syncLogoLayoutSelection();
       setTimeout(function(){
         if(window._bnLogos&&window._bnLogos.length){
           broadcastTo(id,{type:'bn-logos',logos:window._bnLogos});
@@ -2854,10 +3016,12 @@
     /* 暴露給 bn-state-plugin 使用 */
     window._bnRenderLogoList = function(){ renderLogoList(); };
     window._bnBroadcastLogos = function(){
+      syncLogoLayoutSelection();
       if(window._bnLogos && window._bnLogos.length){
         broadcast({type:'bn-logos', logos:window._bnLogos});
       }
     };
+    window._bnSyncLogoLayoutSelection = syncLogoLayoutSelection;
     window._bnRenderProdList = function(){ renderProdList(); };
     window._bnRequestProductLayouts = requestProductLayouts;
     window._bnRebroadcastProducts = function(){

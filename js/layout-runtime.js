@@ -1386,7 +1386,8 @@
       }
       _bnFixObjectFitForCapture('.bn-logo-box img, .bn-prod-box img, .bn-char-box img, .logo範圍_左 img.bn-logo-img, .logo範圍_中 img.bn-logo-img, .logo範圍_右 img.bn-logo-img');
 
-      captureCanvas(function(dataUrl){
+      var _wantLayers = !!e.data.layers;
+      captureCanvas(function(dataUrl, bgUrl, fgUrl){
         _editEls.forEach(function(o){ o.el.style.display = o.disp; });
         _captureAdjustEls.forEach(function(o){ o.el.style.setProperty('top', o.top, o.priority || ''); });
         _emptyZoneEls.forEach(function(o){ o.el.style.background = o.bg; o.el.style.opacity = o.op; });
@@ -1398,8 +1399,8 @@
         _transformAdjustEls.forEach(function(o){ o.el.style.setProperty('transform', o.transform, o.priority || ''); });
         _iconRasterEls.forEach(function(o){ o.el.style.setProperty('color', o.color, o.priority || ''); if(o.cnv.parentNode) o.cnv.parentNode.removeChild(o.cnv); });
         _gradRasterEls.forEach(function(o){ o.el.style.setProperty('background', o.background, o.priority || ''); if(o.cnv.parentNode) o.cnv.parentNode.removeChild(o.cnv); });
-        window.parent.postMessage({type:'bn-snapshot',msgId:e.data.msgId,dataUrl:dataUrl},'*');
-      });
+        window.parent.postMessage({type:'bn-snapshot',msgId:e.data.msgId,dataUrl:dataUrl,bgUrl:bgUrl||null,fgUrl:fgUrl||null},'*');
+      }, _wantLayers);
     }
   });
 
@@ -2272,12 +2273,12 @@
     });
   }
 
-  function captureCanvas(cb){
+  function captureCanvas(cb, wantLayers){
     function runAfterFonts(){
-      if(window.html2canvas){doCapture(cb);return;}
+      if(window.html2canvas){doCapture(cb, wantLayers);return;}
       var s=document.createElement('script');
       s.src='https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
-      s.onload=function(){doCapture(cb);}; s.onerror=function(){if(cb)cb(null);};
+      s.onload=function(){doCapture(cb, wantLayers);}; s.onerror=function(){if(cb)cb(null);};
       document.head.appendChild(s);
     }
     if(document.fonts && document.fonts.ready){
@@ -2286,7 +2287,7 @@
       runAfterFonts();
     }
   }
-  function doCapture(cb){
+  function doCapture(cb, wantLayers){
     var cv=document.getElementById('canvas');
     if(!cv){if(cb)cb(null);return;}
     var W = parseFloat(cv.style.width)  || cv.offsetWidth;
@@ -2315,11 +2316,67 @@
           logging: false
         })
         .then(function(c){
-          if(overlay) overlay.style.display = '';
           var out = document.createElement('canvas');
           out.width = W; out.height = H;
           out.getContext('2d').drawImage(c, 0, 0, out.width, out.height);
-          if(cb) cb(out.toDataURL('image/png'));
+          var mainUrl = out.toDataURL('image/png');
+
+          if(!wantLayers){
+            if(overlay) overlay.style.display = '';
+            if(cb) cb(mainUrl);
+            return;
+          }
+
+          /* ★ 分層截圖（2026-08，給「先壓背景、商品圖不壓」的選擇性壓縮用）：
+             背景層 = 底圖照片/背景色 + 保護色塊 + 漸層（吃掉大部分 JPEG 體積）
+             前景層 = 商品圖、logo、文字、CTA（需要保持銳利的部分，透明 PNG）
+             兩層都跟主圖同尺寸，父層合成時只降背景解析度即可。
+             任何一步失敗就只回傳主圖，父層自動退回舊的整張壓縮流程。 */
+          var BG_SET = {'背景色':1,'bg':1,'底色':1,'上保護':1,'下保護':1,'左側保護':1,'右側保護':1,
+                        '上方保護':1,'下方保護':1,'文案保護':1,'漸層左':1,'漸層右':1,'漸層上':1,'漸層下':1};
+          function isBgEl(el){
+            if(el.id === '底圖') return true;
+            if(!el.classList) return false;
+            for(var k in BG_SET){ if(el.classList.contains(k)) return true; }
+            return false;
+          }
+          var kids = Array.prototype.slice.call(cv.children);
+          var hcOpts = {scale:1/scale, useCORS:true, allowTaint:true, backgroundColor:null, width:W, height:H, logging:false};
+          function toUrl(c2){
+            var o = document.createElement('canvas');
+            o.width = W; o.height = H;
+            o.getContext('2d').drawImage(c2, 0, 0, W, H);
+            return o.toDataURL('image/png');
+          }
+          var _hid = [];
+          function hideIf(fn){
+            kids.forEach(function(el){
+              if(fn(el)){ _hid.push({el:el, vis:el.style.visibility}); el.style.visibility='hidden'; }
+            });
+          }
+          function unhide(){
+            _hid.forEach(function(o){ o.el.style.visibility = o.vis; });
+            _hid = [];
+          }
+
+          hideIf(function(el){ return !isBgEl(el); });     /* 只留背景層 */
+          html2canvas(cv, hcOpts).then(function(cBg){
+            var bgUrl = toUrl(cBg);
+            unhide();
+            hideIf(isBgEl);                                 /* 只留前景層 */
+            var oldCvBg = cv.style.background;
+            cv.style.background = 'transparent';            /* 前景層不能帶底色 */
+            return html2canvas(cv, hcOpts).then(function(cFg){
+              unhide();
+              cv.style.background = oldCvBg;
+              if(overlay) overlay.style.display = '';
+              if(cb) cb(mainUrl, bgUrl, toUrl(cFg));
+            });
+          }).catch(function(){
+            unhide();
+            if(overlay) overlay.style.display = '';
+            if(cb) cb(mainUrl);                             /* 分層失敗 → 只給主圖 */
+          });
         })
         .catch(function(){
           if(overlay) overlay.style.display = '';
