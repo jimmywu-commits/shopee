@@ -458,8 +458,396 @@
     attachEditableToAll();
   }
 
+  /* 主／副標關鍵字的非阻擋式內容提醒：畫布只在編輯預覽顯示橘框與提示，
+     messages 由父層獨立傳入，不會改寫 .日期 的實際文字。 */
+  function ensureContentWarningStyle(){
+    if(document.getElementById('_bn_content_warning_style')) return;
+    var st=document.createElement('style');
+    st.id='_bn_content_warning_style';
+    st.textContent=''
+      +'.bn-content-warning-target{outline:3px solid #f59e0b !important;'
+      +'background:rgba(245,158,11,.14) !important;border-radius:2px;}'
+      +'.bn-content-warning-tip{position:absolute;z-index:20050;box-sizing:border-box;'
+      +'padding:7px 9px;border:2px solid #f59e0b;border-radius:6px;'
+      +'background:rgba(30,22,4,.94);color:#fbbf24;font-family:Arial,"Noto Sans TC",sans-serif;'
+      +'font-weight:700;line-height:1.45;box-shadow:0 4px 14px rgba(0,0,0,.28);'
+      +'pointer-events:none;white-space:normal;text-align:left;}'
+      +'.bn-content-warning-tip div+div{margin-top:4px;padding-top:4px;'
+      +'border-top:1px solid rgba(245,158,11,.35);}';
+    (document.head||document.documentElement).appendChild(st);
+  }
+  function applyContentWarnings(messages){
+    messages=Array.isArray(messages)?messages.filter(function(m){return typeof m==='string'&&m;}):[];
+    window.__bnContentWarningMessages=messages.slice();
+    ensureContentWarningStyle();
+
+    document.querySelectorAll('.bn-content-warning-target').forEach(function(el){
+      el.classList.remove('bn-content-warning-target');
+    });
+    document.querySelectorAll('.bn-content-warning-tip').forEach(function(el){el.remove();});
+    if(!messages.length) return;
+
+    var cv=document.getElementById('canvas');
+    if(!cv) return;
+    var cr=cv.getBoundingClientRect();
+    var cw=cv.offsetWidth||parseFloat(cv.style.width)||cr.width||0;
+    var ch=cv.offsetHeight||parseFloat(cv.style.height)||cr.height||0;
+    document.querySelectorAll('.日期').forEach(function(dateEl){
+      if(!cv.contains(dateEl)) return;
+      dateEl.classList.add('bn-content-warning-target');
+      var tip=document.createElement('div');
+      tip.className='bn-content-warning-tip';
+      tip.dataset.bnPreviewWarning='1';
+      tip.style.maxWidth=Math.max(100,Math.min(460,cw-12))+'px';
+      tip.style.fontSize=(cw<300?8:(cw<700?11:14))+'px';
+      var copy=document.createElement('div');
+      copy.className='bn-content-warning-copy';
+      messages.forEach(function(msg){
+        var line=document.createElement('div');
+        line.className='bn-content-warning-line';
+        line.textContent='⚠ '+msg;
+        copy.appendChild(line);
+      });
+      tip.appendChild(copy);
+      (document.getElementById('stage')||cv.parentElement||document.body).appendChild(tip);
+
+      var dr=dateEl.getBoundingClientRect();
+      var left=dr.left-cr.left;
+      var top=dr.bottom-cr.top+6;
+      left=Math.max(4,Math.min(left,Math.max(4,cw-tip.offsetWidth-4)));
+      if(top+tip.offsetHeight>ch-4) top=dr.top-cr.top-tip.offsetHeight-6;
+      top=Math.max(4,Math.min(top,Math.max(4,ch-tip.offsetHeight-4)));
+      tip.style.left=left+'px';
+      tip.style.top=top+'px';
+    });
+  }
+
+  /* 橘色提示的「最佳可視最小字」：依父層 iframe 的實際縮放比例反算，
+     讓螢幕上看到的字至少約 13px；原始畫布字級本身也不低於 18px。 */
+  var BN_CONTENT_WARNING_MIN_VISIBLE_FONT=13;
+  var BN_CONTENT_WARNING_MIN_CANVAS_FONT=18;
+  var _bnApplyContentWarningsBase=applyContentWarnings;
+  applyContentWarnings=function(messages){
+    _bnApplyContentWarningsBase(messages);
+    var cv=document.getElementById('canvas');
+    if(!cv) return;
+    var cw=cv.offsetWidth||parseFloat(cv.style.width)||0;
+    var ch=cv.offsetHeight||parseFloat(cv.style.height)||0;
+    var previewScale=1;
+    try{
+      var frame=window.frameElement;
+      if(frame){
+        var layoutWidth=frame.offsetWidth||parseFloat(frame.style.width)||cw;
+        var visibleWidth=frame.getBoundingClientRect().width;
+        if(layoutWidth>0&&visibleWidth>0) previewScale=visibleWidth/layoutWidth;
+      }
+    }catch(_){}
+    previewScale=Math.max(.1,Math.min(1,previewScale||1));
+    var fontPx=Math.max(BN_CONTENT_WARNING_MIN_CANVAS_FONT,
+      Math.ceil(BN_CONTENT_WARNING_MIN_VISIBLE_FONT/previewScale));
+    fontPx=Math.min(30,fontPx);
+
+    var cr=cv.getBoundingClientRect();
+    var targets=Array.prototype.slice.call(cv.querySelectorAll('.bn-content-warning-target'));
+    var tips=Array.prototype.slice.call(document.querySelectorAll('.bn-content-warning-tip'));
+    tips.forEach(function(tip,index){
+      tip.style.setProperty('font-size',fontPx+'px','important');
+      var dateEl=targets[index];
+      if(!dateEl) return;
+      var dr=dateEl.getBoundingClientRect();
+      var left=dr.left-cr.left;
+      var top=dr.bottom-cr.top+6;
+      left=Math.max(4,Math.min(left,Math.max(4,cw-tip.offsetWidth-4)));
+      if(top+tip.offsetHeight>ch-4) top=dr.top-cr.top-tip.offsetHeight-6;
+      top=Math.max(4,Math.min(top,Math.max(4,ch-tip.offsetHeight-4)));
+      tip.style.left=left+'px';
+      tip.style.top=top+'px';
+    });
+  };
+
+  /* 最終定位規則：提示固定在日期／警語下方，不因空間判斷翻到上方，
+     避免覆蓋副標；加寬提示框以減少大字級造成的換行高度。 */
+  var _bnApplyContentWarningsSizedBase=applyContentWarnings;
+  applyContentWarnings=function(messages){
+    _bnApplyContentWarningsSizedBase(messages);
+    var cv=document.getElementById('canvas');
+    if(!cv) return;
+    var cr=cv.getBoundingClientRect();
+    var cw=cv.offsetWidth||parseFloat(cv.style.width)||0;
+    var targets=Array.prototype.slice.call(cv.querySelectorAll('.bn-content-warning-target'));
+    var tips=Array.prototype.slice.call(document.querySelectorAll('.bn-content-warning-tip'));
+    tips.forEach(function(tip,index){
+      var dateEl=targets[index];
+      if(!dateEl) return;
+      tip.style.maxWidth=Math.max(100,Math.min(720,cw-12))+'px';
+      var dr=dateEl.getBoundingClientRect();
+      var left=dr.left-cr.left;
+      var top=dr.bottom-cr.top+6;
+      left=Math.max(4,Math.min(left,Math.max(4,cw-tip.offsetWidth-4)));
+      tip.style.left=left+'px';
+      tip.style.top=top+'px';
+    });
+  };
+
+  /* 深色底橘字＋「我已補充」：按鈕只控制編輯預覽，點擊後先在目前畫布
+     立即隱藏，再通知父層同步隱藏其他畫布與左側提醒。 */
+  function ensureContentWarningActionStyle(){
+    if(document.getElementById('_bn_content_warning_action_style')) return;
+    var st=document.createElement('style');
+    st.id='_bn_content_warning_action_style';
+    st.textContent=''
+      +'html.bn-content-warning-active,html.bn-content-warning-active body{overflow:visible !important;}'
+      +'html.bn-content-warning-active body{align-items:flex-start !important;'
+      +'justify-content:flex-start !important;}'
+      +'html.bn-content-warning-active #stage{overflow:visible !important;}'
+      +'.bn-content-warning-tip{display:inline-block;vertical-align:middle;'
+      +'width:max-content;max-width:760px;padding:.5em .65em !important;'
+      +'background:rgba(17,24,39,.96) !important;border:2px solid #f59e0b !important;'
+      +'border-radius:.45em !important;color:#fbbf24 !important;pointer-events:auto !important;'
+      +'box-shadow:0 5px 16px rgba(0,0,0,.34) !important;text-shadow:none;}'
+      +'.bn-content-warning-copy{display:inline;}'
+      +'.bn-content-warning-line{display:inline;margin:0 !important;padding:0 !important;'
+      +'border:0 !important;white-space:normal;word-break:normal;overflow-wrap:break-word;line-break:strict;}'
+      +'.bn-content-warning-line+.bn-content-warning-line::before{content:"\\A";white-space:pre;}'
+      +'.bn-content-warning-dismiss{display:inline-flex;align-items:center;justify-content:center;'
+      +'vertical-align:middle;margin:0 0 0 .5em;padding:.42em .72em;min-height:1.9em;'
+      +'border:2px solid #f59e0b;border-radius:999px;background:#f59e0b;color:#241600;'
+      +'font:700 .88em/1 Arial,"Noto Sans TC",sans-serif;white-space:nowrap;cursor:pointer;'
+      +'pointer-events:auto;box-shadow:0 2px 7px rgba(0,0,0,.18);}'
+      +'.bn-content-warning-dismiss:hover{background:#fbbf24;border-color:#fbbf24;}';
+    (document.head||document.documentElement).appendChild(st);
+  }
+  ensureContentWarningActionStyle();
+  var _bnApplyContentWarningsActionBase=applyContentWarnings;
+  applyContentWarnings=function(messages){
+    _bnApplyContentWarningsActionBase(messages);
+    var cv=document.getElementById('canvas');
+    if(!cv || !Array.isArray(messages) || !messages.length) return;
+    var cr=cv.getBoundingClientRect();
+    var cw=cv.offsetWidth||parseFloat(cv.style.width)||0;
+    var targets=Array.prototype.slice.call(cv.querySelectorAll('.bn-content-warning-target'));
+    var tips=Array.prototype.slice.call(document.querySelectorAll('.bn-content-warning-tip'));
+    tips.forEach(function(tip,index){
+      if(!tip.querySelector('.bn-content-warning-dismiss')){
+        var btn=document.createElement('button');
+        btn.type='button';
+        btn.className='bn-content-warning-dismiss';
+        btn.textContent='我已補充';
+        btn.addEventListener('click',function(ev){
+          ev.preventDefault(); ev.stopPropagation();
+          applyContentWarnings([]);
+          try{ window.parent.postMessage({type:'bn-content-warning-dismiss'},'*'); }catch(_){}
+        });
+        tip.appendChild(btn);
+      }
+      var dateEl=targets[index];
+      if(!dateEl) return;
+      var dr=dateEl.getBoundingClientRect();
+      var left=Math.max(4,Math.min(dr.left-cr.left,Math.max(4,cw-tip.offsetWidth-4)));
+      tip.style.left=left+'px';
+      tip.style.top=(dr.bottom-cr.top+6)+'px';
+    });
+  };
+
+  /* 依每個版型的日期、文字、Logo 與圖片區域，自動選擇重疊最少的位置。
+     超出版型右側／下方的代價刻意設得很低，寧可延伸預覽範圍，也不遮內容。 */
+  function bnContentWarningOverlapArea(a,b){
+    var left=Math.max(a.left,b.left), top=Math.max(a.top,b.top);
+    var right=Math.min(a.left+a.width,b.left+b.width);
+    var bottom=Math.min(a.top+a.height,b.top+b.height);
+    return Math.max(0,right-left)*Math.max(0,bottom-top);
+  }
+
+  function bnChooseContentWarningPlacement(dateRect,tipSize,canvasSize,obstacles){
+    var cw=Math.max(1,canvasSize.width||0), ch=Math.max(1,canvasSize.height||0);
+    var tw=Math.max(1,tipSize.width||0), th=Math.max(1,tipSize.height||0);
+    var dx=dateRect.left||0, dy=dateRect.top||0;
+    var dw=dateRect.width||0, dh=dateRect.height||0;
+    var gap=7, candidates=[];
+    function add(name,left,top,preference){
+      candidates.push({
+        name:name,
+        left:Math.max(0,Math.round(left)),
+        top:Math.max(0,Math.round(top)),
+        preference:preference||0
+      });
+    }
+
+    add('below-left',dx,dy+dh+gap,0);
+    add('below-right',dx+dw-tw,dy+dh+gap,1);
+    add('right',dx+dw+gap,dy+(dh-th)/2,2);
+    add('above-left',dx,dy-th-gap,3);
+    add('above-right',dx+dw-tw,dy-th-gap,4);
+    add('inside-bottom-left',6,ch-th-6,6);
+    add('inside-bottom-right',cw-tw-6,ch-th-6,7);
+    add('inside-top-left',6,6,8);
+    add('inside-top-right',cw-tw-6,6,9);
+    add('outside-bottom',Math.min(Math.max(0,dx),Math.max(0,cw-tw)),ch+gap,10);
+    add('outside-right',cw+gap,Math.min(Math.max(0,dy),Math.max(0,ch-th)),11);
+
+    var canvasRect={left:0,top:0,width:cw,height:ch};
+    var tipArea=tw*th;
+    var anchorX=dx+dw/2, anchorY=dy+dh/2;
+    obstacles=Array.isArray(obstacles)?obstacles:[];
+    candidates.forEach(function(candidate){
+      var rect={left:candidate.left,top:candidate.top,width:tw,height:th};
+      var occupied=0;
+      obstacles.forEach(function(obstacle){
+        occupied+=bnContentWarningOverlapArea(rect,obstacle)*(obstacle.weight||1);
+      });
+      var inside=bnContentWarningOverlapArea(rect,canvasRect);
+      var outside=Math.max(0,tipArea-inside);
+      var centerX=rect.left+tw/2, centerY=rect.top+th/2;
+      var distance=Math.abs(centerX-anchorX)+Math.abs(centerY-anchorY);
+      candidate.score=occupied*16+outside*.06+distance*.08+candidate.preference*30;
+    });
+    candidates.sort(function(a,b){return a.score-b.score;});
+    return candidates[0];
+  }
+  window.__bnChooseContentWarningPlacement=bnChooseContentWarningPlacement;
+
+  function bnCollectContentWarningObstacles(cv,canvasRect,dateEl){
+    var selectors=[
+      '.品牌名','.主標','.副標','.日期','.副標案型七字內','.ICON獨立文案',
+      '[class*="logo範圍"]','[class*="商品範圍"]','[class*="商品圖範圍"]',
+      '[class*="cta"]','[class*="CTA"]','.bn-prod-box','.bn-char-box','img:not(#底圖)'
+    ].join(',');
+    var cw=cv.offsetWidth||canvasRect.width||0;
+    var ch=cv.offsetHeight||canvasRect.height||0;
+    var seen=[], obstacles=[];
+    cv.querySelectorAll(selectors).forEach(function(el){
+      if(seen.indexOf(el)>=0 || el.closest('.bn-content-warning-tip')) return;
+      seen.push(el);
+      var style=window.getComputedStyle(el);
+      if(style.display==='none'||style.visibility==='hidden'||parseFloat(style.opacity||'1')===0) return;
+      var r=el.getBoundingClientRect();
+      var left=Math.max(0,r.left-canvasRect.left);
+      var top=Math.max(0,r.top-canvasRect.top);
+      var right=Math.min(cw,r.right-canvasRect.left);
+      var bottom=Math.min(ch,r.bottom-canvasRect.top);
+      var width=Math.max(0,right-left), height=Math.max(0,bottom-top);
+      if(width<2||height<2) return;
+      if(width*height>cw*ch*.92 && el!==dateEl) return;
+      var isText=el===dateEl||el.matches('.品牌名,.主標,.副標,.日期,.副標案型七字內,.ICON獨立文案');
+      obstacles.push({
+        left:left,top:top,width:width,height:height,
+        weight:el===dateEl?8:(isText?4:2)
+      });
+    });
+    return obstacles;
+  }
+
+  function bnPostContentWarningBounds(width,height){
+    if(window.parent===window||!urlId) return;
+    try{
+      window.parent.postMessage({
+        type:'bn-content-warning-bounds',id:urlId,
+        w:Math.max(1,Math.ceil(width||0)),h:Math.max(1,Math.ceil(height||0))
+      },'*');
+    }catch(_){}
+  }
+
+  var _bnContentWarningRelayoutTimer=0;
+  var _bnContentWarningObservedCanvas=null;
+  var _bnContentWarningObserver=null;
+  function bnScheduleContentWarningRelayout(){
+    if(window.__bnContentWarningCaptureActive) return;
+    if(!window.__bnContentWarningMessages||!window.__bnContentWarningMessages.length) return;
+    clearTimeout(_bnContentWarningRelayoutTimer);
+    _bnContentWarningRelayoutTimer=setTimeout(function(){
+      applyContentWarnings(window.__bnContentWarningMessages||[]);
+    },45);
+  }
+  function bnEnsureContentWarningRelayoutObserver(cv){
+    if(_bnContentWarningObservedCanvas===cv) return;
+    _bnContentWarningObservedCanvas=cv;
+    if(window.MutationObserver){
+      _bnContentWarningObserver=new window.MutationObserver(bnScheduleContentWarningRelayout);
+      _bnContentWarningObserver.observe(cv,{
+        subtree:true,childList:true,characterData:true,attributes:true,
+        attributeFilter:['style','src']
+      });
+    }
+    cv.addEventListener('load',bnScheduleContentWarningRelayout,true);
+    window.addEventListener('resize',bnScheduleContentWarningRelayout);
+  }
+
+  var _bnApplyContentWarningsAdaptiveBase=applyContentWarnings;
+  applyContentWarnings=function(messages){
+    _bnApplyContentWarningsAdaptiveBase(messages);
+    var cv=document.getElementById('canvas');
+    if(!cv) return;
+    bnEnsureContentWarningRelayoutObserver(cv);
+    var active=Array.isArray(messages)&&messages.length>0;
+    document.documentElement.classList.toggle('bn-content-warning-active',active);
+    var cw=cv.offsetWidth||parseFloat(cv.style.width)||0;
+    var ch=cv.offsetHeight||parseFloat(cv.style.height)||0;
+    if(!active){
+      bnPostContentWarningBounds(cw,ch);
+      return;
+    }
+
+    var cr=cv.getBoundingClientRect();
+    var targets=Array.prototype.slice.call(cv.querySelectorAll('.bn-content-warning-target'));
+    var tips=Array.prototype.slice.call(document.querySelectorAll('.bn-content-warning-tip'));
+    var extentW=cw, extentH=ch;
+    tips.forEach(function(tip,index){
+      var dateEl=targets[index];
+      if(!dateEl) return;
+      tip.style.width='max-content';
+      tip.style.maxWidth='760px';
+      tip.style.left='0px';
+      tip.style.top='0px';
+      var tr=tip.getBoundingClientRect();
+      var tw=Math.ceil(tr.width||tip.offsetWidth||1);
+      var th=Math.ceil(tr.height||tip.offsetHeight||1);
+      var dr=dateEl.getBoundingClientRect();
+      var dateRect={
+        left:dr.left-cr.left,top:dr.top-cr.top,
+        width:dr.width,height:dr.height
+      };
+      var placement=bnChooseContentWarningPlacement(
+        dateRect,{width:tw,height:th},{width:cw,height:ch},
+        bnCollectContentWarningObstacles(cv,cr,dateEl)
+      );
+      tip.style.left=placement.left+'px';
+      tip.style.top=placement.top+'px';
+      tip.dataset.bnPlacement=placement.name;
+      extentW=Math.max(extentW,placement.left+tw+8);
+      extentH=Math.max(extentH,placement.top+th+8);
+    });
+    bnPostContentWarningBounds(extentW,extentH);
+  };
+
+  /* 最終呈現統一為畫板外下方的同寬警語列：完全不遮擋版型內容，
+     只增加預覽高度；文字與按鈕仍使用行內流動排版。 */
+  var _bnApplyContentWarningsBoardBottomBase=applyContentWarnings;
+  applyContentWarnings=function(messages){
+    _bnApplyContentWarningsBoardBottomBase(messages);
+    var cv=document.getElementById('canvas');
+    if(!cv||!Array.isArray(messages)||!messages.length) return;
+    var cw=cv.offsetWidth||parseFloat(cv.style.width)||0;
+    var ch=cv.offsetHeight||parseFloat(cv.style.height)||0;
+    var gap=8;
+    var extentH=ch;
+    document.querySelectorAll('.bn-content-warning-tip').forEach(function(tip){
+      tip.style.width=cw+'px';
+      tip.style.maxWidth=cw+'px';
+      tip.style.left='0px';
+      tip.style.top=(ch+gap)+'px';
+      tip.dataset.bnPlacement='board-bottom';
+      extentH=Math.max(extentH,ch+gap+tip.offsetHeight+8);
+    });
+    bnPostContentWarningBounds(cw,extentH);
+  };
+
   window.addEventListener('message', function(e) {
     if (!e.data) return;
+
+    if(e.data.type==='bn-content-warning'){
+      applyContentWarnings(e.data.messages||[]);
+      return;
+    }
 
     if (e.data.type === 'bn-text') {
       var d = e.data.data||{};
@@ -490,6 +878,7 @@
         }
       });
       setTimeout(function(){ try{ refreshOverflowAll(); }catch(_){} }, 0);
+      setTimeout(function(){ applyContentWarnings(window.__bnContentWarningMessages||[]); },0);
     }
 
     /* 畫布直接編輯完成後，父層轉換好再推回來 */
@@ -505,6 +894,7 @@
         else if(!el.children.length) el.textContent = val;
       });
       setTimeout(function(){ try{ refreshOverflowAll(); }catch(_){} }, 0);
+      setTimeout(function(){ applyContentWarnings(window.__bnContentWarningMessages||[]); },0);
     }
 
     if (e.data.type === 'bn-overflow-check') {
@@ -1106,6 +1496,20 @@
         }, 3000);
       }
 
+      /* 橘色內容提醒只屬於編輯預覽：截圖期間移除框線並隱藏提示文字。 */
+      window.__bnContentWarningCaptureActive=true;
+      var _contentWarningCaptureEls=[];
+      if(_cv){
+        _cv.querySelectorAll('.bn-content-warning-target').forEach(function(el){
+          _contentWarningCaptureEls.push({el:el,target:true});
+          el.classList.remove('bn-content-warning-target');
+        });
+        document.querySelectorAll('.bn-content-warning-tip').forEach(function(el){
+          _contentWarningCaptureEls.push({el:el,target:false,display:el.style.display});
+          el.style.display='none';
+        });
+      }
+
       /* 隱藏所有編輯用控制元素（縮放點等），截完再還原 */
       var _editEls = [];
       if(_cv){
@@ -1388,6 +1792,12 @@
 
       var _wantLayers = !!e.data.layers;
       captureCanvas(function(dataUrl, bgUrl, fgUrl){
+        window.__bnContentWarningCaptureActive=false;
+        _contentWarningCaptureEls.forEach(function(o){
+          if(!o.el || !o.el.isConnected) return;
+          if(o.target) o.el.classList.add('bn-content-warning-target');
+          else o.el.style.display=o.display;
+        });
         _editEls.forEach(function(o){ o.el.style.display = o.disp; });
         _captureAdjustEls.forEach(function(o){ o.el.style.setProperty('top', o.top, o.priority || ''); });
         _emptyZoneEls.forEach(function(o){ o.el.style.background = o.bg; o.el.style.opacity = o.op; });

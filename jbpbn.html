@@ -271,6 +271,10 @@ html, body { height: 100%; background: var(--bg0); color: var(--text);
 .char-count-badge.warn { color:#f59e0b; }
 .char-count-badge.over { color:#ef4444;font-weight:700; }
 .s-field-row.over-limit input { border-color:#ef4444 !important; box-shadow:0 0 0 2px rgba(239,68,68,.2); }
+/* 主／副標關鍵字警語：橘色只提醒，不影響下載。 */
+.s-field-row.content-warning input { border-color:#f59e0b !important; box-shadow:0 0 0 2px rgba(245,158,11,.30) !important; }
+#bn-content-warning { display:none; margin:6px 0 2px; padding:7px 9px; border:1px solid rgba(245,158,11,.72); border-radius:6px; background:rgba(245,158,11,.12); color:#fbbf24; font-size:10px; line-height:1.55; }
+#bn-content-warning div + div { margin-top:4px; padding-top:4px; border-top:1px solid rgba(245,158,11,.28); }
 /* 系統補上 $ 與千分位後才超字：紅框常駐，不截斷文字 */
 .s-field-row.fmt-over input { border-color:#ef4444 !important; box-shadow:0 0 0 2px rgba(239,68,68,.32) !important; background:rgba(239,68,68,.10) !important; }
 #bnLimitAlert{position:fixed;left:50%;transform:translateX(-50%);top:12px;z-index:99998;background:#dc2626;color:#fff;font-size:13px;line-height:1.6;padding:10px 16px;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.4);display:none;max-width:80vw;}
@@ -428,6 +432,7 @@ box-shadow:0 3px 12px rgba(0,0,0,.24);}
             <input type="text" id="txt-date" data-limit="14" placeholder="日期文字" value="5/18 12:00 - 5/25 11:59 期間限定" oninput="broadcastText()">
             <span class="char-count-badge" id="badge-日期"></span><div class="color-dot" id="dot-dateText" title="日期文字色"></div>
           </div>
+          <div id="bn-content-warning" role="status" aria-live="polite"></div>
         </div>
         <div class="s-field-inline">
           <label>SearchICON文案</label>
@@ -938,6 +943,27 @@ function onIframeLoad(id) {
   /* 尺寸由 iframe 內部透過 bn-iframe-ready message 傳回 */
 }
 
+/* 警語可以超出版型：iframe 與外層佔位依實際警語邊界擴張，
+   但縮放比例仍以原始版型尺寸為準，避免畫布本身忽大忽小。 */
+function bnResizePreviewViewport(iframe,requestedW,requestedH){
+  if(!iframe) return;
+  var baseW=parseFloat(iframe.dataset.bnBaseWidth)||0;
+  var baseH=parseFloat(iframe.dataset.bnBaseHeight)||0;
+  var scale=parseFloat(iframe.dataset.bnPreviewScale)||1;
+  if(!baseW||!baseH) return;
+  var viewW=Math.max(baseW,Math.ceil(Number(requestedW)||baseW));
+  var viewH=Math.max(baseH,Math.ceil(Number(requestedH)||baseH));
+  iframe.style.width=viewW+'px';
+  iframe.style.height=viewH+'px';
+  iframe.style.transform='scale('+scale+')';
+  var id=String(iframe.id||'').replace(/^iframe-/,'');
+  var body=document.getElementById('pbody-'+id);
+  if(body){
+    body.style.width=Math.ceil(viewW*scale)+'px';
+    body.style.height=Math.ceil(viewH*scale)+'px';
+  }
+}
+
 
 function bnCalcTextUnits(text, allowComma){
   var units=0, str=String(text||'');
@@ -1059,11 +1085,89 @@ function bnCanDownload(){
   if(list.length){ bnShowLimitBlockModal(list); return false; }
   return true;
 }
+
+/* 主標／副標的法遵內容提醒（非阻擋式）：
+   左側日期／警語欄與畫布預覽會顯示，但不修改日期文字，也不加入
+   bnCanDownload() 的硬擋條件；下載圖片不會包含提示。 */
+function bnRefreshContentWarnings(){
+  var main=document.getElementById('txt-main');
+  var sub=document.getElementById('txt-sub');
+  var date=document.getElementById('txt-date');
+  var box=document.getElementById('bn-content-warning');
+  if(!date || !box) return [];
+
+  var copy=String((main&&main.value)||'')+' '+String((sub&&sub.value)||'');
+  var messages=[];
+  if(/回饋|滿額/.test(copy)){
+    messages.push('提醒您需補充門檻金額或回饋上限，例如「單筆需滿$X,XXX」。');
+  }
+  if(/蝦幣/.test(copy)){
+    messages.push('提醒您需補充「領券」關鍵字，例如「領券享10%蝦幣」。');
+  }
+
+  var row=date.closest ? date.closest('.s-field-row') : null;
+  if(row) row.classList.toggle('content-warning', messages.length>0);
+  box.innerHTML=messages.map(function(msg){ return '<div>⚠ '+msg+'</div>'; }).join('');
+  box.style.display=messages.length ? 'block' : 'none';
+  return messages;
+}
+/* 將左側內容提醒同步到所有畫布。messages 只透過獨立訊息傳給預覽，
+   不會混入日期文字，也不會加入 bnCanDownload() 的阻擋條件。 */
+function bnBroadcastContentWarnings(messages){
+  messages=Array.isArray(messages)?messages:[];
+  window._bnContentWarningMessages=messages.slice();
+  document.querySelectorAll('.preview-block iframe').forEach(function(iframe){
+    try{ iframe.contentWindow.postMessage({type:'bn-content-warning',messages:messages},'*'); }
+    catch(_){}
+  });
+}
+var _bnRefreshContentWarningsBase=bnRefreshContentWarnings;
+bnRefreshContentWarnings=function(){
+  var messages=_bnRefreshContentWarningsBase();
+  bnBroadcastContentWarnings(messages);
+  return messages;
+};
+/* 「我已補充」的暫時忽略狀態以目前主標＋副標內容為準；內容一變就恢復提醒。 */
+function bnContentWarningSignature(){
+  var main=document.getElementById('txt-main');
+  var sub=document.getElementById('txt-sub');
+  return String((main&&main.value)||'')+'\n'+String((sub&&sub.value)||'');
+}
+function bnHideContentWarningUI(){
+  var date=document.getElementById('txt-date');
+  var row=date&&date.closest?date.closest('.s-field-row'):null;
+  var box=document.getElementById('bn-content-warning');
+  if(row) row.classList.remove('content-warning');
+  if(box){ box.style.display='none'; box.innerHTML=''; }
+}
+var _bnRefreshContentWarningsDismissBase=bnRefreshContentWarnings;
+bnRefreshContentWarnings=function(){
+  var messages=_bnRefreshContentWarningsDismissBase();
+  var signature=bnContentWarningSignature();
+  if(!messages.length){ window._bnContentWarningDismissedSignature=''; return messages; }
+  if(window._bnContentWarningDismissedSignature===signature){
+    bnHideContentWarningUI();
+    bnBroadcastContentWarnings([]);
+    return [];
+  }
+  window._bnContentWarningDismissedSignature='';
+  return messages;
+};
 window.bnGetOverLimitFields=bnGetOverLimitFields;
 window.bnRefreshLimitAlert=bnRefreshLimitAlert;
 window.bnMarkFmtOver=bnMarkFmtOver;
 window.bnCanDownload=bnCanDownload;
-document.addEventListener('DOMContentLoaded',function(){ setTimeout(bnRefreshLimitAlert,300); });
+window.bnRefreshContentWarnings=bnRefreshContentWarnings;
+document.addEventListener('DOMContentLoaded',function(){
+  var main=document.getElementById('txt-main');
+  var sub=document.getElementById('txt-sub');
+  if(main) main.addEventListener('input',bnRefreshContentWarnings);
+  if(sub) sub.addEventListener('input',bnRefreshContentWarnings);
+  setTimeout(function(){
+    bnRefreshLimitAlert();
+    bnRefreshContentWarnings();
+  },300);
+});
 
 /* 接收 iframe 傳回的尺寸與就緒通知 */
 window.addEventListener('message', function (e) {
@@ -1176,6 +1280,13 @@ window.addEventListener('message', function (e) {
     return;
   }
 
+  if(e.data.type==='bn-content-warning-bounds'){
+    var warningIframe=document.getElementById('iframe-'+e.data.id);
+    if(!warningIframe) return;
+    bnResizePreviewViewport(warningIframe,e.data.w,e.data.h);
+    return;
+  }
+
   if (e.data.type === 'bn-iframe-ready') {
     var W = e.data.w || 0;
     var H = e.data.h || 0;
@@ -1187,16 +1298,11 @@ window.addEventListener('message', function (e) {
     bnMarkPreviewReady(id);
 
     var scale = Math.min(PREVIEW_MAX / W, PREVIEW_MAX / H, 1);
-    var dispW = Math.round(W * scale);
-    var dispH = Math.round(H * scale);
-
-    iframe.style.width      = W + 'px';
-    iframe.style.height     = H + 'px';
-    iframe.style.transform  = 'scale(' + scale + ')';
+    iframe.dataset.bnBaseWidth=String(W);
+    iframe.dataset.bnBaseHeight=String(H);
+    iframe.dataset.bnPreviewScale=String(scale);
+    bnResizePreviewViewport(iframe,W,H);
     iframe.style.visibility = 'visible';
-
-    var body = document.getElementById('pbody-' + id);
-    if (body) { body.style.width = dispW + 'px'; body.style.height = dispH + 'px'; }
 
     var psize = document.getElementById('psize-' + id);
     if (psize) psize.textContent = W + ' × ' + H + ' px（縮放 ' + Math.round(scale*100) + '%）';
@@ -2049,6 +2155,28 @@ document.addEventListener('DOMContentLoaded',function(){
       if(typeof bnRefreshLimitAlert==='function') bnRefreshLimitAlert();
     });
   });
+});
+</script>
+
+<script>
+/* 新建／重建的版位畫布就緒後，補送目前內容提醒。 */
+window.addEventListener('message',function(e){
+  if(!e.data || e.data.type!=='bn-iframe-ready') return;
+  var iframe=document.getElementById('iframe-'+e.data.id);
+  if(!iframe) return;
+  try{
+    iframe.contentWindow.postMessage({type:'bn-content-warning',messages:window._bnContentWarningMessages||[]},'*');
+  }catch(_){}
+});
+</script>
+
+<script>
+/* 畫布按下「我已補充」：同步隱藏左側及所有版位；主副標變更後會再顯示。 */
+window.addEventListener('message',function(e){
+  if(!e.data || e.data.type!=='bn-content-warning-dismiss') return;
+  window._bnContentWarningDismissedSignature=bnContentWarningSignature();
+  bnHideContentWarningUI();
+  bnBroadcastContentWarnings([]);
 });
 </script>
 
