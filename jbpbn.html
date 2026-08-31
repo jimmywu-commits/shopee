@@ -310,6 +310,8 @@ html, body { height: 100%; background: var(--bg0); color: var(--text);
 }
 .cp-swatch:hover { transform: scale(1.18); }
 .cp-swatch.active { border-color: #fff; box-shadow: 0 0 0 2px rgba(255,255,255,.18); }
+.cp-swatch.bn-color-blocked { opacity:.22; cursor:not-allowed; pointer-events:none; position:relative; }
+.cp-swatch.bn-color-blocked::after { content:'×'; position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:#ef4444; font-size:18px; font-weight:900; text-shadow:0 1px 2px #fff; }
 </style>
 
 <style>
@@ -1368,6 +1370,10 @@ function getColorData() {
   if (lockedCanvasBg) data.canvasBg = lockedCanvasBg;
   var authoritativeCanvasBg = getAuthoritativeCanvasBg();
   if (authoritativeCanvasBg) data.canvasBg = authoritativeCanvasBg;
+  bnSanitizeRestrictedColorData(data);
+  bnSanitizeRestrictedColorData(colorState);
+  bnSanitizeRestrictedColorData(window._bnLastUserColorState);
+  bnSanitizeRestrictedColorData(window._bnFrozenColorData);
   return data;
 }
 
@@ -1393,6 +1399,57 @@ function getTextData() {
 /* ════════════════════════════════════════
    色票選色器
 ════════════════════════════════════════ */
+var BN_RESTRICTED_COLOR_KEYS = ['brandText','mainText','subText','dateText','ctaBg','searchImageCtaBg'];
+var BN_CTA_BACKGROUND_COLOR_KEYS = ['ctaBg','searchImageCtaBg'];
+var BN_RESTRICTED_COLOR_FALLBACKS = {
+  brandText:'#2b79c4', mainText:'#2b79c4', subText:'#2540b5', dateText:'#2b79c4',
+  ctaBg:'#f5a623', searchImageCtaBg:'#d0021b'
+};
+function bnRestrictedColorRgb(value){
+  var text=String(value||'').trim().toLowerCase();
+  if(text==='black') return [0,0,0];
+  if(text==='white') return [255,255,255];
+  var short=text.match(/^#([0-9a-f])([0-9a-f])([0-9a-f])$/i);
+  if(short) return short.slice(1).map(function(x){return parseInt(x+x,16);});
+  var full=text.match(/^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i);
+  if(full) return full.slice(1).map(function(x){return parseInt(x,16);});
+  var rgb=text.match(/^rgba?\(\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)(?:\s*,\s*([\d.]+))?\s*\)$/i);
+  if(rgb){
+    if(rgb[4]!==undefined && Number(rgb[4])===0) return null;
+    return [Number(rgb[1]),Number(rgb[2]),Number(rgb[3])];
+  }
+  return null;
+}
+function bnIsBlackOrWhiteColor(value){
+  var rgb=bnRestrictedColorRgb(value);
+  if(!rgb) return false;
+  return Math.max.apply(Math,rgb)<=32 || Math.min.apply(Math,rgb)>=245;
+}
+function bnIsGrayColor(value){
+  var text=String(value||'').trim().toLowerCase();
+  if(/(?:gray|grey)$/.test(text)||text==='silver'||text==='gainsboro') return true;
+  var rgb=bnRestrictedColorRgb(value);
+  if(!rgb) return false;
+  return Math.max.apply(Math,rgb)-Math.min.apply(Math,rgb)<=24;
+}
+function bnIsRestrictedColorForKey(key,value){
+  if(bnIsBlackOrWhiteColor(value)) return true;
+  return BN_CTA_BACKGROUND_COLOR_KEYS.indexOf(key)>=0 && bnIsGrayColor(value);
+}
+function bnSafeRestrictedColor(key,value){
+  return BN_RESTRICTED_COLOR_KEYS.indexOf(key)>=0 && bnIsRestrictedColorForKey(key,value)
+    ? BN_RESTRICTED_COLOR_FALLBACKS[key]
+    : value;
+}
+function bnSanitizeRestrictedColorData(data){
+  if(!data||typeof data!=='object') return data;
+  BN_RESTRICTED_COLOR_KEYS.forEach(function(key){
+    if(data[key]!==undefined) data[key]=bnSafeRestrictedColor(key,data[key]);
+  });
+  return data;
+}
+window.bnSanitizeRestrictedColorData=bnSanitizeRestrictedColorData;
+
 /* 分組色票 */
 var SWATCH_GROUPS = [
   { label: '蝦皮品牌色', colors: ['#ee4d2d','#f5a623','#f8e71c','#6bc0ec','#2b79c4','#2540b5'] },
@@ -1412,11 +1469,11 @@ var SWATCHES = [
 var colorState = {
   mainText:  '#2b79c4',
   subText:   '#2540b5',
-  dateText:  '#ffffff',
-  brandText: '#ffffff',
+  dateText:  '#2b79c4',
+  brandText: '#2b79c4',
   canvasBg:  '#6bc0ec',
   ctaText:   '#6bc0ec',
-  ctaBg:     '#ffffff',
+  ctaBg:     '#f5a623',
   searchImageCtaBg: '#d0021b',
   tagColor: 'red',
   logoColor: 'white'
@@ -1466,6 +1523,7 @@ function getCanvasBgHardLock(){
   return null;
 }
 function rememberCurrentColorState(){
+  bnSanitizeRestrictedColorData(colorState);
   window._bnLastUserColorState = cloneColorDataSafe(colorState);
   if (colorState && isHexCanvasBg(colorState.canvasBg)) {
     window._bnPersistentCanvasBg = colorState.canvasBg;
@@ -1629,6 +1687,7 @@ var TEXT_COLOR_KEYS = ['brandText','mainText','subText','dateText'];
 var cpActiveKey = null;
 
 function renderColorPickers() {
+  bnSanitizeRestrictedColorData(colorState);
   var wrap = document.getElementById('color-rows');
   if (!wrap) return;
   wrap.innerHTML = '';
@@ -1742,13 +1801,21 @@ function renderColorPickers() {
 function openPanel(key, e) {
   e.stopPropagation(); /* 先擋掉，避免被 document.click 立刻關閉 */
   cpActiveKey = key;
+  colorState[key] = bnSafeRestrictedColor(key,colorState[key]);
   var panel  = document.getElementById('cp-panel');
   var cur    = colorState[key];
   var native = document.getElementById('cp-native');
+  var restricted = BN_RESTRICTED_COLOR_KEYS.indexOf(key)>=0;
+  var restrictedCtaBg = BN_CTA_BACKGROUND_COLOR_KEYS.indexOf(key)>=0;
 
   document.getElementById('cp-hex-input').value = cur;
+  var hexLabel = document.getElementById('cp-hex-label');
+  if(hexLabel) hexLabel.textContent = restrictedCtaBg ? '色碼（禁用黑／白／灰）' : (restricted ? '色碼（禁用黑／白）' : '色碼');
   if (native) native.value = /^#[0-9a-fA-F]{6}$/.test(cur) ? cur : '#000000';
   document.querySelectorAll('.cp-swatch').forEach(function(s) {
+    var blocked = restricted && bnIsRestrictedColorForKey(key,s.title);
+    s.classList.toggle('bn-color-blocked',blocked);
+    s.setAttribute('aria-disabled',blocked?'true':'false');
     s.classList.toggle('active', s.title.toLowerCase() === cur.toLowerCase());
   });
 
@@ -1764,6 +1831,7 @@ function openPanel(key, e) {
 
 function applyColor(color) {
   if (!cpActiveKey) return;
+  color = bnSafeRestrictedColor(cpActiveKey,color);
   colorState[cpActiveKey] = color;
   if (cpActiveKey === 'canvasBg' && /^#[0-9a-fA-F]{6}$/.test(color || '')) {
     setAuthoritativeCanvasBg(color);

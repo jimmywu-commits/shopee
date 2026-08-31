@@ -597,6 +597,9 @@
         nextColors = Object.assign(nextColors, clone(global._bnLastUserColorState));
       }
       nextColors = applyLockedCanvasBg(nextColors);
+      if(typeof global.bnSanitizeRestrictedColorData==='function'){
+        nextColors = global.bnSanitizeRestrictedColorData(nextColors);
+      }
       Object.assign(global.colorState,nextColors);
       global._bnLastUserColorState = clone(global.colorState);
       if(typeof global.renderColorPickers==='function') global.renderColorPickers();
@@ -865,8 +868,8 @@
         /* 3. 顏色還原預設 */
         if(global.colorState){
           Object.assign(global.colorState, {
-            mainText:'#2b79c4', subText:'#2540b5', dateText:'#ffffff',
-            brandText:'#ffffff', canvasBg:'#6bc0ec', ctaText:'#6bc0ec', ctaBg:'#ffffff'
+            mainText:'#2b79c4', subText:'#2540b5', dateText:'#2b79c4',
+            brandText:'#2b79c4', canvasBg:'#6bc0ec', ctaText:'#6bc0ec', ctaBg:'#f5a623'
           });
           if(typeof global.renderColorPickers==='function') global.renderColorPickers();
           if(typeof global.broadcastColors==='function') global.broadcastColors();
