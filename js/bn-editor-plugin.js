@@ -119,6 +119,8 @@
     /* logo 支援最多3張 */
     window._bnLogos = window._bnLogos || [];   /* [{id,src}] */
     window._bnLogoDataUrl = window._bnLogoDataUrl || null;  /* 向下相容：第一張 */
+    /* SearchICON_LOGO 的可拖曳位置；下載暫存時會另轉成檔名鍵。 */
+    window._bnLogoLayouts = window._bnLogoLayouts || {};
     var MAX_LOGOS = 3;
     window._bnProducts    = window._bnProducts    || [];
     var MAX_PROD = 3;
@@ -173,6 +175,43 @@
     function broadcast(msg){document.querySelectorAll('.preview-block iframe').forEach(function(f){try{f.contentWindow.postMessage(msg,'*');}catch(e){}});}
     function broadcastTo(id,msg){var f=document.getElementById('iframe-'+id);if(f)try{f.contentWindow.postMessage(msg,'*');}catch(e){}}
     function requestProductLayouts(){ broadcast({type:'bn-product-layout-request'}); }
+    function getIframeLayoutId(frame){
+      try{
+        var id = new URLSearchParams(String(frame.src || '').split('?')[1] || '').get('bnid');
+        return id ? String(id) : '';
+      }catch(_){ return ''; }
+    }
+    /* 兩種下載共用：輸出前向每個 iframe 取回最後一刻的商品、人物與
+       SearchICON_LOGO 位置。complete 回覆逾時時，仍保留既有即時資料繼續。 */
+    function syncLayoutSnapshot(timeoutMs){
+      return new Promise(function(resolve){
+        var requestId = 'layout_'+Date.now()+'_'+Math.random().toString(36).slice(2);
+        var pending = {};
+        document.querySelectorAll('.preview-block iframe').forEach(function(frame){
+          var id = getIframeLayoutId(frame);
+          if(id) pending[id] = true;
+        });
+        var settled = false;
+        var timer = null;
+        function finish(){
+          if(settled) return;
+          settled = true;
+          if(timer) clearTimeout(timer);
+          window.removeEventListener('message', onComplete);
+          resolve();
+        }
+        function onComplete(ev){
+          var data = ev.data || {};
+          if(data.type !== 'bn-layout-snapshot-complete' || data.requestId !== requestId) return;
+          if(data.bnid) delete pending[String(data.bnid)];
+          if(!Object.keys(pending).length) finish();
+        }
+        if(!Object.keys(pending).length){ finish(); return; }
+        window.addEventListener('message', onComplete);
+        timer = setTimeout(finish, Math.max(300, Number(timeoutMs) || 900));
+        broadcast({type:'bn-layout-snapshot-request', requestId:requestId});
+      });
+    }
     function markStateDirty(){ try{ document.dispatchEvent(new CustomEvent('bn-state-dirty')); }catch(_){ } }
 
     /* 方版 / 橫版排品連動：同一版位只差「方 / 橫」時，共用商品位置比例。 */
@@ -314,6 +353,14 @@
     }
     window.addEventListener('message', function(ev){
       var d = ev.data || {};
+      if(d.type === 'bn-searchicon-logo-layout-update' && d.layout){
+        if(window._bnSuppressProductLayoutWrite || window._bnExporting) return;
+        var logoLayoutId = d.bnid ? String(d.bnid) : '';
+        if(!logoLayoutId) return;
+        window._bnLogoLayouts[logoLayoutId] = JSON.parse(JSON.stringify(d.layout));
+        markStateDirty();
+        return;
+      }
       if(d.type === 'bn-character-layout-update' && d.layout){
         /* 與商品版位更新共用同一個 listener，避免重複註冊造成的衝突。
            用訊息裡的 id 判斷這次更新是人物1還是人物2。 */
@@ -1010,14 +1057,22 @@
       var _bgStates = {}; /* { layoutId: {src,fit,scale,x,y} } */
       var _bgActiveId = null; /* 目前編輯的版位 id */
 
+      function isNoImageBackgroundLayout(id, ifrEl){
+        var name = getLayoutNameById(id);
+        var src = '';
+        try{ src = decodeURIComponent(String((ifrEl && (ifrEl.getAttribute('src') || ifrEl.src)) || '')); }catch(_){ }
+        return /SearchICON_(LOGO|PRODUCT|TEXT)/i.test(name + ' ' + src);
+      }
+
       function cloneBgStates(){
         var out = {};
         var hasSrc = false;
         Object.keys(_bgStates).forEach(function(id){
           var st = _bgStates[id] || {};
-          if(st.src && st.src !== '__BN_IDB__') hasSrc = true;
+          var noImageBg = isNoImageBackgroundLayout(id, null);
+          if(!noImageBg && st.src && st.src !== '__BN_IDB__') hasSrc = true;
           out[id] = {
-            src: (st.src && st.src !== '__BN_IDB__') ? st.src : null,
+            src: (!noImageBg && st.src && st.src !== '__BN_IDB__') ? st.src : null,
             fit: st.fit || 'cover',
             scale: st.scale !== undefined ? st.scale : 100,
             x: st.x !== undefined ? st.x : 50,
@@ -1032,6 +1087,7 @@
           document.querySelectorAll('.preview-block iframe').forEach(function(ifrEl){
             var id = getIfrBnid(ifrEl);
             if(!id) return;
+            if(isNoImageBackgroundLayout(id, ifrEl)) return;
             out[id] = out[id] || (function(){ var _dp=getDefaultBgParamsForLayout(id, ifrEl); return {fit:_dp.fit,scale:_dp.scale,x:_dp.x,y:_dp.y,_initialized:true}; })();
             out[id].src = window._bgDataUrl;
             out[id].fit = out[id].fit || 'auto';
@@ -1064,7 +1120,8 @@
             var st = nextStates[id] || {};
             var prev = prevStates[id] || {};
             /* __BN_IDB__ 是 localStorage 輕量備援的佔位符，不能當成 null 廣播，否則會洗掉畫布背景。 */
-            var src = st.src === '__BN_IDB__' ? (prev.src || window._bgDataUrl || null) : (st.src || null);
+            var src = isNoImageBackgroundLayout(id, null) ? null
+              : (st.src === '__BN_IDB__' ? (prev.src || window._bgDataUrl || null) : (st.src || null));
             if(src) hasRealSrc = true;
             _bgStates[id] = {
               src: src,
@@ -1081,6 +1138,7 @@
           document.querySelectorAll('.preview-block iframe').forEach(function(ifrEl){
             var id = getIfrBnid(ifrEl);
             if(!id) return;
+            if(isNoImageBackgroundLayout(id, ifrEl)) return;
             _bgStates[id] = _bgStates[id] || (function(){ var _dp=getDefaultBgParamsForLayout(id, ifrEl); return {fit:_dp.fit,scale:_dp.scale,x:_dp.x,y:_dp.y,_initialized:true}; })();
             _bgStates[id].src = window._bgDataUrl;
           });
@@ -1107,6 +1165,7 @@
           document.querySelectorAll('.preview-block iframe').forEach(function(ifrEl){
             var id = getIfrBnid(ifrEl);
             if(!id) return;
+            if(isNoImageBackgroundLayout(id, ifrEl)) return;
             var st = getBgState(id);
             if(!st.src) st.src = window._bgDataUrl;
           });
@@ -1139,8 +1198,9 @@
 
       function bgSendToIframe(ifrEl, id){
         var st = getBgState(id);
+        var src = isNoImageBackgroundLayout(id, ifrEl) ? null : st.src;
         try{ ifrEl.contentWindow.postMessage(
-          {type:'bn-bg', src:st.src, fit:st.fit, scale:st.scale, x:st.x, y:st.y}, '*');
+          {type:'bn-bg', src:src, fit:st.fit, scale:st.scale, x:st.x, y:st.y}, '*');
         }catch(_){}
       }
 
@@ -1156,9 +1216,10 @@
           /* id 取不到時，用 _bgActiveId 的狀態廣播給所有 iframe */
           var st = id ? getBgState(id) : (_bgActiveId ? getBgState(_bgActiveId) : null);
           if(!st) return;
+          var src = (id && isNoImageBackgroundLayout(id, ifrEl)) ? null : st.src;
           try{
             ifrEl.contentWindow.postMessage({
-              type:'bn-bg', src:st.src || null, fit:st.fit, scale:st.scale, x:st.x, y:st.y
+              type:'bn-bg', src:src || null, fit:st.fit, scale:st.scale, x:st.x, y:st.y
             }, '*');
           }catch(_){}
         });
@@ -1230,7 +1291,7 @@
              舊函式，直接跳過即可。 */
           /* 把已有的狀態推給新 iframe */
           var st = getBgState(id);
-          if(st.src){
+          if(st.src && !isNoImageBackgroundLayout(id, null)){
             document.querySelectorAll('.preview-block iframe').forEach(function(ifrEl){
               var bnid = getIfrBnid(ifrEl);
               if(bnid && String(bnid)===String(id)){
@@ -1586,6 +1647,7 @@
          兩條路徑都會同步生效，不會再各自寫一份、各自忘記同步更新。 */
       window._bnGetBgLayoutOrientation = getBgLayoutOrientation;
       window._bnGetDefaultBgParamsForLayout = getDefaultBgParamsForLayout;
+      window._bnIsNoImageBackgroundLayout = isNoImageBackgroundLayout;
 
       function applyBgByOrientation(horizontalSrc, verticalSrc){
         var h = horizontalSrc || null;
@@ -1597,6 +1659,7 @@
           var id = getIfrBnid(ifrEl);
           if(!id) return;
           var st = getBgState(id);
+          if(isNoImageBackgroundLayout(id, ifrEl)){ st.src = null; return; }
           var nextSrc = single || (getBgLayoutOrientation(id, ifrEl) === 'vertical' ? v : h) || h || v;
           st.src = nextSrc;
           if(!st._initialized){
@@ -1712,6 +1775,7 @@
               var id = getIfrBnid(ifrEl);
               if(!id) return;
               var st = getBgState(id);
+              if(isNoImageBackgroundLayout(id, ifrEl)){ st.src = null; return; }
               st.src = dataUrl;
               /* 只有第一次上傳才重設位置，已有設定則保留 */
               if(!st._initialized){
@@ -2437,7 +2501,7 @@
       if(typeof window.broadcastColors === 'function') window.broadcastColors();
     }
 
-    function downloadAll(){
+    function downloadAll(_layoutSynced){
       /* 字數硬擋：任何欄位（含系統補上 $ 與千分位後）超過上限就不給下載，
          跳提醒視窗請使用者先修改。 */
       if(typeof window.bnCanDownload === 'function' && !window.bnCanDownload()){
@@ -2449,6 +2513,22 @@
       /* 多圖恢復 ZIP：1 張直接 PNG；2 張以上先逐張截圖，最後打包 ZIP。 */
       var iframes=Array.from(document.querySelectorAll('.preview-block iframe'));
       if(!iframes.length){setProgress('沒有版位可下載');return;}
+
+      /* 必須在 _bnExporting / _bnSuppressProductLayoutWrite 鎖定前取回最新位置，
+         否則最後一次拖曳可能尚未進入 ZIP 內附的暫存 JSON。 */
+      if(_layoutSynced !== true && typeof window._bnSyncLayoutSnapshot === 'function'){
+        var syncBtn=document.getElementById('bn-dl-all');
+        if(syncBtn) syncBtn.disabled=true;
+        setProgress('正在同步最新畫布位置…');
+        Promise.resolve(window._bnSyncLayoutSnapshot(900)).then(function(){
+          if(syncBtn) syncBtn.disabled=false;
+          downloadAll(true);
+        }).catch(function(){
+          if(syncBtn) syncBtn.disabled=false;
+          downloadAll(true);
+        });
+        return;
+      }
 
       /* 下載＋打包暫存檔現在需要一點時間，跟「剛進來時」的畫布/字體載入
          用同一種毛玻璃浮動提示，讓使用者知道還在跑，不要誤以為卡住。 */
@@ -2487,7 +2567,8 @@
         var id = getIfrBnidForExport(iframeEl);
         if(exportTextData) sendToIframe(iframeEl, {type:'bn-text', data:exportTextData});
         if(exportColorData) sendToIframe(iframeEl, {type:'bn-color', data:(window._bnFrozenColorData || exportColorData)});
-        if(exportLogos && exportLogos.length) sendToIframe(iframeEl, {type:'bn-logos', logos:exportLogos});
+        if(exportLogos && exportLogos.length) sendToIframe(iframeEl, {type:'bn-logos', logos:exportLogos,
+          logoLayoutById:window._bnLogoLayouts || {}});
 
         exportProducts.forEach(function(p, idx){
           sendToIframe(iframeEl, {
@@ -2545,7 +2626,8 @@
           var id = getIfrBnidForExport(iframeEl);
           if(exportTextData) sendToIframe(iframeEl, {type:'bn-text', data:exportTextData});
           if(exportColorData) sendToIframe(iframeEl, {type:'bn-color', data:(window._bnFrozenColorData || exportColorData)});
-          if(exportLogos && exportLogos.length) sendToIframe(iframeEl, {type:'bn-logos', logos:exportLogos});
+          if(exportLogos && exportLogos.length) sendToIframe(iframeEl, {type:'bn-logos', logos:exportLogos,
+            logoLayoutById:window._bnLogoLayouts || {}});
           if(typeof window._bnSendBgToIframe === 'function' && id) window._bnSendBgToIframe(iframeEl, id);
         });
       }
@@ -2971,7 +3053,8 @@
       /* iframe ready 只補送素材，不重新判斷版位；避免覆蓋使用者手動勾選。 */
       setTimeout(function(){
         if(window._bnLogos&&window._bnLogos.length){
-          broadcastTo(id,{type:'bn-logos',logos:window._bnLogos});
+          broadcastTo(id,{type:'bn-logos',logos:window._bnLogos,
+            logoLayoutById:window._bnLogoLayouts || {}});
         } else if(window._bnLogoDataUrl){
           broadcastTo(id,{type:'bn-logo',dataUrl:window._bnLogoDataUrl});
         }
@@ -3019,12 +3102,14 @@
     window._bnBroadcastLogos = function(){
       /* 還原／廣播狀態時保留已儲存或使用者手動調整的版位選擇。 */
       if(window._bnLogos && window._bnLogos.length){
-        broadcast({type:'bn-logos', logos:window._bnLogos});
+        broadcast({type:'bn-logos', logos:window._bnLogos,
+          logoLayoutById:window._bnLogoLayouts || {}});
       }
     };
     window._bnSyncLogoLayoutSelection = syncLogoLayoutSelection;
     window._bnRenderProdList = function(){ renderProdList(); };
     window._bnRequestProductLayouts = requestProductLayouts;
+    window._bnSyncLayoutSnapshot = syncLayoutSnapshot;
     window._bnRebroadcastProducts = function(){
       var ids = (window._bnProducts||[]).map(function(p){ return p.id; });
       ids.forEach(function(id){ broadcast({type:'bn-product-remove', id:id}); });

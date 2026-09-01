@@ -577,6 +577,11 @@
         var states = {};
         iframes.forEach(function(iframe){
           var info = getLayoutInfoForIframe(iframe);
+          if(typeof window._bnIsNoImageBackgroundLayout === 'function' &&
+             window._bnIsNoImageBackgroundLayout(info.id, iframe)){
+            try{ iframe.contentWindow.postMessage({type:'bn-bg', src:null}, '*'); }catch(_){ }
+            return;
+          }
           var src = chooseSrcForLayout(info, img, dataH, dataV);
           if(!src) return;
           var params = getBgParamsForLibraryLayout(info, iframe);

@@ -14,6 +14,7 @@
      統一在這裡（layout-runtime.js）判斷，不用各版位自己攔截商品/人物相關
      訊息，行為才會一致、也才不會漏掉哪個訊息類型沒攔到。 */
   var _bnSingleProductOnlyTemplate = /searchicon_product/i.test(fname || '');
+  var _bnNoImageBackgroundTemplate = /^searchicon_(logo|product|text)$/i.test(fname || '');
 
   /* 可編輯文字不得使用近黑／近白；CTA 底色另加禁用灰色。
      父頁會先正規化一次；這裡是版型端最後防線，連寫死在 CSS 的預設色也會攔截。 */
@@ -974,6 +975,9 @@
 
     if (e.data.type === 'bn-color') {
       var c = Object.assign({},e.data.data||{}), cv = document.getElementById('canvas');
+      if(_bnNoImageBackgroundTemplate && cv){
+        cv.style.setProperty('background', '#fff', 'important');
+      }
       _bnRestrictedColorKeys.forEach(function(key){
         if(c[key]!==undefined) c[key]=_bnSafeRestrictedColor(key,c[key]);
       });
@@ -1445,6 +1449,16 @@
       var bgX     = e.data.x     !== undefined ? e.data.x     : 50;
       var bgY     = e.data.y     !== undefined ? e.data.y     : 50;
 
+      /* SearchICON_LOGO / PRODUCT / TEXT 的圓底可連動純色，但圓底下方的
+         120x120 基底固定白色，且三個版位完全不接受任何背景圖片。 */
+      if(_bnNoImageBackgroundTemplate){
+        var cvSearchIcon = document.getElementById('canvas');
+        if(cvSearchIcon) cvSearchIcon.style.setProperty('background', '#fff', 'important');
+        if(bgContainer) bgContainer.style.setProperty('background-image', 'none', 'important');
+        if(bimg2){ bimg2.src=''; bimg2.style.display='none'; bimg2.style.transform=''; }
+        return;
+      }
+
       /* background-size 根據模式計算 */
       var bgSize, bgPos;
       if(bgFit === 'cover'){
@@ -1524,6 +1538,22 @@
         overlay.src = '';
       }
       return;
+    }
+
+    if (e.data.type === 'bn-layout-snapshot-request') {
+      postAllProductLayouts();
+      postAllCharacterLayouts();
+      /* 讓同一頁其他專用 listener（例如 SearchICON_LOGO）先回傳自己的位置，
+         再通知父層此 iframe 已完成快照。 */
+      setTimeout(function(){
+        try{
+          window.parent && window.parent.postMessage({
+            type:'bn-layout-snapshot-complete',
+            requestId:e.data.requestId,
+            bnid:getCurrentBnId()
+          }, '*');
+        }catch(_){ }
+      }, 0);
     }
 
     if (e.data.type === 'bn-product-layout-request') {
@@ -1924,6 +1954,13 @@
     try{
       var zone = getProductZone(); if(!zone) return;
       Array.from(zone.querySelectorAll('.bn-prod-box')).forEach(postProductLayout);
+    }catch(_){ }
+  }
+
+  function postAllCharacterLayouts(){
+    try{
+      var zone = getProductZone(); if(!zone) return;
+      Array.from(zone.querySelectorAll('.bn-char-box')).forEach(postCharacterLayout);
     }catch(_){ }
   }
 

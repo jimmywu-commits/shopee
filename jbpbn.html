@@ -582,7 +582,8 @@ function scanLayouts() {
         file: file,
         w: old ? old.w : 0,
         h: old ? old.h : 0,
-        enabled: old ? old.enabled : true
+        enabled: old ? old.enabled : true,
+        checked: old && old.checked !== undefined ? !!old.checked : undefined
       });
     });
 
@@ -758,6 +759,33 @@ function renderAdmin() {
    前台 — 勾選列表
 ════════════════════════════════════════ */
 var checked = {};   /* { id: bool } */
+var checkedByFile = {}; /* 跨電腦／不同 origin 仍有效的 { normalizedFile: bool } */
+
+function layoutFileKey(file) {
+  var value = String(file || '').trim().replace(/\\/g, '/');
+  try { value = decodeURIComponent(value); } catch(_) {}
+  return value.split('?')[0].split('#')[0].replace(/^.*\//, '').toLowerCase();
+}
+
+function getLayoutCheckedValue(layout) {
+  var id = layout.id;
+  var fileKey = layoutFileKey(layout.file || layout.name);
+  var defaultChecked = !/^LPBN_/i.test(layout.file || '');
+  if (id in checked) return !!checked[id];
+  if (fileKey && fileKey in checkedByFile) return !!checkedByFile[fileKey];
+  if (layout.checked !== undefined) return !!layout.checked;
+  return defaultChecked;
+}
+
+function rememberLayoutChecked(id, value) {
+  value = !!value;
+  checked[id] = value;
+  var layout = loadLayouts().find(function(item){ return String(item.id) === String(id); });
+  if(layout){
+    var fileKey = layoutFileKey(layout.file || layout.name);
+    if(fileKey) checkedByFile[fileKey] = value;
+  }
+}
 
 /* 使用者手動調整版位時遞增；Logo 尺寸的非同步判斷不得覆蓋較新的手動選擇。 */
 function markLayoutSelectionManual() {
@@ -773,9 +801,10 @@ function renderChecks() {
     return;
   }
   wrap.innerHTML = layouts.map(function(l) {
-    /* 預設全部勾選：checked 裡沒記錄的視為 true */
-    var defaultChecked = !/^LPBN_/i.test(l.file);
-    var isChecked = (l.id in checked) ? !!checked[l.id] : defaultChecked;
+    var isChecked = getLayoutCheckedValue(l);
+    checked[l.id] = isChecked;
+    var fileKey = layoutFileKey(l.file || l.name);
+    if(fileKey) checkedByFile[fileKey] = isChecked;
     return '<label class="layout-check-item">' +
       '<input type="checkbox" ' + (isChecked ? 'checked' : '') +
         ' onchange="onCheck(' + l.id + ', this.checked)">' +
@@ -787,14 +816,14 @@ function renderChecks() {
 
 function onCheck(id, val) {
   markLayoutSelectionManual();
-  checked[id] = val;
+  rememberLayoutChecked(id, val);
   renderPreviews();
 }
 
 function checkAll(val) {
   markLayoutSelectionManual();
   var layouts = loadLayouts().filter(function(l){ return l.enabled; });
-  layouts.forEach(function(l){ checked[l.id] = val; });
+  layouts.forEach(function(l){ rememberLayoutChecked(l.id, val); });
   renderChecks();
   renderPreviews();
 }
@@ -807,7 +836,7 @@ function setLayoutChecks(nextById) {
   Object.keys(nextById).forEach(function(id){
     var next = !!nextById[id];
     if(checked[id] !== next){
-      checked[id] = next;
+      rememberLayoutChecked(id, next);
       changed = true;
     }
   });
@@ -904,8 +933,9 @@ window.bnUpdateDownloadOverlay = bnUpdateDownloadOverlay;
 window.bnHideDownloadOverlay = bnHideDownloadOverlay;
 
 function renderPreviews() {
-  /* checked 裡沒記錄的視為 true（預設全勾） */
-  var layouts = loadLayouts().filter(function(l){ return l.enabled && ((l.id in checked) ? checked[l.id] : true); });
+  var layouts = loadLayouts().filter(function(l){
+    return l.enabled && getLayoutCheckedValue(l);
+  });
   var area  = document.getElementById('preview-area');
   var empty = document.getElementById('preview-empty');
 
@@ -2104,8 +2134,53 @@ window.broadcastColors    = broadcastColors;
 window.renderChecks       = renderChecks;
 window.renderPreviews     = renderPreviews;
 window.setLayoutChecks    = setLayoutChecks;
-window.saveChecked        = function(c){ var ls=loadLayouts(); ls.forEach(function(l){ if(c[l.id]!==undefined) l.checked=c[l.id]; }); saveLayouts(ls); };
-window.loadChecked        = function(){ var checked={}; loadLayouts().forEach(function(l){ checked[l.id]=l.checked!==false; }); return checked; };
+window.saveChecked        = function(c){
+  c = c || {};
+  Object.keys(c).forEach(function(id){ checked[id] = !!c[id]; });
+  var ls=loadLayouts();
+  ls.forEach(function(l){
+    if(c[l.id] === undefined) return;
+    checked[l.id] = !!c[l.id];
+    l.checked = !!c[l.id];
+    var fileKey = layoutFileKey(l.file || l.name);
+    if(fileKey) checkedByFile[fileKey] = !!c[l.id];
+  });
+  saveLayouts(ls);
+};
+window.loadChecked        = function(){
+  var out={};
+  loadLayouts().forEach(function(l){
+    out[l.id] = getLayoutCheckedValue(l);
+  });
+  return out;
+};
+window.saveCheckedByFile  = function(values){
+  values = values || {};
+  checkedByFile = {};
+  Object.keys(values).forEach(function(file){
+    var key = layoutFileKey(file);
+    if(key) checkedByFile[key] = !!values[file];
+  });
+  /* 上傳暫存時檔名狀態為權威來源；清掉頁面剛載入時建立的預設全選 id。 */
+  checked = {};
+  var ls = loadLayouts();
+  ls.forEach(function(l){
+    var key = layoutFileKey(l.file || l.name);
+    if(!key || !(key in checkedByFile)) return;
+    checked[l.id] = !!checkedByFile[key];
+    l.checked = !!checkedByFile[key];
+  });
+  saveLayouts(ls);
+};
+window.loadCheckedByFile  = function(){
+  var out = {};
+  Object.keys(checkedByFile).forEach(function(file){ out[file] = !!checkedByFile[file]; });
+  loadLayouts().forEach(function(l){
+    var key = layoutFileKey(l.file || l.name);
+    if(key) out[key] = getLayoutCheckedValue(l);
+  });
+  return out;
+};
 </script>
 <!-- BN Editor Plugin -->
 <script>

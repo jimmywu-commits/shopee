@@ -89,6 +89,11 @@
       Object.keys(light.background.states).forEach(function(id){
         if(light.background.states[id]) light.background.states[id].src = light.background.states[id].src ? '__BN_IDB__' : null;
       });
+      if(light.background.statesByFile){
+        Object.keys(light.background.statesByFile).forEach(function(file){
+          if(light.background.statesByFile[file]) light.background.statesByFile[file].src = light.background.statesByFile[file].src ? '__BN_IDB__' : null;
+        });
+      }
       if(light.background.legacySrc) light.background.legacySrc = '__BN_IDB__';
     }
     if(light.products){ light.products.forEach(function(p){ if(p && p.src) p.src='__BN_IDB__'; }); }
@@ -124,7 +129,8 @@
     if((light.ts || 0) <= (full.ts || 0)) return full;
     var merged = clone(full);
     merged.ts = light.ts || merged.ts;
-    ['texts','colors','inputMeta','toolbar','layouts','bgCheckers','checked'].forEach(function(k){
+    ['portableVersion','layoutManifest','texts','colors','inputMeta','toolbar','layouts','bgCheckers',
+      'checked','checkedByFile','logoLayouts','logoLayoutsByFile'].forEach(function(k){
       if(light[k] !== undefined) merged[k] = clone(light[k]);
     });
 
@@ -133,7 +139,7 @@
       merged.products.forEach(function(p){ if(p && p.id) byId[p.id] = p; });
       light.products.forEach(function(lp){
         if(!lp || !lp.id || !byId[lp.id]) return;
-        ['sizeScale','position','zOrder','width','height','x','y','scale','rotate','layout','layouts','crop','meta'].forEach(function(k){
+        ['sizeScale','position','zOrder','width','height','x','y','scale','rotate','layout','layouts','layoutsByFile','crop','meta'].forEach(function(k){
           if(lp[k] !== undefined) byId[lp.id][k] = clone(lp[k]);
         });
       });
@@ -149,14 +155,34 @@
       });
     }
 
+    ['character','character2'].forEach(function(key){
+      var lightChar = light[key];
+      var mergedChar = merged[key];
+      if(!lightChar || !mergedChar) return;
+      Object.keys(lightChar).forEach(function(k){
+        if(k !== 'src' && lightChar[k] !== undefined) mergedChar[k] = clone(lightChar[k]);
+      });
+    });
+
     if(light.background && merged.background){
       if(light.background.activeId !== undefined) merged.background.activeId = light.background.activeId;
+      if(light.background.activeFile !== undefined) merged.background.activeFile = light.background.activeFile;
       if(light.background.states && merged.background.states){
         Object.keys(light.background.states).forEach(function(id){
           var ls = light.background.states[id] || {};
           var ms = merged.background.states[id] || {};
           Object.keys(ls).forEach(function(k){ if(k !== 'src' && ls[k] !== undefined) ms[k] = clone(ls[k]); });
           merged.background.states[id] = ms;
+        });
+      }
+      if(light.background.statesByFile && merged.background.statesByFile){
+        Object.keys(light.background.statesByFile).forEach(function(file){
+          var lsFile = light.background.statesByFile[file] || {};
+          var msFile = merged.background.statesByFile[file] || {};
+          Object.keys(lsFile).forEach(function(k){
+            if(k !== 'src' && lsFile[k] !== undefined) msFile[k] = clone(lsFile[k]);
+          });
+          merged.background.statesByFile[file] = msFile;
         });
       }
     }
@@ -404,6 +430,86 @@
     catch(_){ return obj; }
   }
 
+  /* 數字版位 id 只在目前瀏覽器的 bn-layouts 內有效；跨電腦、無痕模式、
+     清除網站資料或更換 origin 後都可能改變。暫存檔因此另外以版型檔名保存
+     一份可攜式索引，匯入時再映射到目前環境的 id。 */
+  function normalizeLayoutFile(file){
+    var value = String(file || '').trim().replace(/\\/g, '/');
+    try{ value = decodeURIComponent(value); }catch(_){ }
+    value = value.split('?')[0].split('#')[0].replace(/^.*\//, '');
+    return value.toLowerCase();
+  }
+
+  function getLayoutIndex(){
+    var byId = {}, byFile = {}, list = [];
+    var layouts = typeof global.loadLayouts === 'function' ? (global.loadLayouts() || []) : [];
+    layouts.forEach(function(layout){
+      if(!layout) return;
+      var id = String(layout.id);
+      var file = normalizeLayoutFile(layout.file || layout.name);
+      if(!id || !file) return;
+      byId[id] = file;
+      byFile[file] = id;
+      list.push({id:id, file:file, name:String(layout.name || '')});
+    });
+    return {byId:byId, byFile:byFile, list:list};
+  }
+
+  function idMapToFileMap(values, index){
+    var out = {};
+    if(!values || typeof values !== 'object') return out;
+    index = index || getLayoutIndex();
+    Object.keys(values).forEach(function(id){
+      var file = index.byId[String(id)];
+      if(file) out[file] = clone(values[id]);
+    });
+    return out;
+  }
+
+  function mergeFileMapIntoIdMap(legacyValues, portableValues, index, savedManifest){
+    var out = legacyValues && typeof legacyValues === 'object' ? clone(legacyValues) : {};
+    index = index || getLayoutIndex();
+    /* 新格式也保留舊 id map；利用下載當時的 manifest，先把舊 id 的資料
+       搬到目前 id。這讓 portable map 可只存小型設定，不必複製背景 dataURL。 */
+    if(Array.isArray(savedManifest)){
+      savedManifest.forEach(function(saved){
+        if(!saved) return;
+        var oldId = String(saved.id);
+        var currentId = index.byFile[normalizeLayoutFile(saved.file || saved.name)];
+        if(currentId && Object.prototype.hasOwnProperty.call(out, oldId)){
+          out[currentId] = clone(out[oldId]);
+        }
+      });
+    }
+    if(!portableValues || typeof portableValues !== 'object') return out;
+    Object.keys(portableValues).forEach(function(file){
+      var id = index.byFile[normalizeLayoutFile(file)];
+      if(!id) return;
+      var portableValue = clone(portableValues[file]);
+      if(out[id] && portableValue && typeof out[id] === 'object' && typeof portableValue === 'object' &&
+          !Array.isArray(out[id]) && !Array.isArray(portableValue)){
+        out[id] = Object.assign({}, out[id], portableValue);
+      }else{
+        out[id] = portableValue;
+      }
+    });
+    return out;
+  }
+
+  function addPortableLayouts(entity, index){
+    if(!entity) return entity;
+    var out = clone(entity);
+    out.layoutsByFile = idMapToFileMap(out.layouts || {}, index);
+    return out;
+  }
+
+  function restorePortableLayouts(entity, index, savedManifest){
+    if(!entity) return entity;
+    var out = clone(entity);
+    out.layouts = mergeFileMapIntoIdMap(out.layouts, out.layoutsByFile, index, savedManifest);
+    return out;
+  }
+
   function isHexColor(v){
     return typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v.trim());
   }
@@ -432,6 +538,22 @@
       if(global.colorState) global.colorState.canvasBg = locked;
     }
     return colors;
+  }
+
+  function collectColors(){
+    var colors = {};
+    /* 舊快照只當備援；目前畫面上的 colorState 才是下載暫存的權威來源。
+       ZIP 匯出會先建立 frozen snapshot，獨立「下載暫存」則不會，舊邏輯
+       優先讀 _bnLastUserColorState，才會讓兩條下載流程產生不同的字色。 */
+    if(global._bnLastUserColorState) Object.assign(colors, clone(global._bnLastUserColorState));
+    if(typeof global.getColorData === 'function'){
+      try{ Object.assign(colors, clone(global.getColorData())); }catch(_){ }
+    }
+    if(global.colorState) Object.assign(colors, clone(global.colorState));
+    if(typeof global.bnSanitizeRestrictedColorData === 'function'){
+      colors = global.bnSanitizeRestrictedColorData(colors);
+    }
+    return applyLockedCanvasBg(colors);
   }
 
   function markDirty(){
@@ -529,38 +651,57 @@
      2. 本機暫存
   ══════════════════════════════════════ */
   function collectState(){
+    var layoutIndex = getLayoutIndex();
+    var bgStates = typeof global._bnGetBgStates==='function' ? global._bnGetBgStates() : {};
+    var activeBgId = typeof global._bnGetBgActiveId==='function' ? global._bnGetBgActiveId() : null;
+    var checkedState = global.loadChecked ? global.loadChecked() : {};
+    var checkedByFileState = typeof global.loadCheckedByFile === 'function'
+      ? global.loadCheckedByFile() : idMapToFileMap(checkedState, layoutIndex);
+    var bgStatesByFile = idMapToFileMap(bgStates, layoutIndex);
+    Object.keys(bgStatesByFile).forEach(function(file){
+      /* 圖片本體已存在 background.states；可攜索引只需保存位置參數。 */
+      if(bgStatesByFile[file]) delete bgStatesByFile[file].src;
+    });
     return {
       version: 1,
+      portableVersion: 1,
       ts: Date.now(),
+      layoutManifest: clone(layoutIndex.list),
       texts:{
         brand:(document.getElementById('txt-brand')||{}).value||'',
         main: (document.getElementById('txt-main') ||{}).value||'',
         sub:  (document.getElementById('txt-sub')  ||{}).value||'',
         date: (document.getElementById('txt-date') ||{}).value||'',
+        icon: (document.getElementById('txt-icon') ||{}).value||'',
       },
-      colors: applyLockedCanvasBg(global._bnLastUserColorState ? clone(global._bnLastUserColorState) : (global.colorState ? clone(global.colorState) : {})),
+      colors: collectColors(),
       inputMeta: collectInputMeta(),
       logos: (global._bnLogos||[]).map(function(l){ return clone(l); }),
-      character: global._bnCharacter ? clone(global._bnCharacter) : null,
-      character2: global._bnCharacter2 ? clone(global._bnCharacter2) : null,
+      logoLayouts: clone(global._bnLogoLayouts || {}),
+      logoLayoutsByFile: idMapToFileMap(global._bnLogoLayouts || {}, layoutIndex),
+      character: addPortableLayouts(global._bnCharacter, layoutIndex),
+      character2: addPortableLayouts(global._bnCharacter2, layoutIndex),
       charPairFirst: global._bnCharPairFirst || null,
       products:(global._bnProducts||[]).map(function(p){
-        return {id:p.id,src:p.src,baseSrc:p.baseSrc,ratio:p.ratio,name:p.name,
+        return addPortableLayouts({id:p.id,src:p.src,baseSrc:p.baseSrc,ratio:p.ratio,name:p.name,
           sizeScale:p.sizeScale||1,position:p.position||0,zOrder:p.zOrder||0,
           width:p.width, height:p.height, x:p.x, y:p.y, scale:p.scale, rotate:p.rotate,
           layout:p.layout ? clone(p.layout) : undefined,
           layouts:p.layouts ? clone(p.layouts) : undefined,
-          crop:p.crop ? clone(p.crop) : undefined, meta:p.meta ? clone(p.meta) : undefined};
+          crop:p.crop ? clone(p.crop) : undefined, meta:p.meta ? clone(p.meta) : undefined}, layoutIndex);
       }),
       background:{
-        activeId: typeof global._bnGetBgActiveId==='function' ? global._bnGetBgActiveId() : null,
-        states: typeof global._bnGetBgStates==='function' ? global._bnGetBgStates() : {},
+        activeId: activeBgId,
+        activeFile: activeBgId !== null && activeBgId !== undefined ? (layoutIndex.byId[String(activeBgId)] || null) : null,
+        states: bgStates,
+        statesByFile: bgStatesByFile,
         legacySrc: global._bgDataUrl || null
       },
       toolbar: collectToolbarState(),
       layouts: typeof global.getLayoutState==='function' ? clone(global.getLayoutState()) : null,
       bgCheckers: typeof global.getBgCheckerState==='function' ? clone(global.getBgCheckerState()) : [],
-      checked: global.loadChecked ? global.loadChecked() : {},
+      checked: checkedState,
+      checkedByFile: checkedByFileState,
     };
   }
 
@@ -579,12 +720,18 @@
     return Object.keys(st).some(function(id){ return st[id] && st[id].src === '__BN_IDB__'; });
   }
 
-  function applyState(state){
+  function applyState(state, options){
     if(!state||state.version!==1) return;
+    options = options || {};
+    var explicitUpload = options.source === 'upload' || options.forceColors === true;
+    var layoutIndex = getLayoutIndex();
     global._bnStateApplying = true;
     var heavyStripped = stateHasHeavyPlaceholders(state);
+    global._bnLogoLayouts = mergeFileMapIntoIdMap(
+      state.logoLayouts || {}, state.logoLayoutsByFile || {}, layoutIndex, state.layoutManifest
+    );
     if(state.texts){
-      ['brand','main','sub','date'].forEach(function(k){
+      ['brand','main','sub','date','icon'].forEach(function(k){
         var el=document.getElementById('txt-'+k);
         if(el&&state.texts[k]!==undefined){ el.value=state.texts[k]; el.dispatchEvent(new Event('input',{bubbles:true})); }
       });
@@ -593,10 +740,26 @@
       var nextColors = clone(state.colors);
       /* ZIP 匯出或剛匯出後，若舊暫存帶預設藍進來，不可覆蓋使用者目前吸色後的背景色。 */
       var guardActive = global._bnFrozenColorData || (global._bnBgColorExportGuardUntil && Date.now() < global._bnBgColorExportGuardUntil);
-      if(guardActive && global._bnLastUserColorState){
+      if(!explicitUpload && guardActive && global._bnLastUserColorState){
         nextColors = Object.assign(nextColors, clone(global._bnLastUserColorState));
       }
-      nextColors = applyLockedCanvasBg(nextColors);
+      if(explicitUpload){
+        /* 明確上傳的暫存檔必須完整還原自己的顏色，不可被目前頁面剛好仍在
+           作用中的 ZIP／背景色 guard 覆蓋。 */
+        delete global._bnFrozenColorData;
+        global._bnBgColorExportGuardUntil = 0;
+        if(isHexColor(nextColors.canvasBg)){
+          if(typeof global._bnSetAuthoritativeCanvasBg === 'function'){
+            try{ global._bnSetAuthoritativeCanvasBg(nextColors.canvasBg); }catch(_){ }
+          }else{
+            global._bnCanvasBgHardLock = nextColors.canvasBg;
+            global._bnPersistentCanvasBg = nextColors.canvasBg;
+            global._bnUserCanvasBgLocked = true;
+          }
+        }
+      }else{
+        nextColors = applyLockedCanvasBg(nextColors);
+      }
       if(typeof global.bnSanitizeRestrictedColorData==='function'){
         nextColors = global.bnSanitizeRestrictedColorData(nextColors);
       }
@@ -616,7 +779,9 @@
     }
     if(state.products&&Array.isArray(state.products)){
       if(!heavyStripped || state.products.some(function(p){ return p && hasRealDataUrl(p.src); })){
-        global._bnProducts=state.products.filter(function(p){ return !p || p.src !== '__BN_IDB__'; });
+        global._bnProducts=state.products
+          .filter(function(p){ return !p || p.src !== '__BN_IDB__'; })
+          .map(function(p){ return restorePortableLayouts(p, layoutIndex, state.layoutManifest); });
         if(typeof global._bnRenderProdList==='function') global._bnRenderProdList();
         if(typeof global._bnRebroadcastProducts==='function') global._bnRebroadcastProducts();
         if(typeof global._bnRequestProductLayouts==='function'){
@@ -630,11 +795,11 @@
          人物1、人物2 各自獨立判斷，其中一個是佔位符不影響另一個正常還原。 */
       if('character' in state){
         var charPlaceholder = state.character && state.character.src === '__BN_IDB__';
-        if(!charPlaceholder) global._bnCharacter = state.character ? clone(state.character) : null;
+        if(!charPlaceholder) global._bnCharacter = state.character ? restorePortableLayouts(state.character, layoutIndex, state.layoutManifest) : null;
       }
       if('character2' in state){
         var char2Placeholder = state.character2 && state.character2.src === '__BN_IDB__';
-        if(!char2Placeholder) global._bnCharacter2 = state.character2 ? clone(state.character2) : null;
+        if(!char2Placeholder) global._bnCharacter2 = state.character2 ? restorePortableLayouts(state.character2, layoutIndex, state.layoutManifest) : null;
       }
       if('charPairFirst' in state && state.charPairFirst){
         global._bnCharPairFirst = state.charPairFirst;
@@ -645,8 +810,12 @@
     if(state.layouts && typeof global.setLayoutState==='function'){
       global.setLayoutState(state.layouts);
     }
-    if(state.checked&&typeof global.saveChecked==='function'){
-      global.saveChecked(state.checked);
+    if((state.checked || state.checkedByFile) && typeof global.saveChecked==='function'){
+      if(state.checkedByFile && typeof global.saveCheckedByFile === 'function'){
+        global.saveCheckedByFile(state.checkedByFile);
+      }
+      var restoredChecked = mergeFileMapIntoIdMap(state.checked || {}, state.checkedByFile || {}, layoutIndex, state.layoutManifest);
+      global.saveChecked(restoredChecked);
       if(typeof global.renderChecks==='function') global.renderChecks();
       /* _bnExporting 期間不重建 iframe，避免下載時畫布被清空並閃回預設顏色 */
       if(typeof global.renderPreviews==='function' && !global._bnExporting) global.renderPreviews();
@@ -656,7 +825,14 @@
     }
     if(state.background && !heavyStripped){
       if(hasRealDataUrl(state.background.legacySrc)) global._bgDataUrl = state.background.legacySrc;
-      if(typeof global._bnSetBgStates==='function') global._bnSetBgStates(state.background.states || {}, state.background.activeId || null);
+      var restoredBgStates = mergeFileMapIntoIdMap(
+        state.background.states || {}, state.background.statesByFile || {}, layoutIndex, state.layoutManifest
+      );
+      var restoredActiveId = state.background.activeId || null;
+      if(state.background.activeFile){
+        restoredActiveId = layoutIndex.byFile[normalizeLayoutFile(state.background.activeFile)] || restoredActiveId;
+      }
+      if(typeof global._bnSetBgStates==='function') global._bnSetBgStates(restoredBgStates, restoredActiveId);
       else if(hasRealDataUrl(state.background.legacySrc) && typeof global.broadcastBg==='function') global.broadcastBg(state.background.legacySrc);
     }
     applyToolbarState(state.toolbar);
@@ -756,25 +932,43 @@
         if(ev.stopImmediatePropagation) ev.stopImmediatePropagation();
       }
       /*
-       * 下載暫存只能「讀取目前狀態並產出 JSON」。
-       * 這裡不能再發 bn-product-layout-request、不能 applyState、不能 renderPreviews，
-       * 因為那些流程會重建 iframe / 商品 DOM，使用者會看到畫布被清空。
-       * 商品座標改由 layout-runtime 在拖曳/縮放當下即時回寫到 _bnProducts。
+       * 先以只讀快照訊息取得每個 iframe 的最後位置；這不會 applyState、
+       * renderPreviews 或重建商品 DOM，因此畫布不會清空。
        */
       global._bnStateDownloading = true;
-      var snapshot = collectState();
-      /* 下載 JSON 不做任何全域重建/還原/刷新，也不寫 localStorage。
-         這個函式只能讀 state 並產出檔案；任何 postMessage / _bnSetBgStates 都可能清掉畫布。 */
-      var blob = new Blob([JSON.stringify(snapshot,null,2)], {type:'application/json'});
-      var url = URL.createObjectURL(blob);
-      var a = document.createElement('a');
-      a.href = url;
-      a.download = 'bn-state-' + new Date().toISOString().slice(0,16).replace('T','_') + '.json';
-      a.style.display = 'none';
-      document.body.appendChild(a);
-      a.click();
-      setTimeout(function(){ URL.revokeObjectURL(url); if(a.parentNode) a.parentNode.removeChild(a); global._bnStateDownloading = false; }, 1000);
-      showToast('暫存已下載','ok');
+      var syncPromise = typeof global._bnSyncLayoutSnapshot === 'function'
+        ? global._bnSyncLayoutSnapshot(900)
+        : Promise.resolve();
+      Promise.resolve(syncPromise).then(function(){
+        var snapshot;
+        try{
+          snapshot = collectState();
+        }catch(error){
+          global._bnStateDownloading = false;
+          showToast('暫存下載失敗，請稍後再試','err');
+          console.warn('[BNState] download collectState 失敗', error);
+          return;
+        }
+        /* 下載 JSON 不做任何全域重建/還原/刷新，也不寫 localStorage。 */
+        var blob = new Blob([JSON.stringify(snapshot,null,2)], {type:'application/json'});
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = 'bn-state-' + new Date().toISOString().slice(0,16).replace('T','_') + '.json';
+        a.style.display = 'none';
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(function(){
+          URL.revokeObjectURL(url);
+          if(a.parentNode) a.parentNode.removeChild(a);
+          global._bnStateDownloading = false;
+        }, 1000);
+        showToast('暫存已下載','ok');
+      }).catch(function(error){
+        global._bnStateDownloading = false;
+        showToast('暫存下載失敗，請稍後再試','err');
+        console.warn('[BNState] download layout sync 失敗', error);
+      });
       return false;
     }
     dlBtn.addEventListener('mousedown', function(ev){ ev.stopPropagation(); }, true);
@@ -791,7 +985,10 @@
       reader.onload=function(e){
         try{
           var uploadedState = JSON.parse(e.target.result);
-          applyState(uploadedState);
+          if(!uploadedState || uploadedState.version !== 1){
+            throw new Error('不是有效的 BN 暫存檔');
+          }
+          applyState(uploadedState, {source:'upload', forceColors:true});
           /* applyState 會重建/推送 iframe，等它穩定後再寫本機暫存；
              避免剛套用一半的輕量狀態把完整背景/商品覆蓋掉。 */
           setTimeout(autoSave, 2300);
@@ -799,6 +996,7 @@
           showToast('暫存已載入','ok');
         }catch(_){ showToast('暫存格式錯誤','err'); }
       };
+      reader.onerror=function(){ showToast('暫存檔讀取失敗','err'); };
       reader.readAsText(file);
       ulInp.value='';
     });

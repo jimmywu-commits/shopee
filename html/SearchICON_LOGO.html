@@ -88,18 +88,29 @@ html, body {
     catch(_){ return ''; }
   }
   var STORAGE_KEY = 'bn_searchicon_logo_layout_' + getBnId();
+  var pendingLayout = null;
 
   function saveLayout(box){
+    var layout = {
+      left: box.offsetLeft, top: box.offsetTop,
+      width: box.offsetWidth, height: box.offsetHeight
+    };
+    pendingLayout = layout;
     try{
-      sessionStorage.setItem(STORAGE_KEY, JSON.stringify({
-        left: box.offsetLeft, top: box.offsetTop,
-        width: box.offsetWidth, height: box.offsetHeight
-      }));
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(layout));
+    }catch(_){}
+    try{
+      window.parent && window.parent.postMessage({
+        type:'bn-searchicon-logo-layout-update',
+        bnid:getBnId(),
+        layout:layout
+      }, '*');
     }catch(_){}
   }
 
   function loadLayout(){
     try{
+      if(pendingLayout) return pendingLayout;
       var raw = sessionStorage.getItem(STORAGE_KEY);
       if(!raw) return null;
       var d = JSON.parse(raw);
@@ -285,7 +296,22 @@ html, body {
 
   window.addEventListener('message', function(e){
     if (!e.data) return;
+    if (e.data.type === 'bn-layout-snapshot-request') {
+      var currentBox = document.querySelector('.logo範圍 .bn-logo-box');
+      if(currentBox) saveLayout(currentBox);
+      return;
+    }
     if (e.data.type === 'bn-logo' || e.data.type === 'bn-logos') {
+      /* 新暫存會把檔名鍵先映射成目前 bnid 再送進來；欄位明確存在但
+         沒有本版位資料時，也要清掉舊 sessionStorage，避免舊位置污染匯入。 */
+      if(Object.prototype.hasOwnProperty.call(e.data, 'logoLayoutById')){
+        var layoutMap = e.data.logoLayoutById || {};
+        pendingLayout = layoutMap[getBnId()] || null;
+        try{
+          if(pendingLayout) sessionStorage.setItem(STORAGE_KEY, JSON.stringify(pendingLayout));
+          else sessionStorage.removeItem(STORAGE_KEY);
+        }catch(_){ }
+      }
       var logos = (e.data.type === 'bn-logos') ? (e.data.logos || [])
                  : (e.data.dataUrl ? [{src: e.data.dataUrl}] : []);
       var first = logos[0];
