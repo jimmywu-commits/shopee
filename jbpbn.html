@@ -759,6 +759,12 @@ function renderAdmin() {
 ════════════════════════════════════════ */
 var checked = {};   /* { id: bool } */
 
+/* 使用者手動調整版位時遞增；Logo 尺寸的非同步判斷不得覆蓋較新的手動選擇。 */
+function markLayoutSelectionManual() {
+  window._bnLogoLayoutManualRevision =
+    (Number(window._bnLogoLayoutManualRevision) || 0) + 1;
+}
+
 function renderChecks() {
   var layouts = loadLayouts().filter(function(l){ return l.enabled; });
   var wrap = document.getElementById('layout-checks');
@@ -780,11 +786,13 @@ function renderChecks() {
 }
 
 function onCheck(id, val) {
+  markLayoutSelectionManual();
   checked[id] = val;
   renderPreviews();
 }
 
 function checkAll(val) {
+  markLayoutSelectionManual();
   var layouts = loadLayouts().filter(function(l){ return l.enabled; });
   layouts.forEach(function(l){ checked[l.id] = val; });
   renderChecks();

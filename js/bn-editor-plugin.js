@@ -290,6 +290,7 @@
     }
     function syncLogoLayoutSelection(){
       var seq = ++_bnLogoLayoutSelectSeq;
+      var manualRevision = Number(window._bnLogoLayoutManualRevision) || 0;
       var logos = window._bnLogos || [];
       if(!logos.length) return Promise.resolve(false);
       if(logos.length > 1) return Promise.resolve(applyLogoLayoutVariant('horizontal'));
@@ -297,6 +298,8 @@
       var logo = logos[0];
       function applyRatio(ratio){
         if(seq !== _bnLogoLayoutSelectSeq || window._bnLogos.length !== 1 || window._bnLogos[0] !== logo) return false;
+        /* 尺寸量測期間若使用者已手動勾選／取消版位，就以使用者操作為準。 */
+        if((Number(window._bnLogoLayoutManualRevision) || 0) !== manualRevision) return false;
         ratio = Number(ratio);
         if(!(ratio > 0)) return false;
         logo.ratio = ratio;
@@ -2965,9 +2968,7 @@
     var origOnReady=window._bnOnIframeReady;
     window._bnOnIframeReady=function(id){
       if(origOnReady)origOnReady(id);
-      /* 舊暫存 Logo 若沒有 ratio，第一個 iframe ready 時補量測並套版。
-         sync 只有在勾選真的改變時才重建預覽，不會造成 ready 迴圈。 */
-      syncLogoLayoutSelection();
+      /* iframe ready 只補送素材，不重新判斷版位；避免覆蓋使用者手動勾選。 */
       setTimeout(function(){
         if(window._bnLogos&&window._bnLogos.length){
           broadcastTo(id,{type:'bn-logos',logos:window._bnLogos});
@@ -3016,7 +3017,7 @@
     /* 暴露給 bn-state-plugin 使用 */
     window._bnRenderLogoList = function(){ renderLogoList(); };
     window._bnBroadcastLogos = function(){
-      syncLogoLayoutSelection();
+      /* 還原／廣播狀態時保留已儲存或使用者手動調整的版位選擇。 */
       if(window._bnLogos && window._bnLogos.length){
         broadcast({type:'bn-logos', logos:window._bnLogos});
       }
