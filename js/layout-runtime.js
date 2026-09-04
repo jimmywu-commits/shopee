@@ -20,9 +20,10 @@
      父頁會先正規化一次；這裡是版型端最後防線，連寫死在 CSS 的預設色也會攔截。 */
   var _bnRestrictedColorFallbacks={
     brandText:'#2b79c4',mainText:'#2b79c4',subText:'#2540b5',dateText:'#2b79c4',
-    ctaBg:'#f5a623',searchImageCtaBg:'#d0021b'
+    ctaBg:'#2540b5',searchImageCtaBg:'#2540b5'
   };
   var _bnCtaBackgroundColorKeys=['ctaBg','searchImageCtaBg'];
+  var _bnCtaExtendedGrayColors=['#2d3748','#4a5568','#718096'];
   var _bnRestrictedColorKeys=['brandText','mainText','subText','dateText','ctaBg','searchImageCtaBg'];
   function _bnRestrictedColorRgb(value){
     var text=String(value||'').trim().toLowerCase();
@@ -39,6 +40,14 @@
     }
     return null;
   }
+  function _bnCtaForegroundForBg(value){
+    var rgb=_bnRestrictedColorRgb(value);
+    if(!rgb) return '#ffffff';
+    var max=Math.max.apply(Math,rgb);
+    var min=Math.min.apply(Math,rgb);
+    var lightness=(max+min)/510;
+    return lightness>=0.85?'#000000':'#ffffff';
+  }
   function _bnIsBlackOrWhiteColor(value){
     var rgb=_bnRestrictedColorRgb(value);
     if(!rgb) return false;
@@ -46,6 +55,7 @@
   }
   function _bnIsGrayColor(value){
     var text=String(value||'').trim().toLowerCase();
+    if(_bnCtaExtendedGrayColors.indexOf(text)>=0) return true;
     if(/(?:gray|grey)$/.test(text)||text==='silver'||text==='gainsboro') return true;
     var rgb=_bnRestrictedColorRgb(value);
     if(!rgb) return false;
@@ -661,7 +671,7 @@
     });
   };
 
-  /* 深色底橘字＋「我已補充」：按鈕只控制編輯預覽，點擊後先在目前畫布
+  /* 深色底橘字＋「我已了解/已補充▶」：按鈕只控制編輯預覽，點擊後先在目前畫布
      立即隱藏，再通知父層同步隱藏其他畫布與左側提醒。 */
   function ensureContentWarningActionStyle(){
     if(document.getElementById('_bn_content_warning_action_style')) return;
@@ -704,7 +714,7 @@
         var btn=document.createElement('button');
         btn.type='button';
         btn.className='bn-content-warning-dismiss';
-        btn.textContent='我已補充';
+        btn.textContent='我已了解/已補充▶';
         btn.addEventListener('click',function(ev){
           ev.preventDefault(); ev.stopPropagation();
           applyContentWarnings([]);
@@ -1042,8 +1052,14 @@
       ac('主標',c.mainText); ac('副標',c.subText); ac('日期',c.dateText); ac('品牌名',c.brandText);
       /* Search_Image：副標案型七字內 顏色跟著副標文字色連動 */
       document.querySelectorAll('.副標案型七字內').forEach(function(el){ if(c.subText) el.style.setProperty('color', c.subText, 'important'); });
-      document.querySelectorAll('.cta-text').forEach(function(el){ if(c.ctaText) el.style.setProperty('color',c.ctaText,'important'); });
-      document.querySelectorAll('.cta-arrow').forEach(function(el){ if(c.ctaText) el.style.setProperty('border-left-color',c.ctaText,'important'); });
+      var normalCtaText = c.ctaTextAuto === false && c.ctaText
+        ? c.ctaText
+        : _bnCtaForegroundForBg(c.ctaBg);
+      var searchImageCtaText = c.searchImageCtaText || (c.ctaTextAuto === false && c.ctaText
+        ? c.ctaText
+        : _bnCtaForegroundForBg(c.searchImageCtaBg));
+      document.querySelectorAll('.cta-text').forEach(function(el){ el.style.setProperty('color',normalCtaText,'important'); });
+      document.querySelectorAll('.cta-arrow').forEach(function(el){ el.style.setProperty('border-left-color',normalCtaText,'important'); });
       /* CTA 底色：.逛逛去按鈕 / .cta底 / .逛逛去底 */
       document.querySelectorAll('.逛逛去按鈕,.cta底,.逛逛去底').forEach(function(el){ if(c.ctaBg) el.style.setProperty('background-color',c.ctaBg,'important'); });
       /* Search Image CTA 底色：只影響 Search_Image 版型的圓形 CTA */
@@ -1056,10 +1072,11 @@
         }
       }
       /* CTA 文字色：.放心買_安心退 / .逛逛去 */
-      document.querySelectorAll('.放心買_安心退,.逛逛去').forEach(function(el){ if(c.ctaText) el.style.setProperty('color',c.ctaText,'important'); });
+      document.querySelectorAll('.放心買_安心退,.逛逛去,.cta符號').forEach(function(el){ el.style.setProperty('color',normalCtaText,'important'); });
       /* CTA 三角色：.cta三角標 / .逛逛去三角標 */
-      document.querySelectorAll('.cta三角標').forEach(function(el){ if(c.ctaText) el.style.setProperty('border-left-color',c.ctaText,'important'); });
-      document.querySelectorAll('.逛逛去三角標').forEach(function(el){ if(c.ctaText) el.style.setProperty('border-left-color',c.ctaText,'important'); });
+      document.querySelectorAll('.cta三角標').forEach(function(el){ el.style.setProperty('border-left-color',normalCtaText,'important'); });
+      document.querySelectorAll('.逛逛去三角標').forEach(function(el){ el.style.setProperty('border-left-color',normalCtaText,'important'); });
+      document.querySelectorAll('.cta三角箭頭').forEach(function(el){ el.style.setProperty('border-left-color',searchImageCtaText,'important'); });
       _bnEnforceRestrictedColors(cv);
     }
 

@@ -1067,7 +1067,8 @@
         if(global.colorState){
           Object.assign(global.colorState, {
             mainText:'#2b79c4', subText:'#2540b5', dateText:'#2b79c4',
-            brandText:'#2b79c4', canvasBg:'#6bc0ec', ctaText:'#6bc0ec', ctaBg:'#f5a623'
+            brandText:'#2b79c4', canvasBg:'#6bc0ec', ctaText:'#ffffff', ctaTextAuto:true,
+            ctaBg:'#f5a623', searchImageCtaBg:'#d0021b'
           });
           if(typeof global.renderColorPickers==='function') global.renderColorPickers();
           if(typeof global.broadcastColors==='function') global.broadcastColors();

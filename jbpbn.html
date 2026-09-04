@@ -1139,10 +1139,10 @@ function bnRefreshContentWarnings(){
   var copy=String((main&&main.value)||'')+' '+String((sub&&sub.value)||'');
   var messages=[];
   if(/回饋|滿額/.test(copy)){
-    messages.push('提醒您需補充門檻金額或回饋上限，例如「單筆需滿$X,XXX」。');
+    messages.push('提醒您回饋若有門檻/上限，需於日期後方補充警語。如「單筆須滿$X,XXX」、「最高折$XXX」(若無上限則可不寫)。');
   }
   if(/蝦幣/.test(copy)){
-    messages.push('提醒您需補充「領券」關鍵字，例如「領券享10%蝦幣」。');
+    messages.push('提醒您若蝦幣需領券，可於標題補充「領券」關鍵字，例如「領券享10%蝦幣」。');
   }
 
   var row=date.closest ? date.closest('.s-field-row') : null;
@@ -1167,7 +1167,7 @@ bnRefreshContentWarnings=function(){
   bnBroadcastContentWarnings(messages);
   return messages;
 };
-/* 「我已補充」的暫時忽略狀態以目前主標＋副標內容為準；內容一變就恢復提醒。 */
+/* 「我已了解/已補充▶」的暫時忽略狀態以目前主標＋副標內容為準；內容一變就恢復提醒。 */
 function bnContentWarningSignature(){
   var main=document.getElementById('txt-main');
   var sub=document.getElementById('txt-sub');
@@ -1392,6 +1392,7 @@ function getColorData() {
     brandText: colorState.brandText,
     canvasBg:  lockedCanvasBg || colorState.canvasBg,
     ctaText:   colorState.ctaText,
+    ctaTextAuto: colorState.ctaTextAuto !== false,
     ctaBg:     colorState.ctaBg,
     searchImageCtaBg: colorState.searchImageCtaBg,
     tagColor: colorState.tagColor || 'red',
@@ -1412,6 +1413,12 @@ function getColorData() {
   bnSanitizeRestrictedColorData(colorState);
   bnSanitizeRestrictedColorData(window._bnLastUserColorState);
   bnSanitizeRestrictedColorData(window._bnFrozenColorData);
+  /* CTA 前景預設自動取對比色：深色底用白、淺色底用黑。
+     使用者若曾明確選過 CTA 文字色，ctaTextAuto=false，保留手動選色。 */
+  if (data.ctaTextAuto !== false) data.ctaText = bnCtaForegroundForBg(data.ctaBg);
+  data.searchImageCtaText = data.ctaTextAuto !== false
+    ? bnCtaForegroundForBg(data.searchImageCtaBg)
+    : data.ctaText;
   return data;
 }
 
@@ -1439,9 +1446,10 @@ function getTextData() {
 ════════════════════════════════════════ */
 var BN_RESTRICTED_COLOR_KEYS = ['brandText','mainText','subText','dateText','ctaBg','searchImageCtaBg'];
 var BN_CTA_BACKGROUND_COLOR_KEYS = ['ctaBg','searchImageCtaBg'];
+var BN_CTA_EXTENDED_GRAY_COLORS = ['#2d3748','#4a5568','#718096'];
 var BN_RESTRICTED_COLOR_FALLBACKS = {
   brandText:'#2b79c4', mainText:'#2b79c4', subText:'#2540b5', dateText:'#2b79c4',
-  ctaBg:'#f5a623', searchImageCtaBg:'#d0021b'
+  ctaBg:'#2540b5', searchImageCtaBg:'#2540b5'
 };
 function bnRestrictedColorRgb(value){
   var text=String(value||'').trim().toLowerCase();
@@ -1458,6 +1466,14 @@ function bnRestrictedColorRgb(value){
   }
   return null;
 }
+function bnCtaForegroundForBg(value){
+  var rgb=bnRestrictedColorRgb(value);
+  if(!rgb) return '#ffffff';
+  var max=Math.max.apply(Math,rgb);
+  var min=Math.min.apply(Math,rgb);
+  var lightness=(max+min)/510;
+  return lightness>=0.85 ? '#000000' : '#ffffff';
+}
 function bnIsBlackOrWhiteColor(value){
   var rgb=bnRestrictedColorRgb(value);
   if(!rgb) return false;
@@ -1465,6 +1481,7 @@ function bnIsBlackOrWhiteColor(value){
 }
 function bnIsGrayColor(value){
   var text=String(value||'').trim().toLowerCase();
+  if(BN_CTA_EXTENDED_GRAY_COLORS.indexOf(text)>=0) return true;
   if(/(?:gray|grey)$/.test(text)||text==='silver'||text==='gainsboro') return true;
   var rgb=bnRestrictedColorRgb(value);
   if(!rgb) return false;
@@ -1510,7 +1527,8 @@ var colorState = {
   dateText:  '#2b79c4',
   brandText: '#2b79c4',
   canvasBg:  '#6bc0ec',
-  ctaText:   '#6bc0ec',
+  ctaText:   '#ffffff',
+  ctaTextAuto: true,
   ctaBg:     '#f5a623',
   searchImageCtaBg: '#d0021b',
   tagColor: 'red',
@@ -1726,6 +1744,9 @@ var cpActiveKey = null;
 
 function renderColorPickers() {
   bnSanitizeRestrictedColorData(colorState);
+  if (colorState.ctaTextAuto !== false) {
+    colorState.ctaText = bnCtaForegroundForBg(colorState.ctaBg);
+  }
   var wrap = document.getElementById('color-rows');
   if (!wrap) return;
   wrap.innerHTML = '';
@@ -1874,6 +1895,10 @@ function applyColor(color) {
   if (cpActiveKey === 'canvasBg' && /^#[0-9a-fA-F]{6}$/.test(color || '')) {
     setAuthoritativeCanvasBg(color);
   }
+  if (cpActiveKey === 'ctaText') colorState.ctaTextAuto = false;
+  if (cpActiveKey === 'ctaBg' && colorState.ctaTextAuto !== false) {
+    colorState.ctaText = bnCtaForegroundForBg(colorState.ctaBg);
+  }
   rememberCurrentColorState();
 
   /* 更新圓點（sidebar 和 inline 共用同一個 id） */
@@ -1884,6 +1909,10 @@ function applyColor(color) {
   if (cpActiveKey === 'mainText') {
     var iconDot = document.getElementById('dot-iconTextMirror');
     if (iconDot) iconDot.style.background = color;
+  }
+  if (cpActiveKey === 'ctaBg' && colorState.ctaTextAuto !== false) {
+    var ctaTextDot = document.getElementById('dot-ctaText');
+    if (ctaTextDot) ctaTextDot.style.background = colorState.ctaText;
   }
 
   /* 更新面板 hex input 和 native color picker */
@@ -2322,7 +2351,7 @@ window.addEventListener('message',function(e){
 </script>
 
 <script>
-/* 畫布按下「我已補充」：同步隱藏左側及所有版位；主副標變更後會再顯示。 */
+/* 畫布按下「我已了解/已補充▶」：同步隱藏左側及所有版位；主副標變更後會再顯示。 */
 window.addEventListener('message',function(e){
   if(!e.data || e.data.type!=='bn-content-warning-dismiss') return;
   window._bnContentWarningDismissedSignature=bnContentWarningSignature();
