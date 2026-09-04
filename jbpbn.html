@@ -1488,8 +1488,13 @@ function bnIsGrayColor(value){
   return Math.max.apply(Math,rgb)-Math.min.apply(Math,rgb)<=24;
 }
 function bnIsRestrictedColorForKey(key,value){
-  if(bnIsBlackOrWhiteColor(value)) return true;
-  return BN_CTA_BACKGROUND_COLOR_KEYS.indexOf(key)>=0 && bnIsGrayColor(value);
+  if(BN_CTA_BACKGROUND_COLOR_KEYS.indexOf(key)>=0){
+    var rgb=bnRestrictedColorRgb(value);
+    if(rgb && Math.min.apply(Math,rgb)>=245) return false;
+    if(rgb && Math.max.apply(Math,rgb)<=32) return true;
+    return bnIsGrayColor(value);
+  }
+  return bnIsBlackOrWhiteColor(value);
 }
 function bnSafeRestrictedColor(key,value){
   return BN_RESTRICTED_COLOR_KEYS.indexOf(key)>=0 && bnIsRestrictedColorForKey(key,value)
@@ -1869,7 +1874,7 @@ function openPanel(key, e) {
 
   document.getElementById('cp-hex-input').value = cur;
   var hexLabel = document.getElementById('cp-hex-label');
-  if(hexLabel) hexLabel.textContent = restrictedCtaBg ? '色碼（禁用黑／白／灰）' : (restricted ? '色碼（禁用黑／白）' : '色碼');
+  if(hexLabel) hexLabel.textContent = restrictedCtaBg ? '色碼（禁用黑／灰，白色可用）' : (restricted ? '色碼（禁用黑／白）' : '色碼');
   if (native) native.value = /^#[0-9a-fA-F]{6}$/.test(cur) ? cur : '#000000';
   document.querySelectorAll('.cp-swatch').forEach(function(s) {
     var blocked = restricted && bnIsRestrictedColorForKey(key,s.title);

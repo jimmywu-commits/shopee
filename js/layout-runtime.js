@@ -16,7 +16,7 @@
   var _bnSingleProductOnlyTemplate = /searchicon_product/i.test(fname || '');
   var _bnNoImageBackgroundTemplate = /^searchicon_(logo|product|text)$/i.test(fname || '');
 
-  /* 可編輯文字不得使用近黑／近白；CTA 底色另加禁用灰色。
+  /* 可編輯文字不得使用近黑／近白；CTA 底色允許近白，但禁用近黑與灰色。
      父頁會先正規化一次；這裡是版型端最後防線，連寫死在 CSS 的預設色也會攔截。 */
   var _bnRestrictedColorFallbacks={
     brandText:'#2b79c4',mainText:'#2b79c4',subText:'#2540b5',dateText:'#2b79c4',
@@ -62,8 +62,13 @@
     return Math.max.apply(Math,rgb)-Math.min.apply(Math,rgb)<=24;
   }
   function _bnIsRestrictedColorForKey(key,value){
-    if(_bnIsBlackOrWhiteColor(value)) return true;
-    return _bnCtaBackgroundColorKeys.indexOf(key)>=0&&_bnIsGrayColor(value);
+    if(_bnCtaBackgroundColorKeys.indexOf(key)>=0){
+      var rgb=_bnRestrictedColorRgb(value);
+      if(rgb&&Math.min.apply(Math,rgb)>=245) return false;
+      if(rgb&&Math.max.apply(Math,rgb)<=32) return true;
+      return _bnIsGrayColor(value);
+    }
+    return _bnIsBlackOrWhiteColor(value);
   }
   function _bnSafeRestrictedColor(key,value){
     return _bnRestrictedColorKeys.indexOf(key)>=0&&_bnIsRestrictedColorForKey(key,value)
