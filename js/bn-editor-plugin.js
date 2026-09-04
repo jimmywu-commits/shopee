@@ -1319,6 +1319,47 @@
         };
         img.src = dataUrl;
       }
+      function applySampledBackgroundTextPalette(dataUrl){
+        sampleTopLeftColor(dataUrl, function(hex){
+          if(!hex || !window.colorState || typeof window.applyColor !== 'function') return;
+          window.colorState.canvasBg = hex;
+          window._bnCanvasBgHardLock = hex;
+          window._bnPersistentCanvasBg = hex;
+          window._bnUserCanvasBgLocked = true;
+
+          /* 背景圖的左上角色仍作為畫布鎖定色，但文字配色改用
+             64×24 的文字區／視覺區分析結果。 */
+          var previousKey = window.cpActiveKey;
+          var previousSkip = window._bnSkipAutoTextPalette;
+          window._bnSkipAutoTextPalette = true;
+          window.cpActiveKey = 'canvasBg';
+          try{
+            window.applyColor(hex);
+          }finally{
+            window.cpActiveKey = previousKey;
+            window._bnSkipAutoTextPalette = previousSkip;
+          }
+
+          function applyPalette(samples){
+            if(typeof window.applyAutoTextPalette !== 'function') return;
+            window.applyAutoTextPalette(
+              samples && samples.canvasBg ? samples.canvasBg : hex,
+              samples && samples.visualBg ? samples.visualBg : hex
+            );
+          }
+
+          if(typeof window.sampleBackgroundColors === 'function'){
+            try{
+              var sampled = window.sampleBackgroundColors(dataUrl);
+              if(sampled && typeof sampled.then === 'function') sampled.then(applyPalette);
+              else applyPalette(null);
+            }catch(_){ applyPalette(null); }
+          }else{
+            applyPalette(null);
+          }
+          markStateDirty();
+        });
+      }
 
       function updateFitBtns(panelEl, fitVal){
         if(!panelEl) return;
@@ -1676,19 +1717,7 @@
         bgBroadcastAll();
         markStateDirty();
         setTimeout(buildBgPanels, 100);
-        sampleTopLeftColor(h || v, function(hex){
-          if(window.colorState && window.applyColor){
-            window.colorState.canvasBg = hex;
-            window._bnCanvasBgHardLock = hex;
-            window._bnPersistentCanvasBg = hex;
-            window._bnUserCanvasBgLocked = true;
-            var prevKey = window.cpActiveKey;
-            window.cpActiveKey = 'canvasBg';
-            if(typeof window.applyColor === 'function') window.applyColor(hex);
-            window.cpActiveKey = prevKey;
-            markStateDirty();
-          }
-        });
+        applySampledBackgroundTextPalette(h || v);
       }
 
       function buildBgUploadModal(){
@@ -1793,22 +1822,7 @@
             /* 建立/更新版位右側控制面板 */
             setTimeout(buildBgPanels, 100);
             /* 吸左上角顏色→自動套用背景色 */
-            sampleTopLeftColor(dataUrl, function(hex){
-              if(window.colorState && window.applyColor){
-                window.colorState.canvasBg = hex;
-                window._bnCanvasBgHardLock = hex;
-                window._bnPersistentCanvasBg = hex;
-                window._bnUserCanvasBgLocked = true;
-                window.applyColor && (function(){
-                  /* 直接觸發 canvasBg 更新 */
-                  var prevKey = window.cpActiveKey;
-                  window.cpActiveKey = 'canvasBg';
-                  if(typeof window.applyColor === 'function') window.applyColor(hex);
-                  window.cpActiveKey = prevKey;
-                  markStateDirty();
-                })();
-              }
-            });
+            applySampledBackgroundTextPalette(dataUrl);
           };
           reader.readAsDataURL(file);
           bgInp.value = '';

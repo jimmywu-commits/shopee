@@ -101,6 +101,14 @@
         try{ window.broadcastColors(); }catch(_){ }
       }
       try{ document.dispatchEvent(new CustomEvent('bn-state-dirty')); }catch(_){ }
+      if(typeof window.applyAutoTextPalette === 'function'){
+        var sampled = typeof window.sampleBackgroundColors === 'function'
+          ? window.sampleBackgroundColors(src) : Promise.resolve(null);
+        Promise.resolve(sampled).then(function(samples){
+          window.applyAutoTextPalette(samples && samples.canvasBg ? samples.canvasBg : hex,
+            samples && samples.visualBg ? samples.visualBg : hex);
+        });
+      }
       return hex;
     });
   }
