@@ -3,11 +3,18 @@
 
   let currentRules = [];
 
-  /* banwords.xlsx 裡「一」～「十」這幾條禁用語規則，規則內容是
-     "自動改成\"1\""…"自動改成\"10\""，用來把中文數字強制換成阿拉伯數字。
-     右鍵豁免時（numeralExempt）要跳過的就是這幾條規則，其餘一般禁用語
-     規則不受影響。 */
-  const CN_NUMERAL_KEYWORDS = ['一','二','三','四','五','六','七','八','九','十'];
+  /* banwords.xlsx 裡把中文數字強制換成阿拉伯數字的規則（一→1 … 十→10、兩→2）。
+     右鍵豁免（numeralExempt）時要跳過的就是這一類規則，其餘一般禁用語不受影響。
+
+     判斷方式不寫死清單，而是「單一中文數字字元 + 規則是自動改成純數字」，
+     這樣以後在 xlsx 加「兩、零、百、千、萬」等新的數字列，右鍵豁免會自動跟著
+     生效，不用再回來改這支程式。 */
+  const CN_NUMERAL_CHARS = '一二三四五六七八九十零兩參百千萬壹貳參肆伍陸柒捌玖拾';
+  function isChineseNumeralRule(rule){
+    const kw = String((rule && rule.keyword) || '');
+    if (kw.length !== 1 || CN_NUMERAL_CHARS.indexOf(kw) === -1) return false;
+    return /^\d+$/.test(parseReplacement(rule.rule));
+  }
 
   function normalizeRuleRecord(rule){
     return {
@@ -647,7 +654,7 @@
 
     getRules().forEach(function(rule){
       if (!rule.keyword) return;
-      if (options && options.numeralExempt && CN_NUMERAL_KEYWORDS.indexOf(rule.keyword) !== -1) return;
+      if (options && options.numeralExempt && isChineseNumeralRule(rule)) return;
 
       const protectedResult = protectExcludedSegments(out, rule.exclude);
       let workingText = protectedResult.text;
