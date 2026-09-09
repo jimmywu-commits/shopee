@@ -218,6 +218,26 @@
     'txt-date':  { role:'date',   label:'日期'   },
   };
 
+  /* 左側欄位 role → 畫布上對應的可編輯 class（副標另含 Search Image 的變體） */
+  function fieldCfg2Class(cfg){
+    var role = cfg && cfg.role;
+    if(role === 'date') return ['日期'];
+    if(role === '副標')  return ['副標','副標案型七字內'];
+    if(role === '主標')  return ['主標'];
+    if(role === '品牌名') return ['品牌名'];
+    return [];
+  }
+
+  /* 把中文數字豁免旗標同步到所有版位畫布上的對應欄位 */
+  function broadcastNumeralExempt(classes, on){
+    if(!classes || !classes.length) return;
+    document.querySelectorAll('.preview-block iframe').forEach(function(ifr){
+      classes.forEach(function(cls){
+        try{ ifr.contentWindow.postMessage({type:'bn-numeral-exempt', field:cls, on:!!on}, '*'); }catch(_){ }
+      });
+    });
+  }
+
   /* applyToElement 需要 contenteditable 元素
      <input> 不是，所以用 shadow div 橋接 */
   function applyBanwordToInput(inp, fieldCfg, opts){
@@ -235,13 +255,14 @@
       document.body.appendChild(shadow);
     }
 
-    /* 把 input 值寫進 shadow，套 dollarExempt */
+    /* 把 input 值寫進 shadow，套 dollarExempt / numeralExempt */
     shadow.textContent = inp.value;
     if(opts && opts.dollarExempt){
       shadow.dataset.dollarExempt = JSON.stringify(opts.dollarExempt);
     } else {
       shadow.dataset.dollarExempt = '';
     }
+    shadow.dataset.numeralExempt = (opts && opts.numeralExempt) ? '1' : '';
 
     var result = global.banwordEngine.applyToElement(shadow, {
       role: fieldCfg.role,
@@ -283,10 +304,11 @@
         if(inp.dataset.dollarExempt){
           try{ opts.dollarExempt = JSON.parse(inp.dataset.dollarExempt); }catch(_){}
         }
+        opts.numeralExempt = inp.dataset.numeralExempt === '1';
         applyBanwordToInput(inp, cfg, opts);
       });
 
-      /* 右鍵：暫時不加$和千分位 */
+      /* 右鍵：暫時不加$和千分位、不強制變阿拉伯數字 */
       inp.addEventListener('contextmenu', function(e){
         e.preventDefault();
         showInputMenu(e, inp, cfg);
@@ -307,10 +329,10 @@
       'box-shadow:0 8px 24px rgba(0,0,0,.5);min-width:200px;font-size:13px;',
     ].join('');
 
-    var isBothExempt = inp.dataset.dollarExempt && inp.dataset.thousandsExempt === '1';
+    var isBothExempt = inp.dataset.dollarExempt && inp.dataset.thousandsExempt === '1' && inp.dataset.numeralExempt === '1';
 
     [
-      { label: isBothExempt ? '✓ 已豁免（點擊取消）' : '暫時不加$和千分位符號', action:'both' },
+      { label: isBothExempt ? '✓ 已豁免（點擊取消）' : '暫時不加$符號與千分位符號、不強制變阿拉伯數字', action:'both' },
       { label: '重新檢查禁用語', action:'check' },
     ].forEach(function(item){
       var btn = document.createElement('div');
@@ -324,12 +346,17 @@
           if(isBothExempt){
             inp.dataset.dollarExempt = '';
             inp.dataset.thousandsExempt = '';
+            inp.dataset.numeralExempt = '';
           } else {
             var pos = [];
             for(var i=0;i<inp.value.length;i++){ if(inp.value[i]==='$') pos.push(i); }
             inp.dataset.dollarExempt = JSON.stringify(pos);
             inp.dataset.thousandsExempt = '1';
+            inp.dataset.numeralExempt = '1';
           }
+          /* 同步到畫布：畫布上編輯文字時會把自己的旗標回傳給父層，
+             不同步的話，之後在畫布上動一下文字就會把這裡的豁免洗掉。 */
+          broadcastNumeralExempt(fieldCfg2Class(cfg), inp.dataset.numeralExempt === '1');
         } else if(item.action === 'check'){
           applyBanwordToInput(inp, cfg, {});
         }
@@ -568,7 +595,8 @@
       out[id] = {
         value: el.value || '',
         dollarExempt: el.dataset.dollarExempt || '',
-        thousandsExempt: el.dataset.thousandsExempt || ''
+        thousandsExempt: el.dataset.thousandsExempt || '',
+        numeralExempt: el.dataset.numeralExempt || ''
       };
     });
     return out;
@@ -583,6 +611,7 @@
       if(m.value !== undefined){ el.value = m.value; el.dispatchEvent(new Event('input',{bubbles:true})); }
       el.dataset.dollarExempt = m.dollarExempt || '';
       el.dataset.thousandsExempt = m.thousandsExempt || '';
+      el.dataset.numeralExempt = m.numeralExempt || '';
     });
   }
 

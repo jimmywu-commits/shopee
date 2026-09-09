@@ -137,6 +137,14 @@ html,body{margin:0;padding:0;background:#eef3f8;font-family:"ShopeeNotoSans-Cont
 .dd-guide-warning.show{opacity:1;transform:translateY(0);}
 .dd-guide-top-h{top:330px;}.dd-guide-bottom-h{top:674px;}.dd-guide-top-s{top:370px;}.dd-guide-bottom-s{top:674px;}
 .is-exporting .dd-guide-line,.is-exporting .dd-guide-warning{display:none !important;}
+.dd-prod-zone{position:absolute;left:0;width:100%;z-index:1;pointer-events:none;box-sizing:border-box;}
+.dd-canvas:not(.square) .dd-prod-zone{top:330px;height:344px;}
+.dd-canvas.square .dd-prod-zone{top:370px;height:304px;}
+.dd-prod-zone-hint{background:rgba(255,20,147,.32);}
+.dd-prod-zone-frame{border:2px solid rgba(255,0,0,.5);display:none;}
+.dd-canvas.has-slab-bg .dd-prod-zone-hint{display:none;}
+.dd-canvas.has-slab-bg .dd-prod-zone-frame{display:block;}
+.is-exporting .dd-prod-zone-hint,.is-exporting .dd-prod-zone-frame{display:none !important;}
 .dd-bg-scale-panel{display:flex;gap:6px;align-items:center;background:rgba(17,17,17,.72);color:#fff;border-radius:10px;padding:6px 8px;font-size:12px;margin-bottom:6px;width:531px;}
 .dd-bg-scale-panel button{border:0;border-radius:6px;background:#fff;color:#111;cursor:pointer;padding:4px 8px;}
 .dd-bg-scale-panel .tag{background:#222;color:#fff;border-radius:6px;padding:0 6px;font-weight:700;}
@@ -174,6 +182,9 @@ html,body{margin:0;padding:0;background:#eef3f8;font-family:"ShopeeNotoSans-Cont
 .bglib-footer{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-top:1px solid rgba(255,255,255,.08);flex-shrink:0;gap:12px;}
 .bglib-upload-own{display:flex;align-items:center;gap:8px;cursor:pointer;padding:7px 14px;border-radius:8px;border:1px solid rgba(255,255,255,.18);font-size:13px;color:rgba(255,255,255,.8);}
 .bglib-upload-own:hover{background:rgba(255,255,255,.08);}
+.bglib-upload-slab{background:#2563eb;border-color:#2563eb;color:#fff;}
+.bglib-upload-slab:hover{background:#1d4ed8;}
+.bglib-upload-group{display:flex;align-items:center;gap:8px;}
 .bglib-sel-name{font-size:12px;color:rgba(255,255,255,.5);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .bglib-apply-btn{padding:8px 20px;border-radius:8px;border:0;background:#3b82f6;color:#fff;font-size:14px;font-weight:600;cursor:pointer;}
 .bglib-apply-btn:disabled{opacity:.4;cursor:not-allowed;}
@@ -185,10 +196,14 @@ html,body{margin:0;padding:0;background:#eef3f8;font-family:"ShopeeNotoSans-Cont
 .dd-tag-img{position:absolute;z-index:8;user-select:none;display:none;pointer-events:none;}
 .dd-tag-img.visible{display:block;}
 .is-exporting .dd-tag-img{pointer-events:none;}
+.dd-tag-img.dd-tag-white{filter:brightness(0) invert(1);}
 
 /* ---- 掛標按鈕 ---- */
 .tag-lib-btn{background:#0ea5e9!important;color:#fff!important;border:none!important;border-radius:10px!important;cursor:pointer!important;white-space:nowrap;height:44px!important;width:100%!important;font-size:13px!important;font-family:inherit!important;}
 .tag-lib-btn:hover{background:#0284c7!important;}
+.tag-mode-control{display:grid;grid-template-columns:86px minmax(0,1fr);align-items:center;gap:10px;padding:8px 12px;min-height:44px;border:1px solid #e2e8f0;border-radius:14px;background:#f7faff;color:#0f172a;font-size:13px;}
+.tag-mode-control select{width:100%;height:34px;padding:0 9px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;color:#0f172a;font:inherit;cursor:pointer;}
+.tag-mode-status{grid-column:2;color:#64748b;font-size:11px;line-height:1.3;margin-top:-4px;}
 
 /* ---- 掛標圖庫 Modal ---- */
 .taglib-overlay{position:fixed;inset:0;background:rgba(10,10,15,.75);backdrop-filter:blur(4px);display:none;align-items:center;justify-content:center;z-index:10060;}
@@ -246,6 +261,7 @@ html,body{margin:0;padding:0;background:#eef3f8;font-family:"ShopeeNotoSans-Cont
       </div>
       <div class="toolbar">
         <button type="button" class="tag-lib-btn" data-target="H">🏷 選擇掛標圖</button>
+        <label class="tag-mode-control"><span>掛標顏色</span><select id="tag-mode-h" data-target="H" aria-label="橫 DDCard 掛標顏色"><option value="auto">自動切換（建議）</option><option value="red">固定紅色</option><option value="white">固定白色</option></select><span class="tag-mode-status" id="tag-mode-status-h">未選擇掛標</span></label>
         <label class="upload-btn"><span>上傳 LOGO（最多3張）</span><input id="logo-horiz" type="file" accept="image/*" multiple></label>
         <button type="button" class="bg-lib-btn" data-target="H">選擇背景圖庫</button>
         <label class="upload-btn"><span>上傳商品圖（最多3張）</span><input id="items-h" type="file" accept="image/*" multiple></label>
@@ -264,6 +280,7 @@ html,body{margin:0;padding:0;background:#eef3f8;font-family:"ShopeeNotoSans-Cont
       </div>
       <div class="toolbar">
         <button type="button" class="tag-lib-btn" data-target="S">🏷 選擇掛標圖</button>
+        <label class="tag-mode-control"><span>掛標顏色</span><select id="tag-mode-s" data-target="S" aria-label="方 DDCard 掛標顏色"><option value="auto">自動切換（建議）</option><option value="red">固定紅色</option><option value="white">固定白色</option></select><span class="tag-mode-status" id="tag-mode-status-s">未選擇掛標</span></label>
         <label class="upload-btn"><span>上傳 LOGO（正方或正圓型）</span><input id="logo-square" type="file" accept="image/*"></label>
         <button type="button" class="bg-lib-btn" data-target="S">選擇背景圖庫</button>
         <label class="upload-btn"><span>上傳商品圖（最多3張）</span><input id="items-s" type="file" accept="image/*" multiple></label>
@@ -299,6 +316,8 @@ html,body{margin:0;padding:0;background:#eef3f8;font-family:"ShopeeNotoSans-Cont
           <div class="dd-guide-line dd-guide-top-h"></div>
           <div class="dd-guide-line dd-guide-bottom-h"></div>
           <div class="dd-guide-warning" id="ddHorizGuideWarning">商品請勿放置在範圍線外</div>
+          <div class="dd-prod-zone dd-prod-zone-hint" id="ddHorizProdZoneHint"></div>
+          <div class="dd-prod-zone dd-prod-zone-frame" id="ddHorizProdZoneFrame"></div>
           <img class="bg" id="ddHorizBg" src="程式檔案/橫BG-DDCARD.png" alt="" data-dd-hidden="1">
           <div class="dd-solid-top" id="ddHorizSolidTop"></div>
           <div class="dd-gradient-top" id="ddHorizGradientTop"></div>
@@ -327,6 +346,8 @@ html,body{margin:0;padding:0;background:#eef3f8;font-family:"ShopeeNotoSans-Cont
           <div class="dd-guide-line dd-guide-top-s"></div>
           <div class="dd-guide-line dd-guide-bottom-s"></div>
           <div class="dd-guide-warning" id="ddSquareGuideWarning">商品請勿放置在範圍線外</div>
+          <div class="dd-prod-zone dd-prod-zone-hint" id="ddSquareProdZoneHint"></div>
+          <div class="dd-prod-zone dd-prod-zone-frame" id="ddSquareProdZoneFrame"></div>
           <img class="bg" id="ddSquareBg" src="程式檔案/方BG-DDCARD.png" alt="" data-dd-hidden="1">
           <div class="dd-solid-top" id="ddSquareSolidTop"></div>
           <div class="dd-gradient-top" id="ddSquareGradientTop"></div>
@@ -386,7 +407,10 @@ html,body{margin:0;padding:0;background:#eef3f8;font-family:"ShopeeNotoSans-Cont
       <div id="bgLibLoading" class="bglib-loading">載入中…</div>
     </div>
     <div class="bglib-footer">
-      <label class="bglib-upload-own"><span>📤 上傳自己的圖片</span><input id="bgLibOwnUpload" type="file" accept="image/*" style="display:none"></label>
+      <div class="bglib-upload-group">
+        <label class="bglib-upload-own"><span>📤 上傳自己的圖片</span><input id="bgLibOwnUpload" type="file" accept="image/*" style="display:none"></label>
+        <label class="bglib-upload-own bglib-upload-slab"><span>📐 上傳SLAB底圖</span><input id="bgLibSlabUpload" type="file" accept="image/*" style="display:none"></label>
+      </div>
       <div style="display:flex;align-items:center;gap:10px;">
         <span id="bgLibSelName" class="bglib-sel-name"></span>
         <button id="bgLibApply" class="bglib-apply-btn" disabled>套用選取的背景</button>
@@ -490,6 +514,65 @@ function initColors(){
   applyUnderlay('ddSquare','#C2DFF3');
 }
 
+/* ---- 掛標顏色自動切換 ---- */
+var DD_TAG_MODE_LABEL={auto:'自動',red:'紅色',white:'白色'};
+var DD_TAG_VARIANT_LABEL={red:'紅色掛標',white:'白色掛標'};
+var DD_TAG_MIN_CONTRAST=3.0;
+var DD_TAG_DARK_LUMINANCE=0.35;
+var ddTagRefreshTimers={};
+function parseDdTagColor(value){
+  var raw=String(value||'').trim(),hex=normalizeHex(raw);
+  if(hex)return hexToRgb(hex);
+  var m=raw.match(/^rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)/i);
+  return m?{r:Math.round(Number(m[1])),g:Math.round(Number(m[2])),b:Math.round(Number(m[3]))}:null;
+}
+function ddTagRgbToHsl(rgb){
+  var r=rgb.r/255,g=rgb.g/255,b=rgb.b/255,max=Math.max(r,g,b),min=Math.min(r,g,b),d=max-min,h=0,s=0,l=(max+min)/2;
+  if(d){s=l>0.5?d/(2-max-min):d/(max+min);switch(max){case r:h=(g-b)/d+(g<b?6:0);break;case g:h=(b-r)/d+2;break;default:h=(r-g)/d+4;break;}h*=60;}
+  return{h:h,s:s,l:l};
+}
+function ddTagLinearChannel(value){var c=Math.max(0,Math.min(255,value))/255;return c<=0.03928?c/12.92:Math.pow((c+0.055)/1.055,2.4);}
+function ddTagLuminance(rgb){return 0.2126*ddTagLinearChannel(rgb.r)+0.7152*ddTagLinearChannel(rgb.g)+0.0722*ddTagLinearChannel(rgb.b);}
+function ddTagContrast(a,b){var la=ddTagLuminance(a),lb=ddTagLuminance(b),light=Math.max(la,lb),dark=Math.min(la,lb);return(light+0.05)/(dark+0.05);}
+function ddTagIsNearRed(rgb){var hsl=ddTagRgbToHsl(rgb),distance=Math.min(hsl.h,360-hsl.h);return hsl.s>=0.30&&distance<=25;}
+function ddTagBackgroundRgb(prefix){
+  var input=$(prefix==='ddHoriz'?'hx-bg-h':'hx-bg-s'),canvas=$(prefix+'Canvas');
+  return parseDdTagColor(input&&input.value)||parseDdTagColor(canvas&&getComputedStyle(canvas).backgroundColor)||null;
+}
+function resolveDdTagVariant(prefix){
+  var bg=ddTagBackgroundRgb(prefix);if(!bg)return'red';
+  var red={r:208,g:2,b:27},white={r:255,g:255,b:255};
+  var redContrast=ddTagContrast(red,bg),whiteContrast=ddTagContrast(white,bg);
+  if((ddTagIsNearRed(bg)||ddTagLuminance(bg)<=DD_TAG_DARK_LUMINANCE)&&whiteContrast>=DD_TAG_MIN_CONTRAST)return'white';
+  if(redContrast>=DD_TAG_MIN_CONTRAST&&redContrast>=whiteContrast)return'red';
+  if(whiteContrast>=DD_TAG_MIN_CONTRAST)return'white';
+  return'red';
+}
+function updateDdTagModeUi(prefix){
+  var shortName=prefix==='ddHoriz'?'h':'s',img=$(prefix+'TagImg'),select=$('tag-mode-'+shortName),status=$('tag-mode-status-'+shortName);
+  var mode=img&&img.dataset.tagMode||'auto',variant=img&&img.dataset.tagVariant;
+  if(select)select.value=['auto','red','white'].indexOf(mode)>=0?mode:'auto';
+  if(status)status.textContent=img&&img.classList.contains('visible')&&variant?'目前：'+DD_TAG_VARIANT_LABEL[variant]+'（'+DD_TAG_MODE_LABEL[mode]+'）':'未選擇掛標';
+}
+function applyDdTagMode(prefix,mode){
+  var img=$(prefix+'TagImg');if(!img)return;
+  var valid=['auto','red','white'].indexOf(mode)>=0?mode:'auto',variant=valid==='auto'?resolveDdTagVariant(prefix):valid;
+  img.dataset.tagMode=valid;img.dataset.tagVariant=variant;img.classList.toggle('dd-tag-white',variant==='white');
+  updateDdTagModeUi(prefix);
+}
+function refreshDdTagVariant(prefix){var img=$(prefix+'TagImg');if(img&&img.dataset.tagMode==='auto')applyDdTagMode(prefix,'auto');else updateDdTagModeUi(prefix);}
+function queueDdTagRefresh(prefix){clearTimeout(ddTagRefreshTimers[prefix]);ddTagRefreshTimers[prefix]=setTimeout(function(){refreshDdTagVariant(prefix);},100);}
+function initDdTagAutoSwitch(){
+  [['ddHoriz','h'],['ddSquare','s']].forEach(function(pair){
+    var prefix=pair[0],shortName=pair[1],img=$(prefix+'TagImg'),select=$('tag-mode-'+shortName),input=$(shortName==='h'?'hx-bg-h':'hx-bg-s'),canvas=$(prefix+'Canvas');
+    if(img&&!img.dataset.tagMode)img.dataset.tagMode='auto';
+    if(select&&!select.dataset.bound){select.dataset.bound='1';select.addEventListener('change',function(){applyDdTagMode(prefix,select.value);});}
+    if(input&&!input.dataset.ddTagBound){input.dataset.ddTagBound='1';input.addEventListener('input',function(){queueDdTagRefresh(prefix);});input.addEventListener('change',function(){queueDdTagRefresh(prefix);});}
+    if(canvas&&window.MutationObserver&&!canvas.dataset.ddTagObserved){canvas.dataset.ddTagObserved='1';new MutationObserver(function(){queueDdTagRefresh(prefix);}).observe(canvas,{attributes:true,subtree:true,attributeFilter:['style','class']});}
+    refreshDdTagVariant(prefix);updateDdTagModeUi(prefix);
+  });
+}
+
 /* ---- background image ---- */
 function autoColor(prefix,imgEl){
   try{
@@ -504,6 +587,7 @@ function autoColor(prefix,imgEl){
     var hxEl=$(isH?'hx-bg-h':'hx-bg-s'),swEl=$(isH?'sw-bg-h':'sw-bg-s');
     if(hxEl)hxEl.value=hex;if(swEl)swEl.style.background=hex;
     applyUnderlay(prefix,hex);
+    refreshDdTagVariant(prefix);
   }catch(e){}
 }
 function fitBg(prefix,src){
@@ -516,11 +600,37 @@ function fitBg(prefix,src){
     if(ratio>cw/ch){w=cw;h=cw/ratio;}else{h=ch;w=ch*ratio;}
     bg.style.position='absolute';bg.style.width=w+'px';bg.style.height=h+'px';
     bg.style.left=Math.round((cw-w)/2)+'px';bg.style.top=Math.round((ch-h)/2)+'px';
-    bg.dataset.baseW=w;bg.dataset.baseH=h;bg.removeAttribute('data-dd-hidden');
+    bg.dataset.baseW=w;bg.dataset.baseH=h;bg.dataset.slab='';bg.removeAttribute('data-dd-hidden');
+    canvas.classList.remove('has-slab-bg');
     updateBgVal(prefix);autoColor(prefix,bg);
   }
   bg.onload=onLoad;if(bg.complete&&bg.naturalWidth)onLoad();
 }
+/* ---- SLAB 底圖：以「建議範圍框.PNG」(1200x1200) 內的紅框 DRED 為基準，
+   將上傳圖片依各版位「曝品範圍」高度等比縮放、置中對齊 ---- */
+var DRED_REF={imgSize:1200,left:324,top:372,width:550,height:457};
+var DD_PROD_ZONE={ddHoriz:{top:330,height:344},ddSquare:{top:370,height:304}};
+function applySlabTo(prefix,url){
+  var bg=$(prefix+'Bg'),canvas=$(prefix+'Canvas'),zone=DD_PROD_ZONE[prefix];if(!bg||!canvas||!zone)return;
+  bg.src=url;
+  function onLoad(){
+    if(!bg.naturalWidth||!bg.naturalHeight)return;
+    var cw=canvas.clientWidth||531,nw=bg.naturalWidth,nh=bg.naturalHeight;
+    var dredLeftPx=DRED_REF.left/DRED_REF.imgSize*nw,dredTopPx=DRED_REF.top/DRED_REF.imgSize*nh;
+    var dredWPx=DRED_REF.width/DRED_REF.imgSize*nw,dredHPx=DRED_REF.height/DRED_REF.imgSize*nh;
+    var scale=zone.height/dredHPx,newW=nw*scale,newH=nh*scale;
+    var scaledDredLeft=dredLeftPx*scale,scaledDredTop=dredTopPx*scale,scaledDredW=dredWPx*scale;
+    bg.style.position='absolute';bg.style.width=newW+'px';bg.style.height=newH+'px';
+    bg.style.left=((cw/2)-(scaledDredLeft+scaledDredW/2))+'px';
+    bg.style.top=(zone.top-scaledDredTop)+'px';
+    bg.dataset.baseW=newW;bg.dataset.baseH=newH;bg.dataset.slab='1';
+    bg.removeAttribute('data-dd-hidden');
+    canvas.classList.add('has-slab-bg');
+    updateBgVal(prefix);autoColor(prefix,bg);
+  }
+  bg.onload=onLoad;if(bg.complete&&bg.naturalWidth)onLoad();
+}
+function applySlabUpload(url){applySlabTo('ddHoriz',url);applySlabTo('ddSquare',url);}
 function updateBgVal(prefix){
   var bg=$(prefix+'Bg'),valEl=$(prefix==='ddHoriz'?'ddBgScaleValHoriz':'ddBgScaleValSquare');
   if(!bg||!valEl||!bg.dataset.baseW)return;
@@ -1008,11 +1118,11 @@ window.downloadJpgFor=async function(canvasId,filename){
     var snap=await html2canvas(node,{
       backgroundColor:null,scale:2,useCORS:true,allowTaint:false,removeContainer:true,logging:false,
       width:node.clientWidth,height:node.clientHeight,x:0,y:0,scrollX:0,scrollY:0,
-      ignoreElements:function(el){return !!(el.classList&&(el.classList.contains('dd-guide-line')||el.classList.contains('dd-guide-warning')||el.classList.contains('dd-bg-scale-panel')||el.classList.contains('ctrl')));},
+      ignoreElements:function(el){return !!(el.classList&&(el.classList.contains('dd-guide-line')||el.classList.contains('dd-guide-warning')||el.classList.contains('dd-bg-scale-panel')||el.classList.contains('dd-prod-zone')||el.classList.contains('ctrl')));},
       onclone:function(doc){
       doc.querySelectorAll('[contenteditable="true"]').forEach(function(el){ if(typeof wrapEnUp==='function') wrapEnUp(el); });
 
-        doc.querySelectorAll('.dd-guide-line,.dd-guide-warning,.dd-bg-scale-panel,.ctrl').forEach(function(el){el.remove();});
+        doc.querySelectorAll('.dd-guide-line,.dd-guide-warning,.dd-bg-scale-panel,.dd-prod-zone,.ctrl').forEach(function(el){el.remove();});
         var cn=doc.getElementById(canvasId);if(cn){cn.style.overflow='hidden';cn.classList.add('hide-dd-icons');}
         doc.querySelectorAll('.counter').forEach(function(c){c.style.display='none';});
       }
@@ -1040,10 +1150,11 @@ function getS(id){var e=$(id);return e?(e.getAttribute('style')||''):'';}
 function getLogos(id){var r=$(id);return r?Array.from(r.querySelectorAll('img')).map(function(i){return i.src;}):[]; }
 function getProds(id){var r=$(id);return r?Array.from(r.querySelectorAll('.dd-product')).map(function(b){var img=b.querySelector('img');return{src:img?img.src:'',key:b.dataset.key||'',style:b.getAttribute('style')||''};}):[]; }
 function captureState(){
-  function getTagState(prefix){var img=$(prefix+'TagImg');if(!img||!img.classList.contains('visible'))return null;return{src:img.getAttribute('src')||'',style:img.getAttribute('style')||''};}
+  function getTagState(prefix){var img=$(prefix+'TagImg');if(!img||!img.classList.contains('visible'))return null;return{src:img.getAttribute('src')||'',baseSrc:img.dataset.tagBaseSrc||img.getAttribute('src')||'',style:img.getAttribute('style')||'',mode:img.dataset.tagMode||'auto'};}
+  function getSlab(id){var e=$(id);return !!(e&&e.dataset&&e.dataset.slab==='1');}
   return{v:2,savedAt:new Date().toISOString(),
-    H:{bgSrc:($('ddHorizBg')||{}).getAttribute?$('ddHorizBg').getAttribute('src')||'':'',bgStyle:getS('ddHorizBg'),bgColor:($('hx-bg-h')||{}).value||'',solidTop:getS('ddHorizSolidTop'),solidBot:getS('ddHorizSolidBottom'),gradTop:getS('ddHorizGradientTop'),gradBot:getS('ddHorizGradientBottom'),h1Text:getT('ddHorizH1'),h1Style:getS('ddHorizH1'),h2Text:getT('ddHorizH2'),h2Style:getS('ddHorizH2'),dateText:getT('ddHorizDate'),dateStyle:getS('ddHorizDate'),ctaStyle:getS('ddHorizCta'),logos:getLogos('ddHorizBrand'),prods:getProds('ddHorizProducts'),tagImg:getTagState('ddHoriz'),es:JSON.parse(JSON.stringify(ddState.ddHoriz||{}))},
-    S:{bgSrc:($('ddSquareBg')||{}).getAttribute?$('ddSquareBg').getAttribute('src')||'':'',bgStyle:getS('ddSquareBg'),bgColor:($('hx-bg-s')||{}).value||'',solidTop:getS('ddSquareSolidTop'),solidBot:getS('ddSquareSolidBottom'),gradTop:getS('ddSquareGradientTop'),gradBot:getS('ddSquareGradientBottom'),h1Text:getT('ddSquareH1'),h1Style:getS('ddSquareH1'),h2Text:getT('ddSquareH2'),h2Style:getS('ddSquareH2'),dateText:getT('ddSquareDate'),dateStyle:getS('ddSquareDate'),ctaStyle:getS('ddSquareCta'),logos:getLogos('ddSquareBrand'),prods:getProds('ddSquareProducts'),tagImg:getTagState('ddSquare'),es:JSON.parse(JSON.stringify(ddState.ddSquare||{}))}
+    H:{bgSrc:($('ddHorizBg')||{}).getAttribute?$('ddHorizBg').getAttribute('src')||'':'',bgStyle:getS('ddHorizBg'),bgSlab:getSlab('ddHorizBg'),bgColor:($('hx-bg-h')||{}).value||'',solidTop:getS('ddHorizSolidTop'),solidBot:getS('ddHorizSolidBottom'),gradTop:getS('ddHorizGradientTop'),gradBot:getS('ddHorizGradientBottom'),h1Text:getT('ddHorizH1'),h1Style:getS('ddHorizH1'),h2Text:getT('ddHorizH2'),h2Style:getS('ddHorizH2'),dateText:getT('ddHorizDate'),dateStyle:getS('ddHorizDate'),ctaStyle:getS('ddHorizCta'),logos:getLogos('ddHorizBrand'),prods:getProds('ddHorizProducts'),tagImg:getTagState('ddHoriz'),es:JSON.parse(JSON.stringify(ddState.ddHoriz||{}))},
+    S:{bgSrc:($('ddSquareBg')||{}).getAttribute?$('ddSquareBg').getAttribute('src')||'':'',bgStyle:getS('ddSquareBg'),bgSlab:getSlab('ddSquareBg'),bgColor:($('hx-bg-s')||{}).value||'',solidTop:getS('ddSquareSolidTop'),solidBot:getS('ddSquareSolidBottom'),gradTop:getS('ddSquareGradientTop'),gradBot:getS('ddSquareGradientBottom'),h1Text:getT('ddSquareH1'),h1Style:getS('ddSquareH1'),h2Text:getT('ddSquareH2'),h2Style:getS('ddSquareH2'),dateText:getT('ddSquareDate'),dateStyle:getS('ddSquareDate'),ctaStyle:getS('ddSquareCta'),logos:getLogos('ddSquareBrand'),prods:getProds('ddSquareProducts'),tagImg:getTagState('ddSquare'),es:JSON.parse(JSON.stringify(ddState.ddSquare||{}))}
   };
 }
 window.captureState=captureState;
@@ -1052,7 +1163,7 @@ function restoreSide(data,pfx){
   if(!data)return;
   function se(id,sty){var e=$(id);if(e&&sty)e.setAttribute('style',sty);}
   if(data.bgColor){applyUnderlay(pfx,data.bgColor);var isH=pfx==='ddHoriz';var hxEl=$(isH?'hx-bg-h':'hx-bg-s'),swEl=$(isH?'sw-bg-h':'sw-bg-s');if(hxEl)hxEl.value=data.bgColor;if(swEl)swEl.style.background=data.bgColor;}
-  if(data.bgSrc){var bg=$(pfx+'Bg');if(bg){if(data.bgStyle)bg.setAttribute('style',data.bgStyle);bg.src=data.bgSrc;bg.removeAttribute('data-dd-hidden');}}
+  if(data.bgSrc){var bg=$(pfx+'Bg');if(bg){if(data.bgStyle)bg.setAttribute('style',data.bgStyle);bg.src=data.bgSrc;bg.removeAttribute('data-dd-hidden');var cvv=$(pfx+'Canvas');if(data.bgSlab){bg.dataset.slab='1';if(cvv)cvv.classList.add('has-slab-bg');}else{bg.dataset.slab='';if(cvv)cvv.classList.remove('has-slab-bg');}}}
   if(data.solidTop)se(pfx+'SolidTop',data.solidTop);if(data.solidBot)se(pfx+'SolidBottom',data.solidBot);
   if(data.gradTop)se(pfx+'GradientTop',data.gradTop);if(data.gradBot)se(pfx+'GradientBottom',data.gradBot);
   setT(pfx+'H1',data.h1Text);if(data.h1Style)se(pfx+'H1',data.h1Style);
@@ -1061,7 +1172,7 @@ function restoreSide(data,pfx){
   if(data.ctaStyle)se(pfx+'Cta',data.ctaStyle);
   var br=$(pfx+'Brand');if(br&&Array.isArray(data.logos)){while(br.firstChild)br.removeChild(br.firstChild);data.logos.forEach(function(src){var img=document.createElement('img');img.src=src;img.alt='logo';br.appendChild(img);});}
   var pr=$(pfx+'Products');if(pr&&Array.isArray(data.prods)){while(pr.firstChild)pr.removeChild(pr.firstChild);ddState[pfx].products={};var slots=getSlots(data.prods.length);data.prods.forEach(function(p,i){if(!p||!p.src)return;var key=p.key||'idx-'+i,slot=slots[i]||slots[slots.length-1];if(p.style){var lm=p.style.match(/left:\s*([\d.]+)/),tm=p.style.match(/top:\s*([\d.]+)/),wm=p.style.match(/width:\s*([\d.]+)/),hm=p.style.match(/height:\s*([\d.]+)/);if(lm&&tm&&wm&&hm)slot={left:parseFloat(lm[1]),top:parseFloat(tm[1]),width:parseFloat(wm[1]),height:parseFloat(hm[1])};}pr.appendChild(createProd(pfx,p.src,key,slot));});}
-  if(data.tagImg&&data.tagImg.src){var ti=$(pfx+'TagImg');if(ti){ti.src=data.tagImg.src;if(data.tagImg.style)ti.setAttribute('style',data.tagImg.style);ti.classList.add('visible');bindTagDrag(pfx);}}else{var ti2=$(pfx+'TagImg');if(ti2){ti2.src='';ti2.classList.remove('visible');ti2.style.cssText='';}}
+  if(data.tagImg&&data.tagImg.src){setTagImg(pfx,data.tagImg.baseSrc||data.tagImg.src,data.tagImg.mode||'auto',data.tagImg.style||'');}else{var ti2=$(pfx+'TagImg');if(ti2){ti2.src='';ti2.classList.remove('visible');ti2.classList.remove('dd-tag-white');ti2.dataset.tagMode='auto';ti2.dataset.tagVariant='';ti2.dataset.tagBaseSrc='';ti2.style.cssText='';updateDdTagModeUi(pfx);}}
   if(data.es)ddState[pfx]=JSON.parse(JSON.stringify(data.es));
 }
 function applyJsonState(state,opts){
@@ -1161,19 +1272,19 @@ function renderTagGrid(){
 function applyTagLib(){
   if(!taglibSelectedSrc)return;
   var prefix=taglibTarget==='H'?'ddHoriz':'ddSquare';
-  setTagImg(prefix,taglibSelectedSrc);
+  var modeSelect=$('tag-mode-'+(taglibTarget==='H'?'h':'s'));
+  setTagImg(prefix,taglibSelectedSrc,modeSelect?modeSelect.value:'auto');
   closeTagLib();
   showToast('掛標已套用：'+taglibSelectedName,'ok',1400);
 }
-function setTagImg(prefix,src){
+function setTagImg(prefix,src,mode,restoreStyle){
   var imgEl=$(prefix+'TagImg'),canvas=$(prefix+'Canvas');if(!imgEl||!canvas)return;
-  if(!src){imgEl.src='';imgEl.classList.remove('visible');imgEl.style.cssText='';return;}
-  imgEl.src=src;
+  if(!src){imgEl.src='';imgEl.classList.remove('visible');imgEl.classList.remove('dd-tag-white');imgEl.dataset.tagMode='auto';imgEl.dataset.tagVariant='';imgEl.dataset.tagBaseSrc='';imgEl.style.cssText='';updateDdTagModeUi(prefix);return;}
+  var nextMode=['auto','red','white'].indexOf(mode)>=0?mode:'auto';
+  imgEl.dataset.tagMode=nextMode;imgEl.dataset.tagBaseSrc=src;imgEl.src=src;
   function onLoad(){
-    imgEl.style.width=imgEl.naturalWidth+'px';imgEl.style.height=imgEl.naturalHeight+'px';
-    imgEl.style.left='0px';imgEl.style.top='0px';
-    imgEl.classList.add('visible');
-    bindTagDrag(prefix);
+    if(restoreStyle)imgEl.setAttribute('style',restoreStyle);else{imgEl.style.width=imgEl.naturalWidth+'px';imgEl.style.height=imgEl.naturalHeight+'px';imgEl.style.left='0px';imgEl.style.top='0px';}
+    imgEl.classList.add('visible');applyDdTagMode(prefix,nextMode);bindTagDrag(prefix);
   }
   imgEl.onload=onLoad;
   if(imgEl.complete&&imgEl.naturalWidth)onLoad();
@@ -1223,6 +1334,7 @@ function init(){
   initLogoMenu();
   initTagLib();
   initColors();
+  initDdTagAutoSwitch();
   document.querySelectorAll('.dd-canvas [contenteditable="true"]').forEach(bindTextEl);
   bindLogoUpload('logo-horiz','ddHorizBrand',true,'horiz');
   bindLogoUpload('logo-square','ddSquareBrand',false,'square');
@@ -1238,11 +1350,12 @@ function init(){
   if(impBtn)impBtn.addEventListener('click',function(){if(impInput)impInput.click();});
   if(impInput)impInput.addEventListener('change',async function(e){var file=e.target.files&&e.target.files[0];if(!file)return;try{applyJsonState(JSON.parse(await file.text()));showToast('已匯入暫存','ok',1400);}catch(err){showToast('JSON 匯入失敗','err',1800);}e.target.value='';});
   document.querySelectorAll('.bg-lib-btn').forEach(function(btn){btn.addEventListener('click',function(){openBgLib(btn.dataset.target||'H');});});
-  var bgClose=$('bgLibClose'),bgApply=$('bgLibApply'),bgOwn=$('bgLibOwnUpload'),bgSearch=$('bgLibSearch'),bgModal=$('bgLibModal');
+  var bgClose=$('bgLibClose'),bgApply=$('bgLibApply'),bgOwn=$('bgLibOwnUpload'),bgSlab=$('bgLibSlabUpload'),bgSearch=$('bgLibSearch'),bgModal=$('bgLibModal');
   if(bgClose)bgClose.addEventListener('click',closeBgLib);
   if(bgModal)bgModal.addEventListener('click',function(e){if(e.target===this)closeBgLib();});
   if(bgApply)bgApply.addEventListener('click',function(){var sel=document.querySelector('#bgLibGrid .bglib-card.selected');if(!sel)return;fitBg(bglibTarget==='H'?'ddHoriz':'ddSquare',sel.dataset.src);closeBgLib();showToast('背景已套用','ok',1200);});
   if(bgOwn)bgOwn.addEventListener('change',async function(e){var file=e.target.files&&e.target.files[0];if(!file)return;var url=await readFile(file);fitBg(bglibTarget==='H'?'ddHoriz':'ddSquare',url);closeBgLib();showToast('已套用自訂背景：'+file.name,'ok',1400);e.target.value='';});
+  if(bgSlab)bgSlab.addEventListener('change',async function(e){var file=e.target.files&&e.target.files[0];if(!file)return;var url=await readFile(file);applySlabUpload(url);closeBgLib();showToast('已套用 SLAB 底圖（橫/方版位已依曝品範圍同步縮放）','ok',1800);e.target.value='';});
   document.querySelectorAll('.bglib-tab').forEach(function(tab){tab.addEventListener('click',function(){document.querySelectorAll('.bglib-tab').forEach(function(t){t.classList.remove('active');});tab.classList.add('active');renderBgGrid(tab.dataset.cat,bgSearch?bgSearch.value:'');});});
   if(bgSearch)bgSearch.addEventListener('input',function(){var at=document.querySelector('.bglib-tab.active');renderBgGrid(at?at.dataset.cat:'EL',this.value);});
   // sidebar scroll sync

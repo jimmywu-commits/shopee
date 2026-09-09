@@ -1251,6 +1251,15 @@ window.addEventListener('message', function (e) {
           } else {
             shadow.dataset.dollarExempt = '';
           }
+          /* 中文數字（一～十）不強制轉阿拉伯數字。
+             這則訊息是從畫布來的，畫布元素上的旗標就是最新狀態（含「點擊取消」），
+             所以直接以它為準；沒帶這個欄位時（舊版 iframe）才沿用輸入框現有旗標。
+             同步回寫輸入框，左側欄位之後 blur 才不會又把中文數字改回阿拉伯數字。 */
+          var numeralExemptEff = (typeof e.data.numeralExempt === 'boolean')
+            ? e.data.numeralExempt
+            : (inp.dataset.numeralExempt === '1');
+          shadow.dataset.numeralExempt = numeralExemptEff ? '1' : '';
+          inp.dataset.numeralExempt = numeralExemptEff ? '1' : '';
           var bwResult = window.banwordEngine.applyToElement(shadow,{
             role: shadow.dataset.role, force:true,
             getText:function(el){return el.textContent;}

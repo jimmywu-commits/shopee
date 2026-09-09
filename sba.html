@@ -4916,6 +4916,69 @@ backBtn.addEventListener('click', ()=>{
     }
   }
 
+  function applyTagMode(img, mode){
+    const validMode = ['auto','red','white','blank'].includes(mode) ? mode : 'auto';
+    img.dataset.tagMode = validMode;
+    applyState(img, validMode === 'auto' ? resolveAutoTagState(img) : validMode);
+  }
+
+  function getTagGroupImages(id){
+    return (GROUPS[id] || [id]).map(g=>document.getElementById(g)).filter(Boolean);
+  }
+
+  function applyTagModeToGroup(id, mode){
+    getTagGroupImages(id).forEach(img=>applyTagMode(img, mode));
+  }
+
+  function refreshAutoTags(kind){
+    const ids = kind === 'horiz' ? ['tagH'] : kind === 'square' ? ['tagS'] : ['tagH','tagS'];
+    ids.forEach(id=>{
+      const imgs=getTagGroupImages(id);
+      if(!imgs.length || imgs[0].dataset.tagMode !== 'auto') return;
+      imgs.forEach(img=>applyState(img, resolveAutoTagState(img)));
+    });
+  }
+
+  function queueAutoTagRefresh(kind){
+    clearTimeout(tagAutoRefreshTimers[kind]);
+    tagAutoRefreshTimers[kind] = setTimeout(()=>{
+      delete tagAutoRefreshTimers[kind];
+      refreshAutoTags(kind);
+    }, 120);
+  }
+
+  function bindAutoTagRefresh(){
+    const configs = [
+      { kind:'horiz', canvasId:'horiz', colorId:'bg-color-h', bgId:'bgH' },
+      { kind:'square', canvasId:'square', colorId:'bg-color-s', bgId:'bgS' }
+    ];
+
+    configs.forEach(cfg=>{
+      const input=document.getElementById(cfg.colorId);
+      const canvas=document.getElementById(cfg.canvasId);
+      const bg=document.getElementById(cfg.bgId);
+      if(input){
+        input.addEventListener('input', ()=>queueAutoTagRefresh(cfg.kind));
+        input.addEventListener('change', ()=>queueAutoTagRefresh(cfg.kind));
+      }
+      if(bg) bg.addEventListener('load', ()=>queueAutoTagRefresh(cfg.kind));
+
+      if(canvas && window.MutationObserver){
+        const observer=new MutationObserver(records=>{
+          const relevant=records.some(record=>{
+            const target=record.target && record.target.nodeType===1 ? record.target : null;
+            if(target === canvas) return true;
+            if(target && (target.matches('.editor-bg, .editor-bg *, .bg-solid, .bg-gradient') || target.closest('.editor-bg, .bg-solid, .bg-gradient'))) return true;
+            return Array.from(record.addedNodes || []).some(node=>
+              node.nodeType===1 && (node.matches('.editor-bg, .bg-solid, .bg-gradient') || node.querySelector?.('.editor-bg, .bg-solid, .bg-gradient'))
+            );
+          });
+          if(relevant) queueAutoTagRefresh(cfg.kind);
+        });
+        observer.observe(canvas, { attributes:true, childList:true, subtree:true, attributeFilter:['style','src'] });
+      }
+    });
+  }
   function nextTagMode(mode){
     if(mode === 'auto') return 'red';
     if(mode === 'red') return 'white';

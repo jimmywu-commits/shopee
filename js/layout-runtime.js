@@ -1462,6 +1462,8 @@
 
     /* 背景圖：放到 .背景色（如有）或畫布底層 */
     if (e.data.type === 'bn-bg') {
+      /* 若之前套用過 SLAB 底圖，改套一般背景時要還原商品範圍的提示色塊 */
+      _bnMarkSlabZone(getProductZone(), false);
       /* 支援 .背景色 和 .bg 兩種 class 名稱 */
       var bgContainer = document.querySelector('.背景色') || document.querySelector('.bg');
       var bimg2 = document.getElementById('底圖');
@@ -1532,6 +1534,28 @@
         if(bgContainer) bgContainer.style.backgroundImage = '';
         if(bimg2){ bimg2.src=''; bimg2.style.display='none'; bimg2.style.transform=''; }
       }
+      return;
+    }
+
+    /* SLAB 底圖：以「建議範圍框.PNG」(1200x1200) 內的紅框 DRED 為基準，
+       將上傳圖片依本版位「商品範圍/商品圖範圍」高度等比縮放、置中對齊，
+       套用後商品範圍原本的 40% 提示色塊改成同色的 40% 線框。 */
+    if (e.data.type === 'bn-bg-slab') {
+      if(!_bnNoImageBackgroundTemplate){
+        applyBnBgSlab(e.data.src || null, {scale:e.data.scale, x:e.data.x, y:e.data.y});
+      }
+      return;
+    }
+
+    /* 中文數字豁免旗標由左側輸入框右鍵切換時，同步到畫布上對應欄位，
+       這樣之後在畫布上編輯文字回傳給父層時才不會把豁免狀態洗掉。 */
+    if (e.data.type === 'bn-numeral-exempt') {
+      var neClasses = e.data.field ? [e.data.field] : EDITABLE_CLASSES;
+      neClasses.forEach(function(cls){
+        document.querySelectorAll('.' + cls).forEach(function(el){
+          _setNumeralExempt(el, !!e.data.on);
+        });
+      });
       return;
     }
 
@@ -1865,9 +1889,10 @@
           if(!zn) return;
           var hasContent = zn.querySelector(hasContentSelector);
           if(!hasContent){
-            _emptyZoneEls.push({el:zn, bg:zn.style.background, op:zn.style.opacity});
+            _emptyZoneEls.push({el:zn, bg:zn.style.background, op:zn.style.opacity, bd:zn.style.border});
             zn.style.background = 'transparent';
             zn.style.opacity = '1';
+            zn.style.border = 'none';
           }
         });
       }
@@ -1927,7 +1952,7 @@
         });
         _editEls.forEach(function(o){ o.el.style.display = o.disp; });
         _captureAdjustEls.forEach(function(o){ o.el.style.setProperty('top', o.top, o.priority || ''); });
-        _emptyZoneEls.forEach(function(o){ o.el.style.background = o.bg; o.el.style.opacity = o.op; });
+        _emptyZoneEls.forEach(function(o){ o.el.style.background = o.bg; o.el.style.opacity = o.op; o.el.style.border = o.bd; });
         _objectFitAdjustEls.forEach(function(o){
           o.el.style.position = o.position; o.el.style.width = o.width; o.el.style.height = o.height;
           o.el.style.left = o.left; o.el.style.top = o.top;
@@ -2133,6 +2158,136 @@
     var names=['商品範圍','商品圖範圍'];
     for(var i=0;i<names.length;i++){ var z=document.querySelector('.'+names[i]); if(z)return z; }
     return null;
+  }
+
+  /* SLAB 底圖：DRED = 建議範圍框.PNG（1200x1200）內紅框的像素範圍，
+     由 Python 對該 PNG 逐 pixel 分析 alpha 通道量測得出（無反鋸齒，
+     alpha 只有 0 或 128 兩種值），非目測估計。 */
+  var _BN_DRED_REF = {imgSize:1200, left:324, top:372, width:550, height:457};
+  function _bnMarkSlabZone(zone, on){
+    if(!zone) return;
+    if(on){
+      zone.style.background = 'transparent';
+      zone.style.opacity = '1';
+      zone.style.border = '2px solid rgba(235,104,119,0.4)';
+      zone.style.boxSizing = 'border-box';
+      zone.dataset.bnSlabApplied = '1';
+    } else if(zone.dataset.bnSlabApplied){
+      zone.style.background = '';
+      zone.style.opacity = '';
+      zone.style.border = '';
+      zone.style.boxSizing = '';
+      zone.dataset.bnSlabApplied = '';
+    }
+  }
+  /* SLAB 底圖對齊用的「有效商品範圍」：
+     有些版位的 .商品範圍 並不是整段都能真的擺商品，DRED 紅框要對齊的是
+     實際可用的那一段，不然 SLAB 商品會超出底色或被其他圖層蓋住。
+     一律用實際量到的 rect 動態計算，不寫死像素值。
+
+     SCBN_APP：商品範圍（top:15,height:175）比背景色色塊（top:46,height:154）
+       更早開始，上緣那一小段（15~46）其實是露在背景色之外的透明區。取兩者
+       交集（46~190）當基準，SLAB 才不會超出底色，下緣也不會被裁掉。
+     HBN_*：CTA 色塊（.cta底 top:290,height:44）正好壓在商品範圍（34~334）的
+       下緣。把 CTA 高度扣掉（34~290），SLAB 的商品範圍才不會被 CTA 蓋住。 */
+  function _bnEffectiveSlabZoneRect(zone){
+    var zRect = zone.getBoundingClientRect();
+    var top = zRect.top, bottom = zRect.bottom;
+
+    if(/^SCBN_APP$/i.test(fname || '')){
+      var bgEl = document.querySelector('.背景色') || document.querySelector('.bg');
+      var bgRect = bgEl && bgEl.getBoundingClientRect();
+      if(bgRect && bgRect.height > 0){
+        top = Math.max(top, bgRect.top);
+        bottom = Math.min(bottom, bgRect.bottom);
+      }
+    }
+
+    if(/^HBN_/i.test(fname || '')){
+      var ctaEl = document.querySelector('.cta底') || document.querySelector('.逛逛去底') || document.querySelector('.cta圓底');
+      var ctaRect = ctaEl && ctaEl.getBoundingClientRect();
+      if(ctaRect && ctaRect.height > 0 && ctaRect.top > top && ctaRect.top < bottom){
+        bottom = ctaRect.top;
+      }
+    }
+
+    /* 交集算出來不合理（量不到／被蓋光）就退回原本的商品範圍 */
+    if(!(bottom - top > 1)) return zRect;
+
+    return {left:zRect.left, top:top, right:zRect.right, bottom:bottom,
+      width:zRect.width, height:bottom - top};
+  }
+  /* 記住上一張 SLAB 圖的原始尺寸：拖「背景圖調整」滑桿時會連續重送，
+     同一張圖不需要每次都重新等 Image onload。 */
+  var _slabNaturalCache = {src:'', w:0, h:0};
+
+  /* opts = {scale, x, y}：對應「背景圖調整」面板。
+     scale=100 / x=50 / y=50 就是純 DRED 對齊的基準位置；
+     縮放以 DRED（也就是商品範圍）中心為軸，位移單位是畫布寬高的百分比。 */
+  function applyBnBgSlab(src, opts){
+    var zone = getProductZone(); if(!zone || !src) return;
+    var canvasEl = document.getElementById('canvas'); if(!canvasEl) return;
+    var bgContainer = document.querySelector('.背景色') || document.querySelector('.bg');
+    var bimg2 = document.getElementById('底圖');
+    if(!bgContainer && !bimg2) return;
+
+    function place(nw, nh){
+      if(!nw || !nh) return;
+      var ref = _BN_DRED_REF;
+      var dredLeftPx = ref.left/ref.imgSize*nw, dredTopPx = ref.top/ref.imgSize*nh;
+      var dredWPx = ref.width/ref.imgSize*nw, dredHPx = ref.height/ref.imgSize*nh;
+      var cRect = canvasEl.getBoundingClientRect(), zRect = _bnEffectiveSlabZoneRect(zone);
+      var zoneW = zRect.width || 1, zoneH = zRect.height || 1;
+      var scale = zoneH / dredHPx;
+      var scaledDredLeft = dredLeftPx*scale, scaledDredTop = dredTopPx*scale;
+      var scaledDredW = dredWPx*scale, scaledDredH = dredHPx*scale;
+      var zoneLeftRel = zRect.left - cRect.left, zoneTopRel = zRect.top - cRect.top;
+      /* DRED 貼齊有效商品範圍後的基準位置 */
+      var baseLeft = zoneLeftRel + zoneW/2 - (scaledDredLeft + scaledDredW/2);
+      var baseTop  = zoneTopRel - scaledDredTop;
+      /* DRED 中心（縮放軸心）*/
+      var anchorX = baseLeft + scaledDredLeft + scaledDredW/2;
+      var anchorY = baseTop  + scaledDredTop  + scaledDredH/2;
+
+      var z = (opts && isFinite(opts.scale) ? Number(opts.scale) : 100) / 100;
+      if(!(z > 0)) z = 1;
+      var offX = ((opts && isFinite(opts.x) ? Number(opts.x) : 50) - 50) / 100;
+      var offY = ((opts && isFinite(opts.y) ? Number(opts.y) : 50) - 50) / 100;
+
+      var newW = nw*scale*z, newH = nh*scale*z;
+      var imgLeft = anchorX - (scaledDredLeft + scaledDredW/2)*z + offX*(cRect.width || 1);
+      var imgTop  = anchorY - (scaledDredTop  + scaledDredH/2)*z + offY*(cRect.height || 1);
+
+      if(bgContainer){
+        bgContainer.style.backgroundImage = 'url(' + src + ')';
+        bgContainer.style.backgroundRepeat = 'no-repeat';
+        bgContainer.style.backgroundSize = newW + 'px ' + newH + 'px';
+        bgContainer.style.backgroundPosition = imgLeft + 'px ' + imgTop + 'px';
+      } else if(bimg2){
+        bimg2.src = src;
+        bimg2.style.display = 'block';
+        bimg2.style.position = 'absolute';
+        bimg2.style.objectFit = 'none';
+        bimg2.style.objectPosition = '0 0';
+        bimg2.style.transform = '';
+        bimg2.style.width = newW + 'px';
+        bimg2.style.height = newH + 'px';
+        bimg2.style.left = imgLeft + 'px';
+        bimg2.style.top = imgTop + 'px';
+      }
+      _bnMarkSlabZone(zone, true);
+    }
+
+    if(_slabNaturalCache.src === src && _slabNaturalCache.w){
+      place(_slabNaturalCache.w, _slabNaturalCache.h);
+      return;
+    }
+    var img = new Image();
+    img.onload = function(){
+      _slabNaturalCache = {src:src, w:img.naturalWidth, h:img.naturalHeight};
+      place(img.naturalWidth, img.naturalHeight);
+    };
+    img.src = src;
   }
 
   function scheduleProductLayoutPost(box){
@@ -2693,6 +2848,14 @@
     if(list.length) el.dataset.dollarExempt = JSON.stringify(list);
     else el.removeAttribute('data-dollar-exempt');
   }
+  /* 中文數字（一～十）豁免：banwords.xlsx 有「一→1」…「十→10」這幾條
+     自動改字規則，勾了豁免就跟著 $／千分位一起跳過。旗標存在元素上，
+     每次 _sendUpdate 都會帶給父層，否則下一次編輯又會被改回阿拉伯數字。 */
+  function _getNumeralExempt(el){ return el.dataset.numeralExempt === '1'; }
+  function _setNumeralExempt(el, on){
+    if(on) el.dataset.numeralExempt = '1';
+    else el.removeAttribute('data-numeral-exempt');
+  }
   function _replaceSelText(savedRange, text){
     var sel = window.getSelection();
     sel.removeAllRanges(); sel.addRange(savedRange);
@@ -2712,7 +2875,8 @@
     if(window.parent !== window){
       window.parent.postMessage({
         type:'bn-text-update', field:cls, value:text,
-        dollarExempt: exemptList.length > 0 ? exemptList : false
+        dollarExempt: exemptList.length > 0 ? exemptList : false,
+        numeralExempt: _getNumeralExempt(el)
       }, '*');
     }
   }
@@ -2783,17 +2947,25 @@
         });
       }
     } else {
-      /* 非純數字的選取：整段文字豁免選項 */
-      menuBtn('暫時不加$和千分位符號（整段）', function(){
+      /* 非純數字的選取：整段文字豁免（$／千分位 ＋ 中文數字不強制轉阿拉伯數字） */
+      menuBtn('暫時不加$符號與千分位符號、不強制變阿拉伯數字', function(){
         /* 把選取範圍的所有數字加進豁免清單，並移除 $ */
         var nums = savedSelText.match(/\d+/g) || [];
         var list = _getExempt(el);
         nums.forEach(function(n){ if(list.indexOf(n)===-1) list.push(n); });
         _setExempt(el, list);
+        _setNumeralExempt(el, true);
         var cleaned = savedSelText.replace(/\$/g,'').replace(/(\d),(\d{3})(?!\d)/g,'$1$2');
         if(savedRange) _replaceSelText(savedRange, cleaned);
         _sendUpdate(el, cls);
       });
+      if(_getNumeralExempt(el) || exemptList.length){
+        menuBtn('✓ 已豁免（點擊取消，恢復自動格式）', function(){
+          _setExempt(el, []);
+          _setNumeralExempt(el, false);
+          _sendUpdate(el, cls);
+        });
+      }
     }
 
     menu.style.left = Math.min(e.clientX, window.innerWidth  - 230) + 'px';

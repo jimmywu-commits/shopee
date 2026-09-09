@@ -3,6 +3,12 @@
 
   let currentRules = [];
 
+  /* banwords.xlsx 裡「一」～「十」這幾條禁用語規則，規則內容是
+     "自動改成\"1\""…"自動改成\"10\""，用來把中文數字強制換成阿拉伯數字。
+     右鍵豁免時（numeralExempt）要跳過的就是這幾條規則，其餘一般禁用語
+     規則不受影響。 */
+  const CN_NUMERAL_KEYWORDS = ['一','二','三','四','五','六','七','八','九','十'];
+
   function normalizeRuleRecord(rule){
     return {
       row: rule && rule.row != null ? rule.row : null,
@@ -641,6 +647,7 @@
 
     getRules().forEach(function(rule){
       if (!rule.keyword) return;
+      if (options && options.numeralExempt && CN_NUMERAL_KEYWORDS.indexOf(rule.keyword) !== -1) return;
 
       const protectedResult = protectExcludedSegments(out, rule.exclude);
       let workingText = protectedResult.text;
@@ -739,7 +746,8 @@
     if (el && el.dataset && el.dataset.dollarExempt) {
       try { dollarExempt = JSON.parse(el.dataset.dollarExempt); } catch(_) {}
     }
-    const result = transformText(before, role, { dollarExempt: dollarExempt });
+    const numeralExempt = !!(el && el.dataset && el.dataset.numeralExempt === '1');
+    const result = transformText(before, role, { dollarExempt: dollarExempt, numeralExempt: numeralExempt });
 
     if (el && result.text !== before) {
       const counter = el.querySelector('.counter');
@@ -804,7 +812,8 @@
         if (el.dataset && el.dataset.dollarExempt) {
           try { dollarExempt = JSON.parse(el.dataset.dollarExempt); } catch(_) {}
         }
-        const result = transformText(raw, role, { dollarExempt: dollarExempt });
+        const numeralExempt = !!(el.dataset && el.dataset.numeralExempt === '1');
+        const result = transformText(raw, role, { dollarExempt: dollarExempt, numeralExempt: numeralExempt });
 
         if (result.text !== raw) {
           setEditableText(el, result.text);

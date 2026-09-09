@@ -209,6 +209,8 @@
       '.bn-bglib-card.selected .bn-bglib-check{display:flex}',
       '.bn-bglib-foot{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:13px 16px;background:#161b22;border-top:1px solid #30363d}',
       '.bn-bglib-upload{background:#238636;color:#fff;border:0;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer}',
+      '.bn-bglib-slab{background:#2563eb;color:#fff;border:0;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer}',
+      '.bn-bglib-slab:hover{background:#1d4ed8}',
       '.bn-bglib-apply{background:#1f6feb;color:#fff;border:0;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer}',
       '.bn-bglib-apply:disabled{opacity:.45;cursor:not-allowed}',
       '.bn-bglib-hint{font-size:12px;color:#8b949e;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
@@ -235,7 +237,7 @@
         '<div class="bn-bglib-body"><div class="bn-bglib-status"></div><div class="bn-bglib-grid"></div></div>'+
         '<div class="bn-bglib-foot">'+
           '<div class="bn-bglib-hint">選預設圖會依版位寬高比自動套用；要用自己的圖，請按右側按鈕。</div>'+
-          '<div class="bn-bglib-actions"><button type="button" class="bn-bglib-upload">📤 上傳自己的圖片</button><button type="button" class="bn-bglib-apply" disabled>套用選取</button></div>'+
+          '<div class="bn-bglib-actions"><button type="button" class="bn-bglib-upload">📤 上傳自己的圖片</button><button type="button" class="bn-bglib-slab">📐 上傳SLAB底圖</button><button type="button" class="bn-bglib-apply" disabled>套用選取</button></div>'+
         '</div>'+
       '</div>';
     document.body.appendChild(modal);
@@ -249,6 +251,7 @@
     modal.querySelector('.bn-bglib-close').addEventListener('click', closeModal);
     modal.addEventListener('click', function(e){ if(e.target === modal) closeModal(); });
     modal.querySelector('.bn-bglib-upload').addEventListener('click', function(){ closeModal(); openNativeUpload(); });
+    modal.querySelector('.bn-bglib-slab').addEventListener('click', function(){ openSlabUpload(); });
     applyBtn.addEventListener('click', function(){ if(selected) applyPreset(selected); });
     searchEl.addEventListener('input', function(){ searchQuery = searchEl.value || ''; renderGrid(); });
     document.addEventListener('keydown', function(e){ if(e.key === 'Escape') closeModal(); });
@@ -605,6 +608,101 @@
       });
   }
 
+  /* SLAB 底圖：上傳一張跟「建議範圍框.PNG」同尺寸(1200x1200)的圖，
+     交給 bn-editor-plugin 的 _bgStates 狀態系統管理（標記 slab:true），
+     而不是直接 postMessage 給 iframe。
+
+     這點很重要：_bgStates 是「下載截圖前重新同步背景」「下載完成後
+     還原畫布背景」「本機暫存/匯出 JSON」…等所有背景重播流程唯一認得的
+     資料來源（見 bgSendToIframe / bgBroadcastAll / cloneBgStates）。
+     如果只是直接 postMessage 一次性套用、不寫進 _bgStates，上面任何一個
+     重播流程都會用「沒有背景」的舊狀態覆蓋回去，導致：
+       1. 下載 ZIP 時 syncIframeForExport() 在截圖前呼叫 _bnSendBgToIframe()
+          重新同步背景，會把 SLAB 圖蓋成空的，截圖結果沒有 SLAB 底圖。
+       2. 下載完成後 resyncAllAfterExport() 再呼叫一次同一個同步，畫布上
+          原本看得到的 SLAB 底圖也會被清空。
+     交給 _bnSetBgStates 之後，上述流程都會透過 bgSendToIframe 正確送出
+     bn-bg-slab（而非把它們誤當成一般背景 bn-bg 送出去），畫面跟下載
+     結果才能維持「所見即所得」。 */
+  /* 各版位套用 SLAB 底圖時的預設微調參數（對應「背景圖調整」面板的三個值）。
+     scale=100 / x=50 / y=50 就是純 DRED 對齊的基準位置；這裡的數字是實際
+     手動拉到最合適的位置後量出來的，讓上傳當下就直接是正確構圖，
+     使用者仍可再用面板微調。x/y 的位移單位是畫布寬高的百分比。 */
+  var SLAB_DEFAULT_PARAMS = [
+    /* SCBN：扁版位，構圖是實際手拉量出來的專屬參數 */
+    { test: /SCBN/i,    scale: 127, x: 47, y: 29 },
+    /* FB_POST：維持純 DRED 對齊，不額外放大 */
+    { test: /FB_POST/i, scale: 100, x: 50, y: 50 }
+  ];
+  /* 其餘版位一律預設放大 120% */
+  var SLAB_FALLBACK_PARAMS = { scale: 120, x: 50, y: 50 };
+  function slabDefaultsFor(iframe){
+    var src = '';
+    try{ src = decodeURIComponent(String((iframe && (iframe.getAttribute('src') || iframe.src)) || '')); }
+    catch(_){ src = String((iframe && iframe.src) || ''); }
+    for(var i = 0; i < SLAB_DEFAULT_PARAMS.length; i++){
+      if(SLAB_DEFAULT_PARAMS[i].test.test(src)) return SLAB_DEFAULT_PARAMS[i];
+    }
+    return SLAB_FALLBACK_PARAMS;
+  }
+
+  var _slabInput = null;
+  function applySlabUpload(file){
+    if(!file) return;
+    var fr = new FileReader();
+    fr.onload = function(ev){
+      var dataUrl = ev.target.result;
+      var iframes = Array.prototype.slice.call(document.querySelectorAll('.preview-block iframe'));
+      var states = {};
+      var applied = false;
+      iframes.forEach(function(iframe){
+        var info = getLayoutInfoForIframe(iframe);
+        if(!info || !info.id) return;
+        if(typeof window._bnIsNoImageBackgroundLayout === 'function' &&
+           window._bnIsNoImageBackgroundLayout(info.id, iframe)) return;
+        /* fit 用 'auto'：SLAB 走自己的對齊規則不看 fit，但「背景圖調整」面板
+           在 cover 模式下會把縮放滑桿鎖住，用 auto 三個滑桿才都能調。 */
+        var dp = slabDefaultsFor(iframe);
+        states[info.id] = {src:dataUrl, slab:true, fit:'auto',
+          scale:dp.scale, x:dp.x, y:dp.y, _initialized:true};
+        applied = true;
+      });
+      if(typeof window._bnSetBgStates === 'function'){
+        window._bnSetBgStates(states, null);
+      } else {
+        /* 備援：找不到狀態系統時，至少直接套用一次（不會有下載/還原保護）。 */
+        iframes.forEach(function(iframe){
+          var info = getLayoutInfoForIframe(iframe);
+          var st = states[info && info.id];
+          if(!st) return;
+          try{ iframe.contentWindow.postMessage(
+            {type:'bn-bg-slab', src:dataUrl, scale:st.scale, x:st.x, y:st.y}, '*');
+          }catch(_){ }
+        });
+      }
+      try{ document.dispatchEvent(new CustomEvent('bn-state-dirty')); }catch(_){ }
+      if(window._bnStatePlugin && typeof window._bnStatePlugin.toast === 'function'){
+        window._bnStatePlugin.toast(applied ? '已套用 SLAB 底圖（各版位已依商品範圍同步縮放）' : '目前沒有可套用 SLAB 底圖的版位', applied ? 'ok' : 'err', 2600);
+      }
+    };
+    fr.readAsDataURL(file);
+  }
+  function openSlabUpload(){
+    if(!_slabInput){
+      _slabInput = document.createElement('input');
+      _slabInput.type = 'file';
+      _slabInput.accept = 'image/*';
+      _slabInput.style.display = 'none';
+      _slabInput.addEventListener('change', function(){
+        var file = _slabInput.files && _slabInput.files[0];
+        applySlabUpload(file);
+        _slabInput.value = '';
+      });
+      document.body.appendChild(_slabInput);
+    }
+    closeModal();
+    _slabInput.click();
+  }
 
   function parsePublicTemplateCode(code){
     var s = String(code || '').trim();

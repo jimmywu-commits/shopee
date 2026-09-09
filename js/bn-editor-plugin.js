@@ -1077,6 +1077,7 @@
             scale: st.scale !== undefined ? st.scale : 100,
             x: st.x !== undefined ? st.x : 50,
             y: st.y !== undefined ? st.y : 50,
+            slab: !!st.slab,
             _initialized: !!st._initialized
           };
         });
@@ -1129,6 +1130,7 @@
               scale: st.scale !== undefined ? parseInt(st.scale,10) : (prev.scale !== undefined ? prev.scale : 100),
               x: st.x !== undefined ? parseInt(st.x,10) : (prev.x !== undefined ? prev.x : 50),
               y: st.y !== undefined ? parseInt(st.y,10) : (prev.y !== undefined ? prev.y : 50),
+              slab: !!st.slab,
               _initialized: st._initialized !== false
             };
           });
@@ -1196,12 +1198,29 @@
         return null;
       }
 
+      /* SLAB 底圖走獨立的 bn-bg-slab 訊息（由 layout-runtime.js 依各版位
+         自己的商品範圍/商品圖範圍高度重新計算縮放與位置），不能跟一般
+         背景共用 bn-bg，否則版位收到的是「一般背景」語意，商品範圍的
+         40% 提示色塊/線框、置中對齊都會跑掉。 */
+      function bgPostForState(ifrEl, st, src){
+        if(src && st && st.slab){
+          /* 「背景圖調整」面板的縮放／水平／垂直也要能微調 SLAB 圖：
+             一起送過去，由版位端疊在 DRED 對齊算出的基準上。
+             scale=100、x=50、y=50 就等於純 DRED 對齊的原始位置。 */
+          try{ ifrEl.contentWindow.postMessage(
+            {type:'bn-bg-slab', src:src, scale:st.scale, x:st.x, y:st.y}, '*');
+          }catch(_){}
+          return;
+        }
+        try{ ifrEl.contentWindow.postMessage(
+          {type:'bn-bg', src:src||null, fit:st.fit, scale:st.scale, x:st.x, y:st.y}, '*');
+        }catch(_){}
+      }
+
       function bgSendToIframe(ifrEl, id){
         var st = getBgState(id);
         var src = isNoImageBackgroundLayout(id, ifrEl) ? null : st.src;
-        try{ ifrEl.contentWindow.postMessage(
-          {type:'bn-bg', src:src, fit:st.fit, scale:st.scale, x:st.x, y:st.y}, '*');
-        }catch(_){}
+        bgPostForState(ifrEl, st, src);
       }
 
       function bgBroadcastOne(id){
@@ -1217,11 +1236,7 @@
           var st = id ? getBgState(id) : (_bgActiveId ? getBgState(_bgActiveId) : null);
           if(!st) return;
           var src = (id && isNoImageBackgroundLayout(id, ifrEl)) ? null : st.src;
-          try{
-            ifrEl.contentWindow.postMessage({
-              type:'bn-bg', src:src || null, fit:st.fit, scale:st.scale, x:st.x, y:st.y
-            }, '*');
-          }catch(_){}
+          bgPostForState(ifrEl, st, src);
         });
       }
 
@@ -1438,6 +1453,13 @@
             var scaleEl = panel.querySelector('.bg-scale');
             var xEl     = panel.querySelector('.bg-x');
             var yEl     = panel.querySelector('.bg-y');
+            /* SLAB 底圖不吃 fit（有自己的 DRED 對齊規則），三個滑桿一律可用 */
+            if(getBgState(id).slab){
+              setSlider(scaleEl, false);
+              setSlider(xEl, false);
+              setSlider(yEl, false);
+              return;
+            }
             if(fitVal === 'auto'){
               /* 原尺寸：三個都可用 */
               setSlider(scaleEl, false);
@@ -1700,9 +1722,10 @@
           var id = getIfrBnid(ifrEl);
           if(!id) return;
           var st = getBgState(id);
-          if(isNoImageBackgroundLayout(id, ifrEl)){ st.src = null; return; }
+          if(isNoImageBackgroundLayout(id, ifrEl)){ st.src = null; st.slab = false; return; }
           var nextSrc = single || (getBgLayoutOrientation(id, ifrEl) === 'vertical' ? v : h) || h || v;
           st.src = nextSrc;
+          st.slab = false;
           if(!st._initialized){
             var _dp = getDefaultBgParamsForLayout(id, ifrEl);
             st.scale = _dp.scale; st.x = _dp.x; st.y = _dp.y; st.fit = _dp.fit;
@@ -1804,8 +1827,9 @@
               var id = getIfrBnid(ifrEl);
               if(!id) return;
               var st = getBgState(id);
-              if(isNoImageBackgroundLayout(id, ifrEl)){ st.src = null; return; }
+              if(isNoImageBackgroundLayout(id, ifrEl)){ st.src = null; st.slab = false; return; }
               st.src = dataUrl;
+              st.slab = false;
               /* 只有第一次上傳才重設位置，已有設定則保留 */
               if(!st._initialized){
                 var _dp2 = getDefaultBgParamsForLayout(id, ifrEl);
@@ -1830,7 +1854,7 @@
 
         bgClear.addEventListener('click', function(){
           /* 清除所有版位的背景圖 */
-          Object.keys(_bgStates).forEach(function(id){ _bgStates[id].src = null; });
+          Object.keys(_bgStates).forEach(function(id){ _bgStates[id].src = null; _bgStates[id].slab = false; });
           window._bgDataUrl = null;
           bgThumb.src = '';
           bgPreview.style.display = 'none';
