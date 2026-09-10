@@ -14,7 +14,9 @@
      統一在這裡（layout-runtime.js）判斷，不用各版位自己攔截商品/人物相關
      訊息，行為才會一致、也才不會漏掉哪個訊息類型沒攔到。 */
   var _bnSingleProductOnlyTemplate = /searchicon_product/i.test(fname || '');
-  var _bnNoImageBackgroundTemplate = /^searchicon_(logo|product|text)$/i.test(fname || '');
+  var _bnSingleLogoTemplate = /^(ar_logo|首頁logo牆)$/i.test(fname || '');
+  var _bnSingleProductForLogoWallTemplate = /首頁logo牆/i.test(fname || '');
+  var _bnNoImageBackgroundTemplate = /^searchicon_(logo|product|text|120)$/i.test(fname || '');
 
   /* 可編輯文字不得使用近黑／近白；CTA 底色允許近白，但禁用近黑與灰色。
      父頁會先正規化一次；這裡是版型端最後防線，連寫死在 CSS 的預設色也會攔截。 */
@@ -1128,7 +1130,7 @@
         (parseFloat(window.getComputedStyle(_logoZone).width) >
          parseFloat(window.getComputedStyle(_logoZone).height) * 1.5);
       /* HBN：檔名含 hbn，或已知左對齊版位 → 左對齊 absolute 並排 */
-      var _leftAlignNames = ['hbn','coin','fb_post','lpbn'];
+      var _leftAlignNames = ['hbn','coin','fb_post','lpbn','ams','活動總覽'];
       var _isLeftAlign = _leftAlignNames.some(function(n){ return fnLow.indexOf(n) !== -1; });
       var isHBN = _isLeftAlign;
       /* 多張置中：logo範圍是橫條 且 不是左對齊版位 → flex 置中並排（ddcard橫、IG橫等）*/
@@ -1151,6 +1153,8 @@
 
       /* IG方 / 方 Logo 系列：只取第一張，避免方版 logo 區多張擠壓或裁切。 */
       if (isIGSquare || isSquareLogoLayout) logos = logos.slice(0, 1);
+      /* AR_LOGO / 首頁LOGO牆：固定只顯示第一個 LOGO */
+      if (_bnSingleLogoTemplate) logos = logos.slice(0, 1);
       /* ddcard橫：isMultiCenter → 多張，不限制；ddcard方（isIGSquare）→ 單張 */
 
       zone.style.background = 'transparent';
@@ -1280,14 +1284,36 @@
       } else {
         /* 其他橫式：單張最多 200px；多 LOGO 含 15px 間距總寬最多 490px，且不超過 logo 範圍，避免裁切。 */
         _fitHorizontalLogos(logos, 'center');
-      }    }
+      }
+
+      if(_bnSingleLogoTemplate){
+        zone.addEventListener('wheel', function(e){
+          e.preventDefault();
+          var imgs = Array.from(zone.querySelectorAll('img.bn-logo-img'));
+          if(!imgs.length) return;
+          var img = imgs[0];
+          var zr = zone.getBoundingClientRect();
+          var ir = img.getBoundingClientRect();
+          var sc = e.deltaY < 0 ? 1.08 : .93;
+          var r = parseFloat(img.dataset.ratio) || (img.naturalWidth / img.naturalHeight) || 1;
+          var w = Math.max(40, Math.min(ir.width*sc, zr.width*.95)), ih = w/r;
+          if(ih < 30){ ih = 30; w = ih*r; }
+          if(ih > zr.height*.95){ ih = zr.height*.95; w = ih*r; }
+          img.dataset.manualLayout = '1';
+          img.style.width = w + 'px';
+          img.style.height = 'auto';
+          img.style.maxWidth = w + 'px';
+          img.style.maxHeight = ih + 'px';
+        }, {passive: false});
+      }
+    }
 
     /* 商品新增 */
     if (e.data.type === 'bn-product-add') {
       var pzone = getProductZone(); if(!pzone) return;
       var oldBox = pzone.querySelector('.bn-prod-box[data-id="'+e.data.id+'"]');
       if(oldBox) oldBox.remove();
-      pzone.style.background = 'transparent'; pzone.style.opacity = '1';
+      pzone.style.background = 'transparent'; pzone.style.backgroundColor = 'transparent'; pzone.style.opacity = '1';
       pzone.style.overflow = 'visible'; pzone.style.position = 'relative';
       var box = document.createElement('div');
       box.className = 'bn-prod-box'; box.dataset.id = e.data.id; box.dataset.ratio = e.data.ratio||1;
@@ -2188,8 +2214,9 @@
      SCBN_APP：商品範圍（top:15,height:175）比背景色色塊（top:46,height:154）
        更早開始，上緣那一小段（15~46）其實是露在背景色之外的透明區。取兩者
        交集（46~190）當基準，SLAB 才不會超出底色，下緣也不會被裁掉。
-     HBN_*：CTA 色塊（.cta底 top:290,height:44）正好壓在商品範圍（34~334）的
-       下緣。把 CTA 高度扣掉（34~290），SLAB 的商品範圍才不會被 CTA 蓋住。 */
+     HBN_*、活動總覽_*：CTA 色塊（.cta底 top:290,height:44）正好壓在商品範圍
+       （34~334）的下緣，兩者座標完全相同（同一套 PS 模板衍生出來的版位）。
+       把 CTA 高度扣掉（34~290），SLAB 的商品範圍才不會被 CTA 蓋住。 */
   function _bnEffectiveSlabZoneRect(zone){
     var zRect = zone.getBoundingClientRect();
     var top = zRect.top, bottom = zRect.bottom;
@@ -2203,7 +2230,7 @@
       }
     }
 
-    if(/^HBN_/i.test(fname || '')){
+    if(/^HBN_/i.test(fname || '') || /^活動總覽_/i.test(fname || '')){
       var ctaEl = document.querySelector('.cta底') || document.querySelector('.逛逛去底') || document.querySelector('.cta圓底');
       var ctaRect = ctaEl && ctaEl.getBoundingClientRect();
       if(ctaRect && ctaRect.height > 0 && ctaRect.top > top && ctaRect.top < bottom){
@@ -2254,9 +2281,32 @@
       var offX = ((opts && isFinite(opts.x) ? Number(opts.x) : 50) - 50) / 100;
       var offY = ((opts && isFinite(opts.y) ? Number(opts.y) : 50) - 50) / 100;
 
+      /* 這裡以前是 zMax = Math.min(1, zMaxW)，也就是「紅框不得超出曝品範圍」，
+         等於把每個版位都夾在 100%。但各版位的預設構圖（SCBN 127%、其餘 120%）
+         本來就是刻意讓商品比曝品範圍再大一點、是手拉量出來的值，被這個上限
+         夾掉之後 100% 以上的預設全部失效（面板顯示 127% 但畫面其實是 100%）。
+         現在只保留上面那行「z 必須為正」，放大與否交給預設值和滑桿決定。 */
+
       var newW = nw*scale*z, newH = nh*scale*z;
       var imgLeft = anchorX - (scaledDredLeft + scaledDredW/2)*z + offX*(cRect.width || 1);
       var imgTop  = anchorY - (scaledDredTop  + scaledDredH/2)*z + offY*(cRect.height || 1);
+
+      /* 位移夾限：把飄出曝品範圍的紅框推回來。
+         但這只有在紅框「塞得進」該軸時才成立——z > 100% 時紅框本來就比曝品
+         範圍大，兩邊同時超出，上下都夾的結果會變成硬貼齊某一邊，把預設的
+         x/y（例如 SCBN 的 47/29）整個蓋掉。所以改成逐軸判斷：塞得進的軸才夾，
+         塞不進的軸就尊重預設／滑桿給的位移。 */
+      var dredL = imgLeft + scaledDredLeft*z, dredT = imgTop + scaledDredTop*z;
+      var dredW = scaledDredW*z, dredH = scaledDredH*z;
+      var zoneL = zoneLeftRel, zoneT = zoneTopRel;
+      if(dredW <= zoneW + 0.5){
+        if(dredL < zoneL) imgLeft += zoneL - dredL;
+        else if(dredL + dredW > zoneL + zoneW) imgLeft -= (dredL + dredW) - (zoneL + zoneW);
+      }
+      if(dredH <= zoneH + 0.5){
+        if(dredT < zoneT) imgTop += zoneT - dredT;
+        else if(dredT + dredH > zoneT + zoneH) imgTop -= (dredT + dredH) - (zoneT + zoneH);
+      }
 
       if(bgContainer){
         bgContainer.style.backgroundImage = 'url(' + src + ')';
@@ -2567,12 +2617,19 @@
      如果目前根本沒有主品（例如只上傳了左配品/右配品，或主品被移除），
      這個版位就固定不顯示任何商品，不會拿配品頂替。 */
   function applySingleProductOnlyIfNeeded(zone){
-    if(!_bnSingleProductOnlyTemplate || !zone) return;
-    zone.querySelectorAll('.bn-char-box').forEach(function(b){ b.style.display = 'none'; });
+    if(!zone) return;
     var boxes = Array.prototype.slice.call(zone.querySelectorAll('.bn-prod-box'));
     if(!boxes.length) return;
-    var main = boxes.filter(function(b){ return (b.dataset.position || '0') === '0'; })[0] || null;
-    boxes.forEach(function(b){ b.style.display = (b === main) ? '' : 'none'; });
+
+    if(_bnSingleProductOnlyTemplate){
+      zone.querySelectorAll('.bn-char-box').forEach(function(b){ b.style.display = 'none'; });
+      var main = boxes.filter(function(b){ return (b.dataset.position || '0') === '0'; })[0] || null;
+      boxes.forEach(function(b){ b.style.display = (b === main) ? '' : 'none'; });
+    }
+    else if(_bnSingleProductForLogoWallTemplate){
+      /* 首頁LOGO牆：只顯示第一個商品，隱藏其他 */
+      boxes.forEach(function(b, i){ b.style.display = (i === 0) ? '' : 'none'; });
+    }
   }
 
   /* ── 畫布文字直接點擊編輯 ── */
@@ -2851,6 +2908,21 @@
   /* 中文數字（一～十）豁免：banwords.xlsx 有「一→1」…「十→10」這幾條
      自動改字規則，勾了豁免就跟著 $／千分位一起跳過。旗標存在元素上，
      每次 _sendUpdate 都會帶給父層，否則下一次編輯又會被改回阿拉伯數字。 */
+  /* 阿拉伯數字 ⇄ 中文數字：逐字對應 0～9。
+     轉中文時會一併去掉 $ 與千分位逗號（「$5」→「五」）。
+     多位數是逐字轉（「50」→「五零」），不會轉成「五十」這種讀法。 */
+  var _CN_DIGITS = ['零','一','二','三','四','五','六','七','八','九'];
+  function _digitsToCn(t){
+    return String(t || '')
+      .replace(/\$/g, '')
+      .replace(/(\d),(?=\d{3}(?!\d))/g, '$1')
+      .replace(/[0-9]/g, function(d){ return _CN_DIGITS[Number(d)]; });
+  }
+  function _cnToDigits(t){
+    return String(t || '').replace(/[零一二三四五六七八九]/g, function(c){
+      return String(_CN_DIGITS.indexOf(c));
+    });
+  }
   function _getNumeralExempt(el){ return el.dataset.numeralExempt === '1'; }
   function _setNumeralExempt(el, on){
     if(on) el.dataset.numeralExempt = '1';
@@ -2966,6 +3038,24 @@
           _sendUpdate(el, cls);
         });
       }
+    }
+
+    /* 阿拉伯數字 ⇄ 中文數字（選取含 $ 一起選也可以）。
+       轉成中文數字時一併開啟中文數字豁免，否則下一次同步就會被
+       banwords 的「一→1」規則改回阿拉伯數字；要還原就再選取一次右鍵解除。 */
+    if(/[0-9]/.test(savedSelText)){
+      menuBtn('數字轉中文數字（暫不轉回阿拉伯數字）', function(){
+        _setNumeralExempt(el, true);
+        if(savedRange) _replaceSelText(savedRange, _digitsToCn(savedSelText));
+        _sendUpdate(el, cls);
+      });
+    }
+    if(/[零一二三四五六七八九]/.test(savedSelText)){
+      menuBtn('中文數字轉回阿拉伯數字（解除豁免）', function(){
+        _setNumeralExempt(el, false);
+        if(savedRange) _replaceSelText(savedRange, _cnToDigits(savedSelText));
+        _sendUpdate(el, cls);
+      });
     }
 
     menu.style.left = Math.min(e.clientX, window.innerWidth  - 230) + 'px';

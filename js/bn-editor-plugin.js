@@ -1252,6 +1252,11 @@
         }
       }
 
+      /* 這裡原本有一個 bn-bg-slab-clamped 的接收器：版位端把 SLAB 縮放夾在
+         100% 之後，回報實際值來修正面板滑桿。現在版位端不再夾限（各版位的
+         預設構圖 SCBN 127%、其餘 120% 本來就要超過 100%），沒有人會送這個
+         訊息，接收器就一併移除，避免留下「會自動改掉你設定的 %」的錯覺。 */
+
       /* 舊的版位切換函式保留但不使用 */
       function bindBgLayoutSwitch(){
         document.querySelectorAll('.preview-block').forEach(function(block){
@@ -1304,14 +1309,17 @@
              （點擊版位切換要編輯哪個版位的背景）已經被下面「每個版位
              各自的浮動面板」（buildBgPanels）取代，不需要再呼叫這個
              舊函式，直接跳過即可。 */
-          /* 把已有的狀態推給新 iframe */
+          /* 把已有的狀態推給新 iframe。
+             一定要走 bgPostForState()，不能直接送 bn-bg：SLAB 底圖必須用
+             bn-bg-slab 才會依版位的曝品範圍重算對齊。這裡以前寫死 bn-bg，
+             結果 iframe 只要重新 ready 一次（字體載入完成、版位重繪…），
+             畫布上已經對好的 SLAB 底圖就會被降級成一般背景——變成置中
+             縮放、商品範圍的 40% 線框也退回粉紅色塊。 */
           var st = getBgState(id);
           if(st.src && !isNoImageBackgroundLayout(id, null)){
             document.querySelectorAll('.preview-block iframe').forEach(function(ifrEl){
               var bnid = getIfrBnid(ifrEl);
-              if(bnid && String(bnid)===String(id)){
-                try{ ifrEl.contentWindow.postMessage({type:'bn-bg',src:st.src,fit:st.fit,scale:st.scale,x:st.x,y:st.y},'*');}catch(_){}
-              }
+              if(bnid && String(bnid)===String(id)) bgPostForState(ifrEl, st, st.src);
             });
           }
         }, 300);

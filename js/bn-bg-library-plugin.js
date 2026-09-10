@@ -216,30 +216,50 @@
       '.bn-bglib-hint{font-size:12px;color:#8b949e;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
       '.bn-bglib-empty{border:1px dashed #30363d;border-radius:10px;padding:24px;text-align:center;color:#8b949e;line-height:1.7;grid-column:1/-1}',
       '.bn-bglib-actions{display:flex;gap:8px;align-items:center;flex-shrink:0}',
-      /* ── SLAB 雙圖比對視窗 ── */
-      '.bn-slab-overlay{position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:2147483001;display:none;align-items:center;justify-content:center;padding:24px}',
-      '.bn-slab-overlay.open{display:flex}',
-      '.bn-slab-modal{width:min(880px,96vw);max-height:92vh;overflow:auto;background:#111827;border:1px solid #30363d;border-radius:14px;box-shadow:0 24px 80px rgba(0,0,0,.65);color:#e6edf3;font-family:"Segoe UI","PingFang TC",Arial,sans-serif}',
-      '.bn-slab-head{display:flex;align-items:center;gap:12px;padding:14px 18px;background:#161b22;border-bottom:1px solid #30363d}',
-      '.bn-slab-head h3{font-size:15px;margin:0;flex:1}',
-      '.bn-slab-body{padding:16px}',
-      '.bn-slab-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}',
-      '.bn-slab-slot{border:2px dashed #30363d;border-radius:12px;padding:10px;text-align:center;background:#0d1117;min-height:210px;display:flex;flex-direction:column;gap:8px;cursor:pointer;transition:border-color .15s,background .15s}',
-      '.bn-slab-slot:hover,.bn-slab-slot.over{border-color:#58a6ff;background:#111a27}',
-      '.bn-slab-slot.filled{border-style:solid;border-color:#2f81f7}',
-      '.bn-slab-slot-title{font-size:12px;font-weight:700;color:#dde3f0}',
-      '.bn-slab-thumb{flex:1;display:flex;align-items:center;justify-content:center;min-height:130px}',
-      '.bn-slab-thumb img{max-width:100%;max-height:150px;object-fit:contain;display:block;border-radius:6px;background:repeating-conic-gradient(#20262e 0% 25%,#161b22 0% 50%) 50%/14px 14px}',
-      '.bn-slab-hint{font-size:11px;color:#8b949e;line-height:1.6}',
-      '.bn-slab-hint b{color:#f0883e}',
-      '.bn-slab-report{margin-top:14px;padding:11px 13px;border-radius:10px;background:#0d1117;border:1px solid #30363d;font-size:12px;line-height:1.8;color:#c9d3df}',
-      '.bn-slab-report .ok{color:#3fb950;font-weight:700}',
-      '.bn-slab-report .warn{color:#f0883e;font-weight:700}',
-      '.bn-slab-foot{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:13px 18px;background:#161b22;border-top:1px solid #30363d}',
-      '.bn-slab-btn{border:0;border-radius:8px;padding:8px 15px;font-weight:700;cursor:pointer;font-size:13px}',
-      '.bn-slab-btn.primary{background:#1f6feb;color:#fff}',
-      '.bn-slab-btn.primary:disabled{opacity:.45;cursor:not-allowed}',
-      '.bn-slab-btn.ghost{background:#21262d;color:#e6edf3;border:1px solid #30363d}'
+      /* ── SLAB 商品對位視窗 ── */
+      '.bn-fit-overlay{position:fixed;inset:0;background:rgba(0,0,0,.78);z-index:2147483001;display:none;align-items:center;justify-content:center;padding:20px}',
+      '.bn-fit-overlay.open{display:flex}',
+      '.bn-fit-modal{width:min(780px,96vw);max-height:94vh;overflow:auto;background:#111827;border:1px solid #30363d;border-radius:14px;box-shadow:0 24px 80px rgba(0,0,0,.65);color:#e6edf3;font-family:"Segoe UI","PingFang TC",Arial,sans-serif}',
+      '.bn-fit-head{display:flex;align-items:center;gap:10px;padding:13px 18px;background:#161b22;border-bottom:1px solid #30363d}',
+      '.bn-fit-head h3{font-size:15px;margin:0;flex:1}',
+      '.bn-fit-body{padding:15px 18px;display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap}',
+      /* 舞台 = 輸出的 1200×1200 畫面，所有座標都用百分比，跟實際顯示尺寸無關 */
+      '.bn-fit-stage{position:relative;width:min(44vh,360px);height:min(44vh,360px);flex:0 0 auto;border-radius:10px;overflow:hidden;cursor:grab;touch-action:none;user-select:none;background:repeating-conic-gradient(#20262e 0 25%,#161b22 0 50%) 50%/16px 16px}',
+      '.bn-fit-stage.dragging{cursor:grabbing}',
+      '.bn-fit-plate{position:absolute;inset:0}',
+      '.bn-fit-imgwrap{position:absolute}',
+      '.bn-fit-imgwrap img{width:100%;height:100%;display:block;-webkit-user-drag:none}',
+      '.bn-fit-prod{display:none}',
+      '.bn-fit-guide{position:absolute;inset:0;pointer-events:none}',
+      '.bn-fit-guide img{width:100%;height:100%;display:block}',
+      /* 建議範圍框.PNG 載不到時的備援：直接畫出 DRED 紅框 */
+      '.bn-fit-dred{position:absolute;border:2px solid rgba(255,0,0,.8);border-radius:2px;pointer-events:none}',
+      '.bn-fit-tip{position:absolute;left:50%;bottom:9px;transform:translateX(-50%);display:flex;align-items:center;gap:7px;white-space:nowrap;background:rgba(13,17,23,.88);border:1px solid #30363d;border-radius:999px;padding:5px 12px 5px 8px;font-size:11px;color:#e6edf3;pointer-events:none;transition:opacity .4s}',
+      '.bn-fit-stage.touched .bn-fit-tip{opacity:0}',
+      /* 純 CSS 滑鼠滾輪提示動畫（不需要 gif 檔） */
+      '.bn-fit-mouse{position:relative;width:15px;height:23px;border:1.5px solid currentColor;border-radius:8px;flex:0 0 auto;opacity:.85}',
+      '.bn-fit-mouse::before{content:"";position:absolute;left:50%;top:4px;width:2px;height:6px;margin-left:-1px;border-radius:2px;background:#58a6ff;animation:bnFitWheel 1.8s ease-in-out infinite}',
+      '@keyframes bnFitWheel{0%,100%{transform:translateY(0);opacity:1}22%{transform:translateY(-3px);opacity:.3}50%{transform:translateY(0);opacity:1}72%{transform:translateY(7px);opacity:.3}}',
+      '.bn-fit-arrows{display:flex;flex-direction:column;gap:1px;font-size:9px;line-height:1;flex:0 0 auto}',
+      '.bn-fit-arrows i{font-style:normal;animation:bnFitArrow 1.8s ease-in-out infinite}',
+      '.bn-fit-arrows i+i{animation-delay:.9s}',
+      '@keyframes bnFitArrow{0%,100%{opacity:.25}18%{opacity:1;color:#58a6ff}55%{opacity:.25}}',
+      '.bn-fit-side{flex:1;min-width:230px;font-size:12px;line-height:1.75;color:#c9d3df}',
+      '.bn-fit-call{background:#0d1117;border:1px solid #30363d;border-radius:10px;padding:10px 13px;color:#ff8f88;font-size:13px;font-weight:500}',
+      '.bn-fit-call b{font-size:15px}',
+      '.bn-fit-row{display:flex;align-items:center;gap:9px;margin:13px 0 4px}',
+      '.bn-fit-row input[type=range]{flex:1;min-width:0;accent-color:#1f6feb}',
+      '.bn-fit-val{min-width:54px;text-align:right;font-weight:700;font-variant-numeric:tabular-nums}',
+      '.bn-fit-note{font-size:11px;color:#8b949e;line-height:1.75;margin-top:9px}',
+      '.bn-fit-note .ok{color:#3fb950;font-weight:700}',
+      '.bn-fit-note .warn{color:#f0883e;font-weight:700}',
+      '.bn-fit-note .cy{color:#22d3ee;font-weight:700}',
+      '.bn-fit-foot{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px 18px;background:#161b22;border-top:1px solid #30363d}',
+      '.bn-fit-btn{border:0;border-radius:8px;padding:8px 15px;font-weight:700;cursor:pointer;font-size:13px}',
+      '.bn-fit-btn.primary{background:#1f6feb;color:#fff}',
+      '.bn-fit-btn.primary:disabled{opacity:.45;cursor:not-allowed}',
+      '.bn-fit-btn.ghost{background:#21262d;color:#e6edf3;border:1px solid #30363d}',
+      '.bn-fit-btn.ghost:hover{border-color:#58a6ff}'
     ].join('\n');
     document.head.appendChild(style);
   }
@@ -655,11 +675,22 @@
   var SLAB_DEFAULT_PARAMS = [
     /* SCBN：扁版位，構圖是實際手拉量出來的專屬參數 */
     { test: /SCBN/i,    scale: 127, x: 47, y: 29 },
-    /* FB_POST：維持純 DRED 對齊，不額外放大 */
-    { test: /FB_POST/i, scale: 100, x: 50, y: 50 }
+    /* FB_POST：102% */
+    { test: /FB_POST/i, scale: 102, x: 50, y: 50 },
+    /* ddcard：112%，垂直位置 54 */
+    { test: /ddcard/i,  scale: 112, x: 50, y: 54 },
+    /* LPBN_APP 系列：74% */
+    { test: /LPBN_APP/i, scale: 74, x: 56, y: 50 },
+    /* LPBN_PC 系列：107% */
+    { test: /LPBN_PC/i, scale: 107, x: 52, y: 50 },
+    /* AMS BN：124% */
+    { test: /AMS\s*BN/i, scale: 124, x: 52, y: 50 }
   ];
-  /* 其餘版位（含 HBN）一律以 100% 為基準，再減掉與 layout 的差距 */
-  var SLAB_FALLBACK_PARAMS = { scale: 100, x: 50, y: 50 };
+  /* 其餘版位（含 HBN、IG、Coin_page、Search_Image）一律 120%。
+     注意：這裡的 % 跟「SLAB 商品對位」視窗裡用滾輪把商品縮到紅框的 %
+     是兩回事，互不相關——對位視窗負責把商品「對齊到紅框」，這組預設是
+     圖套進畫布後，各版位相對於 DRED 基準位置的固定構圖放大值。 */
+  var SLAB_FALLBACK_PARAMS = { scale: 120, x: 50, y: 50 };
   function slabDefaultsFor(iframe){
     var src = '';
     try{ src = decodeURIComponent(String((iframe && (iframe.getAttribute('src') || iframe.src)) || '')); }
@@ -670,10 +701,10 @@
     return SLAB_FALLBACK_PARAMS;
   }
 
-  /* ── 兩張圖比對用的像素分析 ───────────────────────────────
-     layout 圖：找出紅框（商品範圍）的範圍
-     slab 完成圖：找出商品本體的範圍（有 alpha 用透明區，純色背景則從四角取底色）
-     兩邊都換成「佔整張圖高度的比例」再相比，兩張圖解析度不同也能比。 */
+  /* ── SLAB 圖的像素分析 ─────────────────────────────────
+     找出商品本體在圖上的範圍，用來在對位視窗裡「先自動把商品縮放到紅框」，
+     使用者再用滾輪／拖曳微調。偵測只是起點，最終以人工確認的畫面為準，
+     所以不需要再回頭去加減各版位的預設 %。 */
 
   function loadImage(src){
     return new Promise(function(resolve, reject){
@@ -698,100 +729,6 @@
     return { data: ctx.getImageData(0, 0, cw, ch).data, w: cw, h: ch };
   }
 
-  function bboxOf(px, isInside){
-    var minX = px.w, minY = px.h, maxX = -1, maxY = -1;
-    for(var y = 0; y < px.h; y++){
-      for(var x = 0; x < px.w; x++){
-        var i = (y * px.w + x) * 4;
-        if(!isInside(px.data[i], px.data[i+1], px.data[i+2], px.data[i+3])) continue;
-        if(x < minX) minX = x;
-        if(x > maxX) maxX = x;
-        if(y < minY) minY = y;
-        if(y > maxY) maxY = y;
-      }
-    }
-    if(maxX < 0) return null;
-    return { x:minX, y:minY, w:maxX-minX+1, h:maxY-minY+1, imgW:px.w, imgH:px.h };
-  }
-
-  /* layout 上標示商品範圍的框線。支援兩種來源：
-       ① 建議範圍框.PNG 的純紅框
-       ② 實際 layout 圖的 REF 框（REF-01 淺綠、REF-02/03 淺藍），可能同時有多個框
-     多個框時取聯集（整組商品的擺放範圍）。
-     REF 標籤是同色實心色塊，會被 stripSolidBlocks() 濾掉，只留細框線。 */
-  var FRAME_COLORS = [
-    { name:'紅框',  test:function(r,g,b){ return r > 90 && r-g > 55 && r-b > 55; } },
-    { name:'綠框',  test:function(r,g,b){ return g > 150 && g-r > 45 && g-b > 25; } },
-    { name:'藍框',  test:function(r,g,b){ return b > 150 && b-r > 45 && b-g > 15; } }
-  ];
-
-  /* 只保留細線：框線在水平或垂直方向必有一邊很細，實心標籤色塊兩邊都粗。 */
-  function stripSolidBlocks(mask, w, h, maxrun){
-    maxrun = maxrun || 9;
-    var out = new Uint8Array(w * h), x, y, s;
-    for(y = 0; y < h; y++){
-      x = 0;
-      while(x < w){
-        if(!mask[y*w+x]){ x++; continue; }
-        s = x;
-        while(x < w && mask[y*w+x]) x++;
-        if(x - s <= maxrun){ for(var k = s; k < x; k++) out[y*w+k] = 1; }
-      }
-    }
-    for(x = 0; x < w; x++){
-      y = 0;
-      while(y < h){
-        if(!mask[y*w+x]){ y++; continue; }
-        s = y;
-        while(y < h && mask[y*w+x]) y++;
-        if(y - s <= maxrun){ for(var j = s; j < y; j++) out[j*w+x] = 1; }
-      }
-    }
-    return out;
-  }
-
-  function detectLayoutFrame(img){
-    var px = imageToPixels(img);
-    var d = px.data, w = px.w, h = px.h;
-    var best = null;
-    FRAME_COLORS.forEach(function(fc){
-      var mask = new Uint8Array(w * h), n = 0;
-      for(var i = 0, p = 0; i < d.length; i += 4, p++){
-        if(d[i+3] > 24 && fc.test(d[i], d[i+1], d[i+2])){ mask[p] = 1; n++; }
-      }
-      if(n < 40) return;
-      var thin = stripSolidBlocks(mask, w, h);
-      var minX = w, minY = h, maxX = -1, maxY = -1, cnt = 0;
-      for(var y = 0; y < h; y++){
-        for(var x = 0; x < w; x++){
-          if(!thin[y*w+x]) continue;
-          cnt++;
-          if(x < minX) minX = x;
-          if(x > maxX) maxX = x;
-          if(y < minY) minY = y;
-          if(y > maxY) maxY = y;
-        }
-      }
-      if(maxX < 0 || cnt < 40) return;
-      var rect = { x:minX, y:minY, w:maxX-minX+1, h:maxY-minY+1, imgW:w, imgH:h, color:fc.name, px:cnt };
-      /* 多種顏色都有框時，取框線像素最多的那組（主要的商品範圍標示） */
-      if(!best || rect.px > best.px) best = rect;
-      /* 同時存在綠框＋藍框（REF-01/02/03）時取聯集 */
-      if(best && best !== rect){
-        best = {
-          x: Math.min(best.x, rect.x), y: Math.min(best.y, rect.y),
-          w: Math.max(best.x+best.w, rect.x+rect.w) - Math.min(best.x, rect.x),
-          h: Math.max(best.y+best.h, rect.y+rect.h) - Math.min(best.y, rect.y),
-          imgW: w, imgH: h,
-          color: best.color + '＋' + rect.color,
-          px: best.px + rect.px
-        };
-      }
-    });
-    return best;
-  }
-
-  /* 商品本體：先看有沒有透明區，有就取非透明；沒有就用四角底色反推 */
   function rgbHsv(r, g, b){
     var mx = Math.max(r, g, b), mn = Math.min(r, g, b), df = mx - mn, h = 0;
     if(df){
@@ -803,29 +740,66 @@
     return { h:h, s: mx ? df / mx * 255 : 0, v: mx };
   }
 
+  /* 判斷用的像素分類（都排除米色／褐色／橘色系＝背景、檯面、木質道具、暖光） */
+  function isBeige(c){ return c.h >= 15 && c.h <= 60 && c.s < 200; }
+  function isColorProduct(r, g, b){        /* 有顏色的商品：粉紅盒、藍綠軟管 */
+    var c = rgbHsv(r, g, b);
+    return !isBeige(c) && c.s >= 75 && c.v >= 105;
+  }
+  function isDarkOrColor(r, g, b){         /* 再加上深色（黑色充電器…但也會吃到陰影） */
+    var c = rgbHsv(r, g, b);
+    if(isBeige(c)) return false;
+    if(c.v < 105) return true;
+    return c.s >= 75;
+  }
+
   /* 商品本體：
      ① 有透明區（去背 PNG）→ 直接取非透明範圍，最準
-     ② 純色／漸層背景（米色棚拍、檯面、陰影、道具）→ 用「深色或高彩度且非米色系」
-        判斷。單純比對四角底色會把檯面與陰影一起吃進來，範圍會嚴重高估。 */
+     ② 其他 → 以「有顏色的商品」為準。
+        本來連深色像素一起算，但情境圖（乾燥花、窗簾、陰影、暗角）會有大量
+        深色像素散佈全圖，實測某張情境圖被誤判成佔高度 96%（實際約 28%）。
+        改用彩色錨點後 A/B 兩張的結果完全不變（24.8% / 47.2%），情境圖則修正
+        為 27.7%——因為比的是「高度」，而最高的本來就是彩色的盒子／軟管，
+        黑色充電器比較矮、不影響高度。
+        真的幾乎沒有彩色像素時（例如整組都是黑白商品）才退回舊規則。 */
   function detectProduct(img){
     var px = imageToPixels(img);
     var d = px.data, i, hasAlpha = false;
     for(i = 3; i < d.length; i += 4){
       if(d[i] < 240){ hasAlpha = true; break; }
     }
+    var out = { hasAlpha: hasAlpha, plate: hasAlpha ? null : plateColorOf(px) };
     if(hasAlpha){
-      return { rect: bboxTrim(px, function(r, g, b, a){ return a > 24; }), mode: '透明背景' };
+      out.rect = bboxTrim(px, function(r, g, b, a){ return a > 24; });
+      out.mode = '透明背景';
+      return out;
     }
-    return {
-      rect: bboxTrim(px, function(r, g, b){
-        var c = rgbHsv(r, g, b);
-        if(c.h >= 15 && c.h <= 60 && c.s < 200) return false; /* 米色／褐色／橘色：背景、檯面、道具 */
-        if(c.v < 105) return true;                            /* 深色商品（如黑色充電器） */
-        if(c.s < 75) return false;                            /* 白灰米、陰影、透明壓頭 */
-        return true;
-      }),
-      mode: '純色背景'
-    };
+    var colorCount = 0, total = px.w * px.h;
+    for(i = 0; i < d.length; i += 4){
+      if(isColorProduct(d[i], d[i+1], d[i+2])) colorCount++;
+    }
+    if(colorCount > total * 0.002){
+      out.rect = bboxTrim(px, isColorProduct);
+      out.mode = '情境圖（取彩色商品）';
+      return out;
+    }
+    out.rect = bboxTrim(px, isDarkOrColor);
+    out.mode = '純色背景';
+    return out;
+  }
+
+  /* 四角的平均底色：對位時把圖縮小，1200×1200 會露出四周的空白，
+     用原圖四角的底色補起來，棚拍圖看起來才會是連續的背景。
+     只要有一角是半透明就回 null（去背 PNG 要留透明，讓版位底色透出來）。 */
+  function plateColorOf(px){
+    var d = px.data, w = px.w, h = px.h;
+    var pts = [[1,1],[w-2,1],[1,h-2],[w-2,h-2]], sum = [0,0,0], k;
+    for(var n = 0; n < pts.length; n++){
+      var i = ((pts[n][1] * w) + pts[n][0]) * 4;
+      if(d[i+3] < 250) return null;
+      for(k = 0; k < 3; k++) sum[k] += d[i+k];
+    }
+    return 'rgb(' + Math.round(sum[0]/4) + ',' + Math.round(sum[1]/4) + ',' + Math.round(sum[2]/4) + ')';
   }
 
   /* 用百分位裁掉零星雜點，避免單一雜訊像素把範圍拉大 */
@@ -849,45 +823,11 @@
     return { x:x0, y:y0, w:x1-x0+1, h:y1-y0+1, imgW:px.w, imgH:px.h };
   }
 
-  /* 兩張圖各自量出「佔整張圖高度的百分比」，直接相減得到差距（百分點）。
-     例：layout 框佔 23.8%、slab 商品佔 67.3% → 67.3 − 23.8 = 43.5，
-         HBN 預設 120% → 120 − 43.5 ≈ 76.5%。
-     注意是相減、不是算倍率（倍率會變成 67.3/23.8 = 2.83 → +183%，不是要的）。
-     兩張圖解析度不同也沒關係，因為比的都是「佔自己那張圖的比例」，
-     等同於先把兩張正規化到同尺寸再量。高度為基準，跟 DRED 對齊規則一致。 */
-  function compareSlabToLayout(layoutImg, slabImg){
-    var frame = detectLayoutFrame(layoutImg);
-    var prod = detectProduct(slabImg);
-    if(!frame || !prod.rect) return null;
-    var layoutPctH = frame.h / frame.imgH * 100;
-    var slabPctH   = prod.rect.h / prod.rect.imgH * 100;
-    if(!(layoutPctH > 0) || !(slabPctH > 0)) return null;
-    return {
-      layoutPctH: layoutPctH,
-      slabPctH: slabPctH,
-      diffPercent: Math.round((slabPctH - layoutPctH) * 10) / 10,
-      diffPercentW: Math.round((prod.rect.w / prod.rect.imgW - frame.w / frame.imgW) * 1000) / 10,
-      productMode: prod.mode,
-      frameColor: frame.color,
-      layoutFrame: frame,
-      slabProduct: prod.rect
-    };
-  }
-
   var _slabInput = null;
-  /* diffPercent：兩張圖「佔高度百分比」相減得到的差距（百分點）。
-     各版位預設 % 直接減掉它，一般版位／HBN 的基準是 100%，
-     例如 layout 23.8%、slab 67.3% → 差 43.5 → 100 − 43.5 = 56.5%。 */
-  function applySlabUpload(file, diffPercent){
-    if(!file) return;
-    var fr = new FileReader();
-    fr.onload = function(ev){
-      var dataUrl = ev.target.result;
-      applySlabDataUrl(dataUrl, diffPercent);
-    };
-    fr.readAsDataURL(file);
-  }
-  function applySlabDataUrl(dataUrl, diffPercent){
+  /* 送進來的一定是「已經在對位視窗調整好的 1200×1200 圖」，
+     所以各版位只要套用自己的預設參數就好，不再做任何 ± % 修正
+     （比例已經在對位視窗裡對齊到紅框了）。 */
+  function applySlabDataUrl(dataUrl){
     (function(){
       var iframes = Array.prototype.slice.call(document.querySelectorAll('.preview-block iframe'));
       var states = {};
@@ -900,12 +840,8 @@
         /* fit 用 'auto'：SLAB 走自己的對齊規則不看 fit，但「背景圖調整」面板
            在 cover 模式下會把縮放滑桿鎖住，用 auto 三個滑桿才都能調。 */
         var dp = slabDefaultsFor(iframe);
-        var scale = dp.scale;
-        if(isFinite(diffPercent) && diffPercent){
-          scale = Math.max(5, Math.min(700, Math.round(dp.scale - Number(diffPercent))));
-        }
         states[info.id] = {src:dataUrl, slab:true, fit:'auto',
-          scale:scale, x:dp.x, y:dp.y, _initialized:true};
+          scale:dp.scale, x:dp.x, y:dp.y, _initialized:true};
         applied = true;
       });
       if(typeof window._bnSetBgStates === 'function'){
@@ -923,232 +859,371 @@
       }
       try{ document.dispatchEvent(new CustomEvent('bn-state-dirty')); }catch(_){ }
       if(window._bnStatePlugin && typeof window._bnStatePlugin.toast === 'function'){
-        var msg = applied
-          ? ('已套用 SLAB 底圖' + (isFinite(diffPercent) && diffPercent
-              ? '（與 layout 差 ' + (diffPercent > 0 ? '+' : '') + diffPercent + '%，各版位縮放已同步'
-                + (diffPercent > 0 ? '減 ' : '加 ') + Math.abs(diffPercent) + '%）'
-              : '（各版位已依商品範圍同步縮放）'))
-          : '目前沒有可套用 SLAB 底圖的版位';
-        window._bnStatePlugin.toast(msg, applied ? 'ok' : 'err', 3000);
+        window._bnStatePlugin.toast(
+          applied ? '已套用 SLAB 底圖（各版位維持預設縮放）' : '目前沒有可套用 SLAB 底圖的版位',
+          applied ? 'ok' : 'err', 3000);
       }
     })();
   }
-  /* ── SLAB 雙圖比對浮動視窗 ─────────────────────────────
-     可一次選兩張（layout 圖 + slab 完成圖），左右並列顯示；只給一張時，
-     另一邊會提示補上，支援拖拉或點選檔案。兩張都有才會做比例比對。 */
-  var slabModal = null;
-  var slabPick = { layout:null, slab:null };   /* {dataUrl, name, img} */
-  var slabReportEl = null, slabApplyBtn = null, slabDiff = null;
+  /* ── SLAB 商品對位視窗 ───────────────────────────────────
+     上傳 SLAB 圖之後，先把「建議範圍框.PNG」壓在這張圖上面，請使用者把商品
+     縮放／拖曳到紅框（DRED）的範圍裡；開啟當下系統會先自動對位一次當起點，
+     人工再微調。按下套用時，會把調整後的畫面重新輸出成一張 1200×1200 的圖，
+     所以各版位完全沿用原本的 DRED 對齊規則與預設縮放 %，
+     不必再去比對 layout 圖、也不需要加減任何 %。 */
+  var DRED_REF = { size:1200, x:324, y:372, w:550, h:457 };   /* 從建議範圍框.PNG 量到的紅框 */
+  /* 套用到各版位時的最大下游放大倍率：合成後的 1200×1200 圖，會再被各版位的
+     曝品範圍尺寸 × 預設 % 拉伸一次（applyBnBgSlab 的 scale × z）。目前 17 個
+     版位裡最吃倍率的是 IG（曝品範圍幾何比例 ×1.214）× 120% 預設 ≈ ×1.46；
+     這裡抓 1.5 留一點餘裕。之後如果新增版位或改預設 %，實測到更高的倍率時
+     要回來調這個常數，否則解析度提示會偏樂觀。 */
+  var SLAB_WORST_LAYOUT_MULT = 1.5;
+  /* 相對於 jbpbn.html 的位置；載不到時退到下一個候選，全都失敗就改畫 DRED 備援框 */
+  var GUIDE_SRCS = ['程式檔案/建議範圍框.PNG', '../程式檔案/建議範圍框.PNG'];
 
-  function looksLikeLayoutName(name){
-    return /layout|範圍|框|guide|建議/i.test(String(name || ''));
-  }
+  var fitModal = null, fitStage = null, fitPlate = null, fitWrap = null, fitImg = null,
+      fitProdBox = null, fitDred = null, fitRange = null, fitVal = null,
+      fitNote = null, fitFileEl = null, fitApplyBtn = null;
+  /* 目前這張圖的對位狀態：
+       k     = 顯示倍率（原圖 1px → 輸出 k px）
+       cx/cy = 圖片中心落在輸出 1200×1200 座標的哪個位置
+       baseK = 原圖 100% 時的倍率（整張剛好填滿 1200） */
+  var fitState = null;
 
-  function ensureSlabModal(){
+  function fitClamp(v, lo, hi){ return v < lo ? lo : (v > hi ? hi : v); }
+
+  function ensureFitModal(){
     ensureStyle();
-    if(slabModal) return slabModal;
-    slabModal = document.createElement('div');
-    slabModal.id = 'bnSlabModal';
-    slabModal.className = 'bn-slab-overlay';
-    slabModal.innerHTML = ''+
-      '<div class="bn-slab-modal" role="dialog" aria-modal="true">'+
-        '<div class="bn-slab-head">'+
-          '<h3>📐 SLAB 底圖比對</h3>'+
-          '<button type="button" class="bn-slab-btn ghost bn-slab-swap">⇄ 左右互換</button>'+
-          '<button type="button" class="bn-slab-btn ghost bn-slab-close">關閉</button>'+
+    if(fitModal) return fitModal;
+    fitModal = document.createElement('div');
+    fitModal.id = 'bnSlabFitModal';
+    fitModal.className = 'bn-fit-overlay';
+    fitModal.innerHTML = ''+
+      '<div class="bn-fit-modal" role="dialog" aria-modal="true">'+
+        '<div class="bn-fit-head">'+
+          '<h3>📐 SLAB 商品對位</h3>'+
+          '<button type="button" class="bn-fit-btn ghost bn-fit-change">更換圖片</button>'+
+          '<button type="button" class="bn-fit-btn ghost bn-fit-close">關閉</button>'+
         '</div>'+
-        '<div class="bn-slab-body">'+
-          '<div class="bn-slab-grid">'+
-            '<div class="bn-slab-slot" data-slot="layout">'+
-              '<div class="bn-slab-slot-title">① layout 圖（含紅框商品範圍）</div>'+
-              '<div class="bn-slab-thumb"></div>'+
-              '<div class="bn-slab-hint">拖拉圖片到這裡，或點擊選擇檔案</div>'+
-            '</div>'+
-            '<div class="bn-slab-slot" data-slot="slab">'+
-              '<div class="bn-slab-slot-title">② slab 完成圖（正對式）</div>'+
-              '<div class="bn-slab-thumb"></div>'+
-              '<div class="bn-slab-hint">拖拉圖片到這裡，或點擊選擇檔案</div>'+
-            '</div>'+
+        '<div class="bn-fit-body">'+
+          '<div class="bn-fit-stage">'+
+            '<div class="bn-fit-plate"></div>'+
+            '<div class="bn-fit-imgwrap"><img alt=""><div class="bn-fit-prod"></div></div>'+
+            '<div class="bn-fit-guide"><img alt=""><div class="bn-fit-dred"></div></div>'+
+            '<div class="bn-fit-tip"><span class="bn-fit-mouse"></span>'+
+              '<span class="bn-fit-arrows"><i>▲</i><i>▼</i></span>滾輪縮放 · 拖曳移動</div>'+
           '</div>'+
-          '<div class="bn-slab-report"></div>'+
+          '<div class="bn-fit-side">'+
+            '<div class="bn-fit-call"><b>請把商品放大縮小到紅框範圍</b><br>'+
+              '紅框就是各版位的曝品範圍（DRED）。商品調到紅框內，套到每個版位時大小才會剛剛好。</div>'+
+            '<div class="bn-fit-note bn-fit-file"></div>'+
+            '<div class="bn-fit-row"><span>縮放</span>'+
+              '<input type="range" min="15" max="400" step="1" value="100">'+
+              '<span class="bn-fit-val">100%</span></div>'+
+            '<div class="bn-fit-note"></div>'+
+            '<div style="padding-top:12px;border-top:1px solid #404d61;margin-top:12px;font-size:12px;color:#8892a4">'+
+              '💡 建議圖片解析度至少 <b>2048×2048px (2K)</b> 以上</div>'+
+          '</div>'+
         '</div>'+
-        '<div class="bn-slab-foot">'+
-          '<div class="bn-slab-hint">比對的是「slab 商品本體」對「layout 紅框」佔畫面高度的比例；差多少，各版位預設縮放就減多少。</div>'+
-          '<button type="button" class="bn-slab-btn primary bn-slab-apply" disabled>套用到各版位</button>'+
+        '<div class="bn-fit-foot">'+
+          '<div style="display:flex;gap:8px">'+
+            '<button type="button" class="bn-fit-btn ghost bn-fit-auto">✨ 重新自動對位</button>'+
+            '<button type="button" class="bn-fit-btn ghost bn-fit-reset">↺ 回到原圖</button>'+
+          '</div>'+
+          '<button type="button" class="bn-fit-btn primary bn-fit-apply" disabled>套用到各版位</button>'+
         '</div>'+
       '</div>';
-    document.body.appendChild(slabModal);
-    slabReportEl = slabModal.querySelector('.bn-slab-report');
-    slabApplyBtn = slabModal.querySelector('.bn-slab-apply');
+    document.body.appendChild(fitModal);
 
-    slabModal.querySelector('.bn-slab-close').addEventListener('click', closeSlabModal);
-    slabModal.addEventListener('click', function(e){ if(e.target === slabModal) closeSlabModal(); });
-    slabModal.querySelector('.bn-slab-swap').addEventListener('click', function(){
-      var t = slabPick.layout; slabPick.layout = slabPick.slab; slabPick.slab = t;
-      renderSlabModal();
+    fitStage    = fitModal.querySelector('.bn-fit-stage');
+    fitPlate    = fitModal.querySelector('.bn-fit-plate');
+    fitWrap     = fitModal.querySelector('.bn-fit-imgwrap');
+    fitImg      = fitWrap.querySelector('img');
+    fitProdBox  = fitModal.querySelector('.bn-fit-prod');
+    fitDred     = fitModal.querySelector('.bn-fit-dred');
+    fitRange    = fitModal.querySelector('.bn-fit-row input');
+    fitVal      = fitModal.querySelector('.bn-fit-val');
+    fitFileEl   = fitModal.querySelector('.bn-fit-file');
+    fitNote     = fitModal.querySelectorAll('.bn-fit-note')[1];
+    fitApplyBtn = fitModal.querySelector('.bn-fit-apply');
+
+    /* 備援紅框（位置＝DRED 佔 1200×1200 的百分比），只有在 PNG 載不到時才顯示 */
+    var S = DRED_REF.size;
+    fitDred.style.left   = (DRED_REF.x / S * 100) + '%';
+    fitDred.style.top    = (DRED_REF.y / S * 100) + '%';
+    fitDred.style.width  = (DRED_REF.w / S * 100) + '%';
+    fitDred.style.height = (DRED_REF.h / S * 100) + '%';
+    fitDred.style.display = 'none';
+    loadGuideInto(fitModal.querySelector('.bn-fit-guide img'));
+
+    fitModal.querySelector('.bn-fit-close').addEventListener('click', closeFitModal);
+    fitModal.addEventListener('click', function(e){ if(e.target === fitModal) closeFitModal(); });
+    fitModal.querySelector('.bn-fit-change').addEventListener('click', function(){ pickSlabFile(); });
+    fitModal.querySelector('.bn-fit-auto').addEventListener('click', function(){
+      if(fitState){ fitAutoAlign(); fitStage.classList.add('touched'); }
     });
-    slabApplyBtn.addEventListener('click', function(){
-      if(!slabPick.slab) return;
-      closeSlabModal();
-      applySlabDataUrl(slabPick.slab.dataUrl, slabDiff && isFinite(slabDiff.diffPercent) ? slabDiff.diffPercent : null);
+    fitModal.querySelector('.bn-fit-reset').addEventListener('click', function(){
+      if(fitState){ fitResetToOriginal(); fitStage.classList.add('touched'); }
+    });
+    fitApplyBtn.addEventListener('click', function(){
+      if(!fitState) return;
+      var out = fitCompose();
+      closeFitModal();
+      applySlabDataUrl(out);
     });
 
-    /* 每個 slot 支援拖拉 + 點擊選檔 */
-    slabModal.querySelectorAll('.bn-slab-slot').forEach(function(slot){
-      var key = slot.dataset.slot;
-      slot.addEventListener('dragover', function(e){ e.preventDefault(); slot.classList.add('over'); });
-      slot.addEventListener('dragleave', function(){ slot.classList.remove('over'); });
-      slot.addEventListener('drop', function(e){
-        e.preventDefault(); slot.classList.remove('over');
-        var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
-        if(f) readIntoSlot(key, f);
-      });
-      slot.addEventListener('click', function(){
-        var inp = document.createElement('input');
-        inp.type = 'file'; inp.accept = 'image/*'; inp.style.display = 'none';
-        inp.addEventListener('change', function(){
-          var f = inp.files && inp.files[0];
-          if(f) readIntoSlot(key, f);
-          inp.remove();
-        });
-        document.body.appendChild(inp);
-        inp.click();
-      });
+    /* 整個視窗都接受拖拉換圖 */
+    fitModal.addEventListener('dragover', function(e){ e.preventDefault(); });
+    fitModal.addEventListener('drop', function(e){
+      e.preventDefault();
+      var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+      if(f) openSlabFit(f);
     });
-    return slabModal;
+
+    /* 滾輪縮放：以游標所在的點為軸心，縮放時該點不會跑掉 */
+    fitStage.addEventListener('wheel', function(e){
+      if(!fitState) return;
+      e.preventDefault();
+      fitStage.classList.add('touched');
+      var r = fitStage.getBoundingClientRect();
+      /* 系数 0.0008 让滚轮放大缩小更细致，不会%跳的太快（对标滑桿拉的细致度） */
+      fitZoomTo(fitState.k * Math.exp(-e.deltaY * 0.0008),
+        (e.clientX - r.left) / r.width  * DRED_REF.size,
+        (e.clientY - r.top)  / r.height * DRED_REF.size);
+    }, { passive:false });
+
+    /* 拖曳平移 */
+    var drag = null;
+    fitStage.addEventListener('pointerdown', function(e){
+      if(!fitState) return;
+      try{ fitStage.setPointerCapture(e.pointerId); }catch(_){ }
+      fitStage.classList.add('dragging', 'touched');
+      var r = fitStage.getBoundingClientRect();
+      drag = { id:e.pointerId, x:e.clientX, y:e.clientY, s: DRED_REF.size / r.width };
+    });
+    fitStage.addEventListener('pointermove', function(e){
+      if(!drag || e.pointerId !== drag.id || !fitState) return;
+      fitState.cx += (e.clientX - drag.x) * drag.s;
+      fitState.cy += (e.clientY - drag.y) * drag.s;
+      drag.x = e.clientX; drag.y = e.clientY;
+      fitRender();
+    });
+    function endDrag(e){
+      if(!drag || (e && e.pointerId !== drag.id)) return;
+      try{ fitStage.releasePointerCapture(drag.id); }catch(_){ }
+      drag = null;
+      fitStage.classList.remove('dragging');
+    }
+    fitStage.addEventListener('pointerup', endDrag);
+    fitStage.addEventListener('pointercancel', endDrag);
+
+    fitRange.addEventListener('input', function(){
+      if(!fitState) return;
+      fitStage.classList.add('touched');
+      /* 用紅框中心當軸心，拉滑桿時商品才不會一邊放大一邊往角落跑 */
+      fitZoomTo(fitState.baseK * (Number(fitRange.value) / 100),
+        DRED_REF.x + DRED_REF.w / 2, DRED_REF.y + DRED_REF.h / 2);
+    });
+
+    document.addEventListener('keydown', function(e){
+      if(e.key === 'Escape' && fitModal.classList.contains('open')) closeFitModal();
+    });
+    return fitModal;
   }
 
-  function closeSlabModal(){ if(slabModal) slabModal.classList.remove('open'); }
+  /* 建議範圍框.PNG 本身就是透明底（四角 alpha=0，紅框 alpha=128），
+     直接疊上去就好，不需要去背或混合模式。 */
+  function loadGuideInto(imgEl){
+    var i = 0;
+    function next(){
+      if(i >= GUIDE_SRCS.length){
+        imgEl.style.display = 'none';
+        fitDred.style.display = 'block';   /* 圖載不到就自己畫一個紅框 */
+        return;
+      }
+      imgEl.src = GUIDE_SRCS[i++];
+    }
+    imgEl.onerror = next;
+    imgEl.onload = function(){ fitDred.style.display = 'none'; };
+    next();
+  }
 
-  function readIntoSlot(key, file){
+  function closeFitModal(){ if(fitModal) fitModal.classList.remove('open'); }
+
+  function fitRender(){
+    if(!fitState || !fitModal) return;
+    var S = DRED_REF.size;
+    var w = fitState.natW * fitState.k, h = fitState.natH * fitState.k;
+    fitWrap.style.left   = ((fitState.cx - w / 2) / S * 100) + '%';
+    fitWrap.style.top    = ((fitState.cy - h / 2) / S * 100) + '%';
+    fitWrap.style.width  = (w / S * 100) + '%';
+    fitWrap.style.height = (h / S * 100) + '%';
+    var pct = Math.round(fitState.k / fitState.baseK * 100);
+    fitRange.value = fitClamp(pct, Number(fitRange.min), Number(fitRange.max));
+    fitVal.textContent = pct + '%';
+    fitNote.innerHTML = fitNoteHtml();
+  }
+
+  /* 商品目前落在輸出座標（1200×1200）的哪個位置 */
+  function fitProductRectOut(){
+    var p = fitState && fitState.prod;
+    if(!p) return null;
+    var w = fitState.natW * fitState.k, h = fitState.natH * fitState.k;
+    var L = fitState.cx - w / 2, T = fitState.cy - h / 2;
+    return { x: L + p.x / p.imgW * w, y: T + p.y / p.imgH * h,
+             w: p.w / p.imgW * w,     h: p.h / p.imgH * h };
+  }
+
+  /* 解析度提示：k 是「原圖 1px → 合成後 1200×1200 圖裡的 1px」的放大倍率
+     （對位時商品占畫面比例越小，k 就要越大才能把商品放進紅框）。合成圖
+     之後還會被最吃倍率的版位再拉伸 SLAB_WORST_LAYOUT_MULT 倍，所以
+     k × SLAB_WORST_LAYOUT_MULT > 1 就代表最終顯示的像素數會超過原圖
+     實際擁有的像素數——也就是會被放大、有模糊風險。 */
+  function fitResolutionWarningHtml(){
+    if(!fitState || !fitState.k) return '';
+    var need = fitState.k * SLAB_WORST_LAYOUT_MULT;
+    if(need <= 1.05) return '';   /* 留一點緩衝，避免臨界值來回跳字 */
+    var w = Math.round(fitState.natW * need), h = Math.round(fitState.natH * need);
+    return '<br><span class="warn">⚠ 目前解析度偏低，套用到部分版位（如 IG）後畫面可能模糊</span>　' +
+      '建議換一張至少 ' + w + '×' + h + ' px 的原圖';
+  }
+
+  function fitNoteHtml(){
+    var r = fitProductRectOut();
+    if(!r) return '這張圖<span class="warn">自動抓不到商品範圍</span>，請直接用滾輪與拖曳把商品對進紅框。' + fitResolutionWarningHtml();
+    var pct = Math.round(r.h / DRED_REF.h * 100);
+    var pad = 3;
+    var inside = r.x >= DRED_REF.x - pad && r.y >= DRED_REF.y - pad &&
+                 r.x + r.w <= DRED_REF.x + DRED_REF.w + pad &&
+                 r.y + r.h <= DRED_REF.y + DRED_REF.h + pad;
+    return '<span class="cy">青色虛線</span>＝系統偵測到的商品範圍（' + esc(fitState.prodMode) + '）<br>' +
+      '商品高度目前是紅框的 <b>' + pct + '%</b>　' +
+      (inside ? '<span class="ok">✓ 已在紅框內</span>'
+              : '<span class="warn">⚠ 超出紅框</span>，請再縮小或移動') +
+      fitResolutionWarningHtml();
+  }
+
+  function fitZoomTo(nk, ax, ay){
+    if(!fitState) return;
+    nk = fitClamp(nk, fitState.baseK * 0.15, fitState.baseK * 4);
+    var r = nk / fitState.k;
+    fitState.cx = ax + (fitState.cx - ax) * r;
+    fitState.cy = ay + (fitState.cy - ay) * r;
+    fitState.k = nk;
+    fitRender();
+  }
+
+  /* 自動對位：把偵測到的商品縮到剛好放進紅框（寬高各取較嚴格的那一邊），
+     並讓商品中心對齊紅框中心。這只是給使用者一個起點，之後以人工調整為準。 */
+  function fitAutoAlign(){
+    var p = fitState && fitState.prod;
+    if(!p){ fitResetToOriginal(); return false; }
+    var pw = p.w / p.imgW * fitState.natW, ph = p.h / p.imgH * fitState.natH;
+    if(!(pw > 0) || !(ph > 0)){ fitResetToOriginal(); return false; }
+    var k = Math.min(DRED_REF.h / ph, DRED_REF.w / pw);
+    var pcx = (p.x + p.w / 2) / p.imgW, pcy = (p.y + p.h / 2) / p.imgH;
+    fitState.k  = k;
+    fitState.cx = (DRED_REF.x + DRED_REF.w / 2) - (pcx - 0.5) * fitState.natW * k;
+    fitState.cy = (DRED_REF.y + DRED_REF.h / 2) - (pcy - 0.5) * fitState.natH * k;
+    fitRender();
+    return true;
+  }
+
+  function fitResetToOriginal(){
+    if(!fitState) return;
+    fitState.k  = fitState.baseK;
+    fitState.cx = DRED_REF.size / 2;
+    fitState.cy = DRED_REF.size / 2;
+    fitRender();
+  }
+
+  /* 把目前畫面重畫成一張 1200×1200 的圖，之後各版位就照原本的規則吃這張圖 */
+  function fitCompose(){
+    var S = DRED_REF.size;
+    /* 完全沒動過、而且本來就是 1200×1200：直接用原圖，不要多做一次轉檔 */
+    if(fitState.natW === S && fitState.natH === S &&
+       Math.abs(fitState.k - fitState.baseK) < 1e-6 &&
+       Math.abs(fitState.cx - S / 2) < 0.5 && Math.abs(fitState.cy - S / 2) < 0.5){
+      return fitState.dataUrl;
+    }
+    var c = document.createElement('canvas');
+    c.width = S; c.height = S;
+    var ctx = c.getContext('2d');
+    if(fitState.plate){ ctx.fillStyle = fitState.plate; ctx.fillRect(0, 0, S, S); }
+    try{ ctx.imageSmoothingQuality = 'high'; }catch(_){ }
+    var w = fitState.natW * fitState.k, h = fitState.natH * fitState.k;
+    ctx.drawImage(fitState.img, fitState.cx - w / 2, fitState.cy - h / 2, w, h);
+    /* 不需要透明時輸出 JPEG：照片轉成 PNG 會讓 dataURL 大好幾倍，
+       這張圖會被寫進 _bgStates／本機暫存，體積差很有感。 */
+    var opaque = !fitState.hasAlpha && !!fitState.plate;
+    try{ return c.toDataURL(opaque ? 'image/jpeg' : 'image/png', 0.94); }
+    catch(_){ return fitState.dataUrl; }
+  }
+
+  function openSlabFit(file){
     if(!file || !/^image\//i.test(file.type || '')) return;
+    ensureFitModal();
+    fitModal.classList.add('open');
+    fitStage.classList.remove('touched');
+    fitApplyBtn.disabled = true;
+    fitNote.textContent = '讀取圖片中…';
     var fr = new FileReader();
     fr.onload = function(ev){
-      loadImage(ev.target.result).then(function(img){
-        slabPick[key] = { dataUrl: ev.target.result, name: file.name, img: img };
-        renderSlabModal();
-      }).catch(function(){});
+      var dataUrl = ev.target.result;
+      loadImage(dataUrl).then(function(img){
+        var det = null;
+        try{ det = detectProduct(img); }catch(_){ }
+        var natW = img.naturalWidth || img.width, natH = img.naturalHeight || img.height;
+        fitState = {
+          img: img, dataUrl: dataUrl, natW: natW, natH: natH,
+          baseK: DRED_REF.size / Math.max(natW, natH),
+          prod: (det && det.rect) || null,
+          prodMode: (det && det.mode) || '',
+          hasAlpha: !!(det && det.hasAlpha),
+          plate: (det && det.plate) || null,
+          k: 1, cx: DRED_REF.size / 2, cy: DRED_REF.size / 2
+        };
+        fitImg.src = dataUrl;
+        fitPlate.style.background = fitState.plate || 'transparent';
+        var p = fitState.prod;
+        if(p){
+          fitProdBox.style.display = 'block';
+          fitProdBox.style.left   = (p.x / p.imgW * 100) + '%';
+          fitProdBox.style.top    = (p.y / p.imgH * 100) + '%';
+          fitProdBox.style.width  = (p.w / p.imgW * 100) + '%';
+          fitProdBox.style.height = (p.h / p.imgH * 100) + '%';
+        } else {
+          fitProdBox.style.display = 'none';
+        }
+        fitFileEl.textContent = file.name + '　' + natW + '×' + natH + ' px';
+        fitAutoAlign();
+        fitApplyBtn.disabled = false;
+      }).catch(function(){
+        fitNote.innerHTML = '<span class="warn">圖片載入失敗</span>，請換一張再試。';
+      });
     };
     fr.readAsDataURL(file);
   }
 
-  function renderSlabModal(){
-    if(!slabModal) return;
-    slabModal.querySelectorAll('.bn-slab-slot').forEach(function(slot){
-      var key = slot.dataset.slot, pick = slabPick[key];
-      var thumb = slot.querySelector('.bn-slab-thumb');
-      var hint = slot.querySelector('.bn-slab-hint');
-      thumb.innerHTML = '';
-      if(pick){
-        slot.classList.add('filled');
-        var im = document.createElement('img');
-        im.src = pick.dataUrl;
-        thumb.appendChild(im);
-        hint.innerHTML = esc(pick.name) + '<br>' + (pick.img.naturalWidth) + '×' + (pick.img.naturalHeight) + ' px（點擊可更換）';
-      } else {
-        slot.classList.remove('filled');
-        hint.innerHTML = key === 'layout'
-          ? '<b>請補上 layout 圖</b>（含紅框的商品範圍圖）<br>拖拉到這裡，或點擊選擇檔案'
-          : '<b>請補上 slab 完成圖</b>（正對式商品圖）<br>拖拉到這裡，或點擊選擇檔案';
-      }
-    });
-
-    slabDiff = null;
-    if(slabPick.layout && slabPick.slab){
-      try{ slabDiff = compareSlabToLayout(slabPick.layout.img, slabPick.slab.img); }catch(_){ slabDiff = null; }
-    }
-
-    if(!slabPick.slab){
-      slabReportEl.innerHTML = '尚未提供 <b>slab 完成圖</b>，無法套用。';
-      slabApplyBtn.disabled = true;
-    } else if(!slabPick.layout){
-      slabReportEl.innerHTML = '只有 slab 完成圖，<span class="warn">不做比例比對</span>，將直接使用各版位目前的預設縮放。<br>要自動修正比例，請補上 layout 圖。';
-      slabApplyBtn.disabled = false;
-    } else if(!slabDiff){
-      slabReportEl.innerHTML = '<span class="warn">比對失敗</span>：layout 圖上找不到框線（紅／綠／藍），或 slab 圖上抓不到商品範圍。<br>將直接使用各版位目前的預設縮放。';
-      slabApplyBtn.disabled = false;
-    } else {
-      var d = slabDiff.diffPercent;
-      var same = Math.abs(d) <= 2;   /* 2 個百分點內視為一致 */
-      if(same) slabDiff.diffPercent = 0;
-      var r1 = Math.round(slabDiff.layoutPctH * 10) / 10;
-      var r2 = Math.round(slabDiff.slabPctH * 10) / 10;
-      slabReportEl.innerHTML = [
-        '商品偵測方式：' + slabDiff.productMode + '　／　layout 框線：' + slabDiff.frameColor,
-        'layout 框佔高度：' + r1 + '%',
-        'slab 商品佔高度：' + r2 + '%',
-        same
-          ? ('差距：' + r2 + '% − ' + r1 + '% ≈ 0 → <span class="ok">兩張比例相同</span>，維持各版位預設縮放（一般／HBN 100%、SCBN 127%、FB_POST 100%）。')
-          : ('差距：' + r2 + '% − ' + r1 + '% = <span class="warn">' + (d > 0 ? '+' : '') + d + '%</span>　→　各版位預設縮放' +
-             (d > 0 ? '減 ' + d : '加 ' + Math.abs(d)) + '%<br>' +
-             '例：HBN／一般版位 100% → <b>' + (Math.round((100 - d) * 10) / 10) + '%</b>　｜　SCBN 127% → ' +
-             (Math.round((127 - d) * 10) / 10) + '%　｜　FB_POST 100% → ' + (Math.round((100 - d) * 10) / 10) + '%')
-      ].join('<br>');
-      slabApplyBtn.disabled = false;
-    }
-  }
-
-  function openSlabCompare(files){
-    ensureSlabModal();
-    slabPick = { layout:null, slab:null };
-    slabDiff = null;
-    renderSlabModal();
-    slabModal.classList.add('open');
-
-    files = (files || []).filter(function(f){ return f && /^image\//i.test(f.type || ''); });
-    if(!files.length) return;
-
-    /* 兩張時先用檔名猜哪張是 layout；猜不出來就用紅框偵測結果決定，
-       仍可用「左右互換」手動修正。 */
-    if(files.length >= 2){
-      var a = files[0], b = files[1];
-      if(looksLikeLayoutName(b.name) && !looksLikeLayoutName(a.name)){ var t = a; a = b; b = t; }
-      readIntoSlot('layout', a);
-      readIntoSlot('slab', b);
-      if(!looksLikeLayoutName(a.name) && !looksLikeLayoutName(b.name)){
-        /* 檔名沒線索：等兩張都讀完後，用紅框偵測驗證方向 */
-        setTimeout(autoOrientSlots, 400);
-      }
-    } else {
-      /* 只有一張：有紅框就當 layout，否則當 slab */
-      var f = files[0];
-      readIntoSlot(looksLikeLayoutName(f.name) ? 'layout' : 'slab', f);
-      if(!looksLikeLayoutName(f.name)) setTimeout(autoOrientSlots, 400);
-    }
-  }
-
-  /* 用紅框偵測結果校正左右：紅框應該在 layout 那張 */
-  function autoOrientSlots(){
-    try{
-      var hasFrame = function(p){ if(!p) return false; var r = detectLayoutFrame(p.img); return !!(r && r.w > 8 && r.h > 8); };
-      var lf = hasFrame(slabPick.layout), sf = hasFrame(slabPick.slab);
-      if(!lf && sf){
-        var t = slabPick.layout; slabPick.layout = slabPick.slab; slabPick.slab = t;
-        renderSlabModal();
-      } else if(!lf && !sf && slabPick.layout && !slabPick.slab){
-        /* 單張且沒紅框：當成 slab 完成圖 */
-        slabPick.slab = slabPick.layout; slabPick.layout = null;
-        renderSlabModal();
-      }
-    }catch(_){ }
-  }
-
-  function openSlabUpload(){
+  function pickSlabFile(){
     if(!_slabInput){
       _slabInput = document.createElement('input');
       _slabInput.type = 'file';
       _slabInput.accept = 'image/*';
-      _slabInput.multiple = true;   /* 可同時選 layout 圖 + slab 完成圖 */
       _slabInput.style.display = 'none';
       _slabInput.addEventListener('change', function(){
-        var files = Array.prototype.slice.call(_slabInput.files || []);
+        var f = _slabInput.files && _slabInput.files[0];
         _slabInput.value = '';
-        openSlabCompare(files);
+        if(f) openSlabFit(f);
       });
       document.body.appendChild(_slabInput);
     }
-    closeModal();
     _slabInput.click();
+  }
+
+  function openSlabUpload(){
+    closeModal();
+    pickSlabFile();
   }
 
   function parsePublicTemplateCode(code){
@@ -1206,6 +1281,8 @@
     close: closeModal,
     apply: function(src){ applyPreset({name:cleanFileName(src), horizontalSrc:src, verticalSrc:null}); },
     applyByCode: applyByPublicCode,
+    openSlab: openSlabUpload,
+    slabFit: openSlabFit,        /* 直接餵一個 File 進對位視窗（測試／外部整合用） */
     findByCode: findCardByPublicCode,
     reload: function(){ imagesLoaded=false; selected=null; return loadImages().then(function(){ renderTabs(); buildCards(); renderGrid(); }); }
   };

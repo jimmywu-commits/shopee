@@ -20,6 +20,26 @@ var BN_LAYOUTS = [
 
   "SCBN_APP.html",
 
+  "LPBN_APP方LOGO.html",
+  "LPBN_APP橫LOGO.html",
+  "LPBN_PC方LOGO.html",
+  "LPBN_PC橫LOGO.html",
+  "LPBN_APP.html",
+  "LPBN_PC.html",
+
+  "活動總覽_方式LOGO.html",
+  "活動總覽_橫式LOGO.html",
+
+  "ddcard無logo.html",
+
+  "AMS BN-方logo.html",
+  "AMS BN-橫logo.html",
+
+  "AR.html",
+  "AR_LOGO.html",
+
+  "首頁LOGO牆.html",
+
   "Search_Image1logo.html",
   "Search_Image2logo.html",
   "Search_Image3logo.html",
