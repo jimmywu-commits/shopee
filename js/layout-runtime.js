@@ -16,7 +16,8 @@
   var _bnSingleProductOnlyTemplate = /searchicon_product/i.test(fname || '');
   var _bnSingleLogoTemplate = /^(ar_logo|首頁logo牆)$/i.test(fname || '');
   var _bnSingleProductForLogoWallTemplate = /首頁logo牆/i.test(fname || '');
-  var _bnNoImageBackgroundTemplate = /^searchicon_(logo|product|text|120)$/i.test(fname || '');
+  /* 首頁LOGO牆：版位只吃商品圖，不接受一般背景圖或 SLAB 底圖。 */
+  var _bnNoImageBackgroundTemplate = /^(searchicon_(logo|product|text|120)|首頁logo牆)$/i.test(fname || '');
 
   /* 可編輯文字不得使用近黑／近白；CTA 底色允許近白，但禁用近黑與灰色。
      父頁會先正規化一次；這裡是版型端最後防線，連寫死在 CSS 的預設色也會攔截。 */
@@ -86,7 +87,7 @@
       });
     }
     enforce('.品牌名,.主標,.日期,.ICON獨立文案','color','mainText');
-    enforce('.副標,.副標案型七字內','color','subText');
+    enforce('.副標,.副標案型七字內,.六字內','color','subText');
     enforce('.逛逛去按鈕,.cta底,.逛逛去底','background-color','ctaBg');
     enforce('.cta圓底','background-color','searchImageCtaBg');
   }
@@ -965,6 +966,14 @@
           var subEl = document.querySelector('.副標');
           /* 副標案型七字內 編輯時不反向同步到其他版位的 .副標，由 bn-text-update 統一處理 */
         }
+        /* AR：六字內 預設連動副標文字；使用者在 AR 畫布內手動編輯過後（bnManualText），
+           不再被之後的副標變更覆蓋──編輯結果保持獨立，不反串連回副標欄位。 */
+        if(cls === '副標'){
+          var arEl = document.querySelector('.六字內');
+          if(arEl && !arEl.children.length && arEl.dataset.bnManualText !== '1'){
+            arEl.textContent = d[cls];
+          }
+        }
       });
       setTimeout(function(){ try{ refreshOverflowAll(); }catch(_){} }, 0);
       setTimeout(function(){ applyContentWarnings(window.__bnContentWarningMessages||[]); },0);
@@ -1059,6 +1068,8 @@
       ac('主標',c.mainText); ac('副標',c.subText); ac('日期',c.dateText); ac('品牌名',c.brandText);
       /* Search_Image：副標案型七字內 顏色跟著副標文字色連動 */
       document.querySelectorAll('.副標案型七字內').forEach(function(el){ if(c.subText) el.style.setProperty('color', c.subText, 'important'); });
+      /* AR：六字內 顏色固定跟著副標文字色連動（僅文字內容獨立，顏色仍預設連動） */
+      document.querySelectorAll('.六字內').forEach(function(el){ if(c.subText) el.style.setProperty('color', c.subText, 'important'); });
       var normalCtaText = c.ctaTextAuto === false && c.ctaText
         ? c.ctaText
         : _bnCtaForegroundForBg(c.ctaBg);
@@ -1287,24 +1298,47 @@
       }
 
       if(_bnSingleLogoTemplate){
-        zone.addEventListener('wheel', function(e){
-          e.preventDefault();
-          var imgs = Array.from(zone.querySelectorAll('img.bn-logo-img'));
-          if(!imgs.length) return;
-          var img = imgs[0];
-          var zr = zone.getBoundingClientRect();
-          var ir = img.getBoundingClientRect();
-          var sc = e.deltaY < 0 ? 1.08 : .93;
-          var r = parseFloat(img.dataset.ratio) || (img.naturalWidth / img.naturalHeight) || 1;
-          var w = Math.max(40, Math.min(ir.width*sc, zr.width*.95)), ih = w/r;
-          if(ih < 30){ ih = 30; w = ih*r; }
-          if(ih > zr.height*.95){ ih = zr.height*.95; w = ih*r; }
-          img.dataset.manualLayout = '1';
-          img.style.width = w + 'px';
-          img.style.height = 'auto';
-          img.style.maxWidth = w + 'px';
-          img.style.maxHeight = ih + 'px';
-        }, {passive: false});
+        /* _fitHorizontalLogos()／isIGSquare 分支都會把 zone.style.overflow
+           設回 'visible'（避免初始排版誤裁切），但首頁LOGO牆／AR_LOGO 這類
+           單張 LOGO 版位滾輪放大時是靠拿掉 max-width/height 限制、直接放大
+           img 尺寸做到「持續放大」，因此這裡要強制蓋回 hidden，讓放大後超出
+           logo範圍的部分被遮色裁掉，而不是整張圖片一起放大跑出版位外。 */
+        zone.style.overflow = 'hidden';
+        /* 這個 if 區塊在每次收到 bn-logo／bn-logos 訊息時都會重新執行一次
+           （同一個 zone 元素不會被移除重建），如果每次都 addEventListener
+           會疊加出多個滾輪監聽器，同一次滾輪就會被放大好幾次（越用越暴衝）。
+           用 dataset 記一個旗標，確保整個版位存活期間只綁定一次。 */
+        if(!zone.dataset.bnWheelBound){
+          zone.dataset.bnWheelBound = '1';
+          zone.addEventListener('wheel', function(e){
+            e.preventDefault();
+            var imgs = Array.from(zone.querySelectorAll('img.bn-logo-img'));
+            if(!imgs.length) return;
+            var img = imgs[0];
+            var zr = zone.getBoundingClientRect();
+            var ir = img.getBoundingClientRect();
+            var sc = e.deltaY < 0 ? 1.08 : .93;
+            var r = parseFloat(img.dataset.ratio) || (img.naturalWidth && img.naturalHeight ? img.naturalWidth / img.naturalHeight : 1);
+            var w = Math.max(10, ir.width * sc);
+            var ih = w / r;
+            /* 以縮放前的中心點為基準重新定位，不受限於區域大小──
+               接手成完全獨立的 absolute 定位，脫離 _fitHorizontalLogos
+               預設的 top:50%+translateY(-50%) 置中機制，否則寬度變大時
+               會往右長而不是從中心點放大。*/
+            var cx = (ir.left - zr.left) + ir.width / 2;
+            var cy = (ir.top - zr.top) + ir.height / 2;
+            img.dataset.manualLayout = '1';
+            img.dataset.ratio = r;
+            img.style.position = 'absolute';
+            img.style.transform = 'none';
+            img.style.width = w + 'px';
+            img.style.height = ih + 'px';
+            img.style.maxWidth = 'none';
+            img.style.maxHeight = 'none';
+            img.style.left = (cx - w/2) + 'px';
+            img.style.top = (cy - ih/2) + 'px';
+          }, {passive: false});
+        }
       }
     }
 
@@ -2633,7 +2667,7 @@
   }
 
   /* ── 畫布文字直接點擊編輯 ── */
-  var EDITABLE_CLASSES = ['主標','副標','副標案型七字內','日期','品牌名','ICON獨立文案'];
+  var EDITABLE_CLASSES = ['主標','副標','副標案型七字內','日期','品牌名','ICON獨立文案','六字內'];
   var _dollarExemptSet = {};   /* {className: true} */
 
   /* ── 字數計算（中文1字，英數0.5字） ── */
@@ -2809,6 +2843,8 @@
       el.style.outline = 'none';
       hideCounter(cls);
       markOverflow(el, cls);
+      /* AR：六字內 一旦在畫布內手動編輯過，標記獨立，之後副標變更不再覆蓋 */
+      if(cls === '六字內') el.dataset.bnManualText = '1';
       _sendUpdate(el, cls);
     }
 

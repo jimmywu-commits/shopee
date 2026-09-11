@@ -327,10 +327,46 @@
       }
       return changed;
     }
+    /* 無 LOGO 版位（例如 ddcard無logo）：完全沒有上傳 LOGO 時預設維持勾選，
+       一旦上傳了任一 LOGO 就自動取消勾選；若之後把 LOGO 全部移除，再自動恢復勾選。
+       這個版位沒有方／橫版本，不會進入 applyLogoLayoutVariant 的配對邏輯，因此獨立處理。 */
+    function isNoLogoLayout(layout){
+      var name = String((layout && (layout.name || layout.file)) || '');
+      return /無\s*logo/i.test(name);
+    }
+    function applyNoLogoLayoutSelection(hasLogos){
+      if(typeof window.loadLayouts !== 'function') return false;
+      var layouts = window.loadLayouts() || [];
+      var desiredById = {};
+      layouts.forEach(function(layout){
+        if(layout.enabled === false) return;
+        if(!isNoLogoLayout(layout)) return;
+        desiredById[layout.id] = !hasLogos;
+      });
+      if(!Object.keys(desiredById).length) return false;
+
+      var changed = false;
+      if(typeof window.setLayoutChecks === 'function'){
+        changed = window.setLayoutChecks(desiredById);
+      }else{
+        var nextChecked = window.checked || (window.checked = {});
+        Object.keys(desiredById).forEach(function(id){
+          var next = desiredById[id];
+          if(nextChecked[id] !== next){ nextChecked[id] = next; changed = true; }
+        });
+        if(changed){
+          if(typeof window.renderChecks === 'function') window.renderChecks();
+          if(typeof window.renderPreviews === 'function' && !window._bnExporting) window.renderPreviews();
+        }
+      }
+      if(changed){ markStateDirty(); }
+      return changed;
+    }
     function syncLogoLayoutSelection(){
       var seq = ++_bnLogoLayoutSelectSeq;
       var manualRevision = Number(window._bnLogoLayoutManualRevision) || 0;
       var logos = window._bnLogos || [];
+      applyNoLogoLayoutSelection(logos.length > 0);
       if(!logos.length) return Promise.resolve(false);
       if(logos.length > 1) return Promise.resolve(applyLogoLayoutVariant('horizontal'));
 
@@ -1061,7 +1097,8 @@
         var name = getLayoutNameById(id);
         var src = '';
         try{ src = decodeURIComponent(String((ifrEl && (ifrEl.getAttribute('src') || ifrEl.src)) || '')); }catch(_){ }
-        return /SearchICON_(LOGO|PRODUCT|TEXT)/i.test(name + ' ' + src);
+        /* 首頁LOGO牆：版位只吃商品圖，不接受一般背景圖或 SLAB 底圖。 */
+        return /SearchICON_(LOGO|PRODUCT|TEXT)|首頁LOGO牆/i.test(name + ' ' + src);
       }
 
       function cloneBgStates(){
