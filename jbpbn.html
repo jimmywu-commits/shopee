@@ -1,8 +1,16 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
+<script>
+var BN_HOST_PARAMS = new URLSearchParams(location.search);
+var BN_HOST = (BN_HOST_PARAMS.get('host') || '').toLowerCase();
+var IS_BODA = BN_HOST === 'boda';
+if(window.parent!==window) document.documentElement.classList.add('boda-hosted');
+if(IS_BODA) document.documentElement.setAttribute('data-host','boda');
+</script>
 <meta charset="UTF-8">
 <title>BN 編輯器</title>
+<script>if(IS_BODA) document.title='曝光資源';</script>
 <style>
 /* ════════════════════════════════
    Reset & Base
@@ -148,12 +156,15 @@ html, body { height: 100%; background: var(--bg0); color: var(--text);
 .s-field-row {
   display: flex; align-items: center; gap: 7px;
 }
-.s-field-row input {
+.s-field-row input,
+.s-field-row textarea {
   flex: 1; background: var(--bg3); border: 1px solid var(--border);
   border-radius: 4px; color: var(--text); font-size: 12px; padding: 5px 8px;
   outline: none; transition: border-color .15s; min-width: 0;
 }
-.s-field-row input:focus { border-color: var(--accent); }
+.s-field-row input:focus,
+.s-field-row textarea:focus { border-color: var(--accent); }
+.s-field-row textarea { min-height:30px; max-height:72px; line-height:1.35; resize:vertical; }
 
 /* 排版勾選 */
 .layout-check-item {
@@ -199,9 +210,9 @@ html, body { height: 100%; background: var(--bg0); color: var(--text);
 }
 #bn-download-overlay.show { display: flex; }
 .bn-loading-card {
-  width: min(420px, 86vw); background: #161b22; border: 1px solid #30363d;
-  border-radius: 14px; box-shadow: 0 22px 70px rgba(0,0,0,.55);
-  padding: 24px 26px; text-align: center;
+  width: min(420px, 86vw); background: rgba(22,27,34,.84); border: 1px solid rgba(139,148,158,.48);
+  border-radius: 16px; box-shadow: 0 22px 70px rgba(0,0,0,.48),0 2px 9px rgba(0,0,0,.28);
+  backdrop-filter: blur(14px); padding: 24px 26px; text-align: center;
 }
 .bn-loading-spinner {
   width: 44px; height: 44px; border-radius: 50%; margin: 0 auto 16px;
@@ -270,13 +281,19 @@ html, body { height: 100%; background: var(--bg0); color: var(--text);
 .char-count-badge { font-size:10px;color:#687090;margin-left:4px;flex-shrink:0;white-space:nowrap; }
 .char-count-badge.warn { color:#f59e0b; }
 .char-count-badge.over { color:#ef4444;font-weight:700; }
-.s-field-row.over-limit input { border-color:#ef4444 !important; box-shadow:0 0 0 2px rgba(239,68,68,.2); }
-/* 主／副標關鍵字警語：橘色只提醒，不影響下載。 */
-.s-field-row.content-warning input { border-color:#f59e0b !important; box-shadow:0 0 0 2px rgba(245,158,11,.30) !important; }
-#bn-content-warning { display:none; margin:6px 0 2px; padding:7px 9px; border:1px solid rgba(245,158,11,.72); border-radius:6px; background:rgba(245,158,11,.12); color:#fbbf24; font-size:10px; line-height:1.55; }
-#bn-content-warning div + div { margin-top:4px; padding-top:4px; border-top:1px solid rgba(245,158,11,.28); }
+.s-field-row.over-limit input,
+.s-field-row.over-limit textarea { border-color:#ef4444 !important; box-shadow:0 0 0 2px rgba(239,68,68,.2); }
 /* 系統補上 $ 與千分位後才超字：紅框常駐，不截斷文字 */
-.s-field-row.fmt-over input { border-color:#ef4444 !important; box-shadow:0 0 0 2px rgba(239,68,68,.32) !important; background:rgba(239,68,68,.10) !important; }
+.s-field-row.fmt-over input,
+.s-field-row.fmt-over textarea { border-color:#ef4444 !important; box-shadow:0 0 0 2px rgba(239,68,68,.32) !important; background:rgba(239,68,68,.10) !important; }
+/* 內容警語：深色底＋黃橘框，對照畫布下方警語；既有超字紅框仍優先顯示。 */
+.s-field-inline.content-warning .s-field-row input { border-color:#ffb000; box-shadow:0 0 0 2px rgba(255,176,0,.18); }
+#bn-content-warning { display:none; margin:2px 14px 8px; padding:7px 9px; border:1px solid #ffb000; border-radius:6px; color:#ffbc1f; background:#111820; font-size:11px; font-weight:700; line-height:1.55; box-shadow:0 3px 10px rgba(0,0,0,.22); }
+#bn-content-warning.show { display:block; }
+#bn-content-warning .bn-content-warning-message { display:inline; }
+#bn-content-warning .bn-content-warning-message + .bn-content-warning-message::before { content:'　'; }
+#bn-content-warning button { display:inline-block; margin:0 0 0 8px; padding:3px 9px; border:0; border-radius:999px; background:#ffae00; color:#382400; font-size:11px; font-weight:800; cursor:pointer; vertical-align:baseline; }
+#bn-content-warning button:hover { background:#ffc21c; }
 #bnLimitAlert{position:fixed;left:50%;transform:translateX(-50%);top:12px;z-index:99998;background:#dc2626;color:#fff;font-size:13px;line-height:1.6;padding:10px 16px;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.4);display:none;max-width:80vw;}
 #bnLimitModal{position:fixed;inset:0;z-index:2147483000;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;}
 #bnLimitModal.show{display:flex;}
@@ -332,6 +349,25 @@ overflow:hidden;box-shadow:0 20px 70px rgba(0,0,0,.42);}
 border-radius:50%;border:1px solid #d0d7de;background:#fff;font-size:22px;cursor:pointer;
 box-shadow:0 3px 12px rgba(0,0,0,.24);}
 @media(max-width:700px){#manual-modal{padding:10px;}#manual-box{width:96vw;height:94vh;}}
+html.boda-hosted #manual-btn,html.boda-hosted #feedback-btn{display:none!important;}
+html[data-host="boda"] #feedback-btn{top:auto;bottom:76px;}
+html[data-host="boda"] #tab-title::after{content:'曝光資源';}
+/* 等級下拉 CSS（由 boda-level-plugin.js 使用） */
+#lv-wrap { padding: 4px 14px 8px; display:none; }
+html[data-host="boda"] #lv-wrap { display:block; }
+#lv-wrap select {
+  width: 100%; background: var(--bg3); border: 1px solid var(--border);
+  border-radius: var(--radius); color: var(--text); font-size: 12px;
+  font-weight: 600; padding: 6px 8px; outline: none; cursor: pointer;
+}
+#lv-wrap select:focus { border-color: var(--accent); }
+#lv-note { font-size: 10px; color: var(--text3); line-height: 1.6; margin-top: 5px; }
+#lv-note.warn { color: var(--yellow); }
+.layout-check-item.lc-missing { opacity: .45; cursor: not-allowed; }
+.layout-check-item.lc-missing input { cursor: not-allowed; }
+.layout-check-item .lc-tip { font-size: 10px; color: var(--text3); }
+.lc-group { padding: 6px 14px 2px; font-size: 9.5px; font-weight: 700;
+  color: var(--text3); letter-spacing: .5px; }
 </style>
 
 </head>
@@ -342,7 +378,7 @@ box-shadow:0 3px 12px rgba(0,0,0,.24);}
   <div id="tab-bar">
     <div class="tab" onclick="switchTab('admin')">⚙️ 後台</div>
     <div class="tab active" onclick="switchTab('frontend')">🖥️ 前台預覽</div>
-    <div id="tab-title">BN 編輯器</div>
+    <div id="tab-title"><script>document.write(IS_BODA?'曝光資源':'BN 編輯器');</script></div>
   </div>
 
   <!-- ══════════════════════════════
@@ -393,6 +429,16 @@ box-shadow:0 3px 12px rgba(0,0,0,.24);}
         <div style="color:var(--text3);font-size:12px">點「掃描底圖資料夾」載入</div>
       </div>
     </div>
+    <div class="card" id="help-links-admin-card" style="display:none">
+      <h3>🔗 全站支援按鈕連結</h3>
+      <p style="font-size:12px;color:var(--text2);margin-bottom:12px;line-height:1.7">會套用到首頁、工單生成器、匯入工單、曝光資源、吸底與維修頁右下角的浮動按鈕。<br>這裡可先預覽；要讓 GitHub 部署後的所有設備共用，請下載 <code>config.json</code>、覆蓋專案根目錄同名檔案後 commit / push。使用反饋表連結留白時，維持 Firebase 浮動反饋表。</p>
+      <label style="display:block;font-size:12px;font-weight:700;color:var(--text2);margin-bottom:5px" for="help-feedback-url">使用反饋表連結（選填）</label>
+      <input id="help-feedback-url" type="url" placeholder="https://…（留白＝使用 Firebase 浮動反饋表）" style="width:100%;margin-bottom:12px">
+      <label style="display:block;font-size:12px;font-weight:700;color:var(--text2);margin-bottom:5px" for="help-manual-url">使用說明書連結（選填）</label>
+      <input id="help-manual-url" type="url" placeholder="https://…（留白＝專案內建說明書）" style="width:100%;margin-bottom:12px">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><button class="btn btn-primary" type="button" id="help-links-save">套用目前頁面預覽</button><button class="btn" type="button" id="help-links-download-config">⬇ 下載 GitHub 設定檔</button><span id="help-links-status" style="font-size:11px;color:var(--text3)"></span></div>
+    </div>
+    <script>if(IS_BODA){var _hc=document.getElementById('help-links-admin-card');if(_hc)_hc.style.display='';}</script>
   </div>
 
   <!-- ══════════════════════════════
@@ -405,44 +451,73 @@ box-shadow:0 3px 12px rgba(0,0,0,.24);}
       <div id="sidebar-head">🎛 工具列</div>
       <div id="sidebar-scroll">
 
+        <!-- 等級下拉（BODA 模式由 boda-level-plugin.js 填入） -->
+        <div class="s-section" id="lv-section" style="display:none">等級</div>
+        <div id="lv-wrap"><select id="lv-select"></select><div id="lv-note"></div></div>
+        <script>if(IS_BODA){var _ls=document.getElementById('lv-section');if(_ls)_ls.style.display='';}</script>
+
         <!-- 文字 + 顏色 inline -->
-        <div class="s-section">文字內容</div>
-        <div class="s-field-inline">
+        <div class="s-section" id="section-text">文字內容</div>
+        <div class="s-field-inline" id="field-brand">
           <label>品牌名</label>
           <div class="s-field-row">
             <input type="text" id="txt-brand" data-limit="9" placeholder="品牌名稱" value="品牌名不放圖9字內" oninput="broadcastText()">
             <span class="char-count-badge" id="badge-品牌名"></span><div class="color-dot" id="dot-brandText" title="品牌名文字色"></div>
           </div>
         </div>
-        <div class="s-field-inline">
+        <div class="s-field-inline" id="field-main">
           <label>主標</label>
           <div class="s-field-row">
             <input type="text" id="txt-main" data-limit="8" placeholder="主標文字" value="滿$200享9折" oninput="broadcastText()">
             <span class="char-count-badge" id="badge-主標"></span><div class="color-dot" id="dot-mainText" title="主標文字色"></div>
           </div>
         </div>
-        <div class="s-field-inline">
+        <div class="s-field-inline" id="field-sub">
           <label>副標</label>
           <div class="s-field-row">
             <input type="text" id="txt-sub" data-limit="7" placeholder="副標文字" value="副標$500起" oninput="broadcastText()">
             <span class="char-count-badge" id="badge-副標"></span><div class="color-dot" id="dot-subText" title="副標文字色"></div>
           </div>
         </div>
-        <div class="s-field-inline">
+        <div class="s-field-inline" id="field-date">
           <label>日期</label>
           <div class="s-field-row">
             <input type="text" id="txt-date" data-limit="14" placeholder="日期文字" value="5/18 12:00 - 5/25 11:59 限定" oninput="broadcastText()">
             <span class="char-count-badge" id="badge-日期"></span><div class="color-dot" id="dot-dateText" title="日期文字色"></div>
           </div>
-          <div id="bn-content-warning" role="status" aria-live="polite"></div>
         </div>
-        <div class="s-field-inline">
+        <div id="bn-content-warning" role="status" aria-live="polite"></div>
+        <div class="s-field-inline" id="field-icon">
           <label>SearchICON文案</label>
           <div class="s-field-row">
             <input type="text" id="txt-icon" data-limit="2" placeholder="ICON文案" value="文案" oninput="broadcastText()">
             <span class="char-count-badge" id="badge-ICON獨立文案"></span><div class="color-dot" id="dot-iconTextMirror" title="ICON文案顏色（跟主標共用同一個顏色，改這裡主標也會一起變，改主標這裡也會跟著變）"></div>
           </div>
         </div>
+        <div class="s-field-inline" id="ar-text-field" style="display:none">
+          <label>AR文案（六字內）</label>
+          <div class="s-field-row">
+            <textarea id="txt-ar" data-limit="6" rows="1" placeholder="AR文案（最多六個字內）" oninput="bnArTextInput()">最多六個字內</textarea>
+            <span class="char-count-badge" id="badge-六字內"></span><div class="color-dot" id="dot-arTextMirror" title="AR文案顏色跟副標連動"></div>
+          </div>
+        </div>
+        <script>
+        if(IS_BODA){
+          (function(){
+            var scroll=document.getElementById('sidebar-scroll');
+            var sectionText=document.getElementById('section-text');
+            var order=['field-main','field-sub','field-date','field-brand','field-icon'];
+            var ref=sectionText.nextElementSibling;
+            order.forEach(function(id){
+              var el=document.getElementById(id);
+              if(el) scroll.insertBefore(el,ref);
+              ref=el?el.nextSibling:ref;
+            });
+            var dateInput=document.getElementById('txt-date');
+            if(dateInput) dateInput.value='5/18 - 5/25 期間限定';
+          })();
+        }
+        </script>
 
         <!-- 其他顏色（背景、CTA） -->
         <div class="s-section" style="margin-top:14px">其他顏色</div>
@@ -932,6 +1007,15 @@ function setLayoutChecks(nextById) {
 ════════════════════════════════════════ */
 var PREVIEW_MAX = 800;   /* 寬或高最多 Npx，可在後台調整 */
 
+/* 嵌入主工具時同步載入狀態，獨立開啟時仍只顯示本頁浮動視窗。 */
+function bnNotifyHostLoading(phase, percent, label, note) {
+  try {
+    if (window.parent && window.parent !== window) {
+      window.parent.postMessage({ source:'BODA_EXPOSURE_LOADING', phase:phase, percent:percent, label:label, note:note }, '*');
+    }
+  } catch(_) {}
+}
+
 /* 預覽載入狀態：bn-iframe-ready 會在 iframe 內 CSS + 字型 ready 後才回報 */
 var bnPreviewLoading = { expected: {}, ready: {}, total: 0, timer: null };
 
@@ -946,6 +1030,7 @@ function bnStartPreviewLoading(layouts) {
   if (bnPreviewLoading.timer) clearTimeout(bnPreviewLoading.timer);
   if (!layouts.length) { bnHidePreviewLoading(); return; }
   overlay.classList.add('show');
+  bnNotifyHostLoading('start', 5, 'LOADING · 曝光資源', '正在載入已勾選版位的畫布與字體…');
   bnUpdatePreviewLoading();
   bnPreviewLoading.timer = setTimeout(function(){
     var ov = document.getElementById('bn-loading-overlay');
@@ -971,6 +1056,7 @@ function bnUpdatePreviewLoading() {
   var count = document.getElementById('bn-loading-count');
   if (bar) bar.style.width = pct + '%';
   if (count) count.textContent = ready + ' / ' + total + ' 個版型已完成';
+  bnNotifyHostLoading('update', pct, 'LOADING · 曝光資源', ready + ' / ' + total + ' 個版型已完成，正在等待字體與畫布…');
 }
 
 function bnHidePreviewLoading(manual) {
@@ -981,6 +1067,7 @@ function bnHidePreviewLoading(manual) {
     overlay.classList.remove('show');
     if (!manual) overlay.classList.remove('slow');
   }
+  bnNotifyHostLoading('finish', 100, '曝光資源已就緒', manual ? '已略過等待畫面' : '畫布與字體已完成載入');
 }
 
 /* 下載/打包中的浮動遮罩：跟預覽載入遮罩共用同一種毛玻璃卡片風格。
@@ -995,6 +1082,7 @@ function bnShowDownloadOverlay(desc) {
   if (bar) bar.style.width = '0%';
   if (count) count.textContent = '';
   overlay.classList.add('show');
+  bnNotifyHostLoading('start', 5, 'LOADING · 曝光資源下載', desc || '正在截圖並打包下載…');
 }
 
 function bnUpdateDownloadOverlay(text, done, total) {
@@ -1005,11 +1093,13 @@ function bnUpdateDownloadOverlay(text, done, total) {
     bar.style.width = pct + '%';
   }
   if (count) count.textContent = text || '';
+  bnNotifyHostLoading('update', total ? Math.round((done || 0) / total * 100) : 45, 'LOADING · 曝光資源下載', text || '正在打包下載…');
 }
 
 function bnHideDownloadOverlay() {
   var overlay = document.getElementById('bn-download-overlay');
   if (overlay) overlay.classList.remove('show');
+  bnNotifyHostLoading('finish', 100, '曝光資源下載完成', '檔案已準備完成');
 }
 window.bnShowDownloadOverlay = bnShowDownloadOverlay;
 window.bnUpdateDownloadOverlay = bnUpdateDownloadOverlay;
@@ -1120,7 +1210,7 @@ function bnFieldLimitByInputId(inputId){
 ════════════════════════════════════════ */
 var BN_LIMIT_FIELDS=[
   ['txt-brand','品牌名'],['txt-main','主標'],['txt-sub','副標'],
-  ['txt-date','日期'],['txt-icon','SearchICON文案']
+  ['txt-date','日期'],['txt-icon','SearchICON文案'],['txt-ar','AR文案']
 ];
 function bnFieldAllowComma(inputId){ return inputId==='txt-date'; }
 function bnFieldUnits(inp){ return bnCalcTextUnits(inp.value, bnFieldAllowComma(inp.id)); }
@@ -1305,8 +1395,8 @@ window.addEventListener('message', function (e) {
     /* Search Image 的「副標案型七字內」本質上也是副標，先統一欄位名稱，
        才能回寫左側工具列並同步其他所有版位。 */
     var syncField = e.data.field === '副標案型七字內' ? '副標' : e.data.field;
-    var fieldMap = { '品牌名':'txt-brand', '主標':'txt-main', '副標':'txt-sub', '日期':'txt-date', 'ICON獨立文案':'txt-icon' };
-    var roleMap  = { '品牌名':'品牌名',    '主標':'主標',     '副標':'副標',    '日期':'date',    'ICON獨立文案':'ICON獨立文案' };
+    var fieldMap = { '品牌名':'txt-brand', '主標':'txt-main', '副標':'txt-sub', '日期':'txt-date', 'ICON獨立文案':'txt-icon', '六字內':'txt-ar' };
+    var roleMap  = { '品牌名':'品牌名',    '主標':'主標',     '副標':'副標',    '日期':'date',    'ICON獨立文案':'ICON獨立文案', '六字內':'副標' };
     var inputId  = fieldMap[syncField];
     if(inputId){
       var inp = document.getElementById(inputId);
@@ -1387,8 +1477,8 @@ window.addEventListener('message', function (e) {
 
   /* 字數提示：iframe 回報字數，顯示在左側輸入框旁並紅框超限 */
   if (e.data.type === 'bn-char-count') {
-    var badgeMap = {'品牌名':'badge-品牌名','主標':'badge-主標','副標':'badge-副標','日期':'badge-日期','ICON獨立文案':'badge-ICON獨立文案'};
-    var inputMap = {'品牌名':'txt-brand','主標':'txt-main','副標':'txt-sub','日期':'txt-date','ICON獨立文案':'txt-icon'};
+    var badgeMap = {'品牌名':'badge-品牌名','主標':'badge-主標','副標':'badge-副標','日期':'badge-日期','ICON獨立文案':'badge-ICON獨立文案','六字內':'badge-六字內'};
+    var inputMap = {'品牌名':'txt-brand','主標':'txt-main','副標':'txt-sub','日期':'txt-date','ICON獨立文案':'txt-icon','六字內':'txt-ar'};
     var badgeEl = document.getElementById(badgeMap[e.data.field]);
     var inpEl   = document.getElementById(inputMap[e.data.field]);
     var rowEl   = inpEl ? inpEl.closest('.s-field-row') : null;
@@ -1409,7 +1499,7 @@ window.addEventListener('message', function (e) {
 
   /* Escape 取消編輯：把原本的文字推回去 */
   if (e.data.type === 'bn-text-cancel') {
-    var fieldMap2 = { '品牌名':'txt-brand', '主標':'txt-main', '副標':'txt-sub', '日期':'txt-date', 'ICON獨立文案':'txt-icon' };
+    var fieldMap2 = { '品牌名':'txt-brand', '主標':'txt-main', '副標':'txt-sub', '日期':'txt-date', 'ICON獨立文案':'txt-icon', '六字內':'txt-ar' };
     var inp2 = document.getElementById(fieldMap2[e.data.field]);
     if(inp2) broadcastText();
     return;
@@ -1472,6 +1562,19 @@ window.addEventListener('message', function (e) {
 /* 廣播顏色給所有已勾選的 iframe */
 function broadcastColors() {
   var data = getColorData();
+  try {
+    if (window.parent && window.parent !== window) {
+      window.parent.postMessage({
+        type: 'wo-exposure-palette',
+        palette: {
+          mainText: data.mainText,
+          subText: data.subText,
+          dateText: data.dateText,
+          brandText: data.brandText
+        }
+      }, '*');
+    }
+  } catch (e) {}
   document.querySelectorAll('.preview-block iframe').forEach(function(iframe) {
     try { iframe.contentWindow.postMessage({ type: 'bn-color', data: data }, '*'); }
     catch(e) {}
@@ -1519,9 +1622,119 @@ function getColorData() {
   return data;
 }
 
+/* AR 文案 */
+function bnArTextInput(){
+  var el=document.getElementById('txt-ar');
+  if(el) el.dataset.userTouched='1';
+  broadcastText();
+}
+function bnSyncArTextDefault(){
+  var el=document.getElementById('txt-ar');
+  if(!el || el.dataset.userTouched==='1') return;
+}
+
+/* 外層 BODA 匯入工單會把「工單總覽」B11～B15 寫入此共用資料。
+   ts 用來和曝光資源自己的本機暫存比較：只有較新的工單匯入才覆蓋舊狀態，
+   使用者在曝光資源後續手動修改並儲存後，重新整理不會又被舊工單蓋回去。 */
+var BODA_WORKORDER_OVERVIEW_TEXT_KEY = 'wo_shared_exposure_text_v1';
+function bnNormalizeWorkorderOverviewText(raw) {
+  raw = raw && typeof raw === 'object' ? raw : {};
+  var ts = Number(raw.ts);
+  return {
+    brand: raw.brand == null ? '' : String(raw.brand),
+    main: raw.main == null ? '' : String(raw.main),
+    sub: raw.sub == null ? '' : String(raw.sub),
+    date: raw.date == null ? '' : String(raw.date),
+    icon: raw.icon == null ? '' : String(raw.icon),
+    ts: isFinite(ts) && ts > 0 ? ts : 0
+  };
+}
+function bnReadStoredWorkorderOverviewText() {
+  try {
+    var raw = localStorage.getItem(BODA_WORKORDER_OVERVIEW_TEXT_KEY);
+    return raw ? bnNormalizeWorkorderOverviewText(JSON.parse(raw)) : null;
+  } catch (_) { return null; }
+}
+function bnStoreWorkorderOverviewText(raw) {
+  var payload = bnNormalizeWorkorderOverviewText(raw);
+  if (!payload.ts) payload.ts = Date.now();
+  try { localStorage.setItem(BODA_WORKORDER_OVERVIEW_TEXT_KEY, JSON.stringify(payload)); } catch (_) {}
+  return payload;
+}
+function bnApplyWorkorderOverviewText(raw, options) {
+  options = options || {};
+  var payload = bnNormalizeWorkorderOverviewText(raw);
+  if (options.onlyIfNewer && payload.ts && payload.ts <= (Number(options.stateTs) || 0)) return false;
+
+  var fields = [
+    ['txt-brand', payload.brand],
+    ['txt-main', payload.main],
+    ['txt-sub', payload.sub],
+    ['txt-date', payload.date],
+    ['txt-icon', payload.icon]
+  ];
+  fields.forEach(function (pair) {
+    var el = document.getElementById(pair[0]);
+    if (el) el.value = pair[1];
+  });
+  fields.forEach(function (pair) {
+    var el = document.getElementById(pair[0]);
+    if (!el) return;
+    try { el.dispatchEvent(new Event('input', { bubbles: true })); } catch (_) {}
+    try { el.dispatchEvent(new Event('change', { bubbles: true })); } catch (_) {}
+  });
+  if (typeof bnRefreshLimitAlert === 'function') bnRefreshLimitAlert();
+  try { document.dispatchEvent(new CustomEvent('bn-state-dirty')); } catch (_) {}
+  if (typeof broadcastText === 'function') broadcastText();
+  window._bnLastWorkorderOverviewTextTs = payload.ts || Date.now();
+  return true;
+}
+window._bnApplyStoredWorkorderOverviewText = function (stateTs) {
+  var payload = bnReadStoredWorkorderOverviewText();
+  return payload ? bnApplyWorkorderOverviewText(payload, { onlyIfNewer: true, stateTs: stateTs || 0 }) : false;
+};
+
+/* 共用背景色 localStorage 與 postMessage 同步 */
+var BN_DEFAULT_CANVAS_BG = '#6bc0ec';
+var BODA_SHARED_CANVAS_BG_KEY = 'wo_shared_canvas_bg_v1';
+function isHexCanvasBg(v){ return /^#[0-9a-fA-F]{6}$/.test(v || ''); }
+function isNonDefaultCanvasBg(v){ return isHexCanvasBg(v) && String(v).toLowerCase() !== BN_DEFAULT_CANVAS_BG; }
+function readSharedCanvasBg(){
+  try {
+    var v = localStorage.getItem(BODA_SHARED_CANVAS_BG_KEY);
+    return isHexCanvasBg(v) ? v : null;
+  } catch(_) { return null; }
+}
+function getAuthoritativeCanvasBg(){
+  var shared = readSharedCanvasBg();
+  return isNonDefaultCanvasBg(shared) ? shared : null;
+}
+function setAuthoritativeCanvasBg(v){
+  if(!isHexCanvasBg(v)) return;
+  try { localStorage.setItem(BODA_SHARED_CANVAS_BG_KEY, v); } catch(_) {}
+}
+function applySharedCanvasBg(v, silent){
+  if(!isHexCanvasBg(v)) return;
+  var changed = !colorState || colorState.canvasBg !== v;
+  if(colorState) colorState.canvasBg = v;
+  if(window._bnLastUserColorState) window._bnLastUserColorState.canvasBg = v;
+  if(window._bnFrozenColorData) window._bnFrozenColorData.canvasBg = v;
+  try { localStorage.setItem(BODA_SHARED_CANVAS_BG_KEY, v); } catch(_) {}
+  if(changed && !silent && window.parent && window.parent !== window){
+    try { window.parent.postMessage({ type:'wo-bg', color:v }, '*'); } catch(_) {}
+  }
+  if(changed){
+    var dot = document.getElementById('dot-canvasBg');
+    if(dot) dot.style.background = v;
+    broadcastColors();
+  }
+}
+
 /* 廣播文字給所有已勾選的 iframe */
 function broadcastText() {
+  bnSyncArTextDefault();
   var data = getTextData();
+  bnRefreshContentWarnings(data);
   document.querySelectorAll('.preview-block iframe').forEach(function(iframe) {
     try { iframe.contentWindow.postMessage({ type: 'bn-text', data: data }, '*'); }
     catch(e) {}
@@ -1534,7 +1747,8 @@ function getTextData() {
     主標:   document.getElementById('txt-main').value,
     副標:   document.getElementById('txt-sub').value,
     日期:   document.getElementById('txt-date').value,
-    ICON獨立文案: document.getElementById('txt-icon').value
+    ICON獨立文案: document.getElementById('txt-icon').value,
+    六字內: document.getElementById('txt-ar').value
   };
 }
 
@@ -2606,12 +2820,24 @@ window.loadCheckedByFile  = function(){
    動態插入的 script 預設是非同步、載入完成順序不保證，一定要手動關掉。 */
 (function(){
   var _t = Date.now();
-  ['js/logo-autotrim-plugin.js','js/bn-editor-plugin.js','js/bn-state-plugin.js','js/bn-workorder-upload-plugin.js','js/bn-bg-library-plugin.js'].forEach(function(src){
+  var plugins = IS_BODA
+    ? ['js/bn-editor-plugin.js','js/bn-state-plugin.js','js/bn-workorder-upload-plugin.js','js/bn-bg-library-plugin.js']
+    : ['js/logo-autotrim-plugin.js','js/bn-editor-plugin.js','js/bn-state-plugin.js','js/bn-workorder-upload-plugin.js','js/bn-bg-library-plugin.js'];
+  plugins.forEach(function(src){
     var s = document.createElement('script');
     s.src = src + '?t=' + _t;
     s.async = false;
     document.head.appendChild(s);
   });
+  if (IS_BODA) {
+    var pluginBase = BN_HOST_PARAMS.get('pluginBase') || '';
+    ['boda-level-plugin.js'].forEach(function(src){
+      var s = document.createElement('script');
+      s.src = pluginBase + src + '?t=' + _t;
+      s.async = false;
+      document.head.appendChild(s);
+    });
+  }
 })();
 </script>
 
@@ -2636,7 +2862,8 @@ document.addEventListener('DOMContentLoaded',function(){
     ['txt-main','badge-主標'],
     ['txt-sub','badge-副標'],
     ['txt-date','badge-日期'],
-    ['txt-icon','badge-ICON獨立文案']
+    ['txt-icon','badge-ICON獨立文案'],
+    ['txt-ar','badge-六字內']
   ];
 
   function calcUnits(text, allowComma){
@@ -2787,9 +3014,69 @@ if (location.hash) {
 }
 </script>
 
-<!-- Firebase 使用反饋：按鈕事件與浮動視窗由 feedback-plugin.js 建立 -->
+<!-- 全站使用說明／反饋按鈕共用設定（BODA 模式）與 Firebase 使用反饋。 -->
+<script>
+if(IS_BODA){
+  var _hs=document.createElement('script');
+  _hs.src=(BN_HOST_PARAMS.get('pluginBase')||'')+'../js/help-settings.js?t='+Date.now();
+  _hs.async=false;
+  document.head.appendChild(_hs);
+}
+</script>
 <script src="js/feedback-config.js"></script>
 <script src="js/feedback-plugin.js"></script>
+
+<script>
+if(IS_BODA) document.addEventListener('DOMContentLoaded',function(){
+  var api=window.BODAHelpSettings,feedbackInput=document.getElementById('help-feedback-url'),manualInput=document.getElementById('help-manual-url'),saveButton=document.getElementById('help-links-save'),downloadButton=document.getElementById('help-links-download-config'),status=document.getElementById('help-links-status');
+  if(!api||!feedbackInput||!manualInput||!saveButton||!downloadButton)return;
+  function values(){return {feedbackUrl:feedbackInput.value.trim(),manualUrl:manualInput.value.trim()};}
+  function paint(){var settings=api.get();feedbackInput.value=settings.feedbackUrl||'';manualInput.value=settings.manualUrl||'';}
+  Promise.resolve(api.ready).then(paint);
+  saveButton.addEventListener('click',function(){api.set(values());status.textContent='已套用目前頁面預覽；下載 config.json 並 push 後才會同步所有設備。';if(window.parent&&window.parent!==window)window.parent.postMessage({type:'BODA_HELP_SETTINGS_UPDATED'},'*');setTimeout(function(){if(status.textContent)status.textContent='';},4000);});
+  downloadButton.addEventListener('click',function(){api.downloadConfig(values()).then(function(){status.textContent='已下載 config.json：覆蓋專案根目錄同名檔案後 commit / push 即可全站同步。';}).catch(function(){status.textContent='設定檔產生失敗，請稍後再試。';});});
+});
+</script>
+
+<script>
+/* BODA 工單串接：接收外層 index.html 的 postMessage */
+window.addEventListener('message', function (e) {
+  if (!e.data) return;
+  if (e.data.type === 'wo-level' && e.data.level && typeof window._bnApplyLevel === 'function') {
+    window._bnApplyLevel(e.data.level, false);
+  }
+  if (e.data.type === 'wo-workorder-overview-text') {
+    var overviewPayload = bnStoreWorkorderOverviewText(Object.assign({}, e.data.data || {}, { ts: e.data.ts || Date.now() }));
+    bnApplyWorkorderOverviewText(overviewPayload);
+  }
+  if (e.data.type === 'wo-workorder-exposure-spec' && typeof window._bnApplyWorkorderExposureSpec === 'function') {
+    window._bnApplyWorkorderExposureSpec(e.data.spec || {});
+  }
+  if (e.data.type === 'wo-workorder-overview-assets' && typeof window._bnApplyWorkorderAssets === 'function') {
+    Promise.resolve(window._bnApplyWorkorderAssets(e.data.assets || {})).catch(function (err) { console.warn('工單曝光資源素材訊息處理失敗', err); });
+  }
+  if (e.data.type === 'wo-bg' && isHexCanvasBg(e.data.color)) {
+    applySharedCanvasBg(e.data.color, true);
+  }
+  if (e.data.type === 'wo-level-ask' && window.parent && window.parent !== window) {
+    var lvId = typeof window._bnGetCurrentLevelId === 'function' ? window._bnGetCurrentLevelId() : null;
+    if (lvId) try { window.parent.postMessage({ type: 'wo-level', level: lvId }, '*'); } catch (err) {}
+  }
+});
+/* 同一個瀏覽器的其他分頁改了等級或共用背景色也跟著變 */
+window.addEventListener('storage', function (e) {
+  if (e.key === 'wo_level_v1' && e.newValue && typeof window._bnApplyLevel === 'function') window._bnApplyLevel(null, false);
+  if (e.key === BODA_SHARED_CANVAS_BG_KEY && isHexCanvasBg(e.newValue)) applySharedCanvasBg(e.newValue, true);
+});
+/* 啟動時讀取共用背景色 */
+(function(){
+  var sharedBg = readSharedCanvasBg();
+  if (sharedBg && typeof applySharedCanvasBg === 'function') {
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function(){ applySharedCanvasBg(sharedBg, true); });
+    else applySharedCanvasBg(sharedBg, true);
+  }
+})();
+</script>
 
 </body>
 
