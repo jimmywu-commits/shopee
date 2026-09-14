@@ -793,25 +793,39 @@ function markLayoutSelectionManual() {
     (Number(window._bnLogoLayoutManualRevision) || 0) + 1;
 }
 
+var _hashGroupKeys = ['searchicon','search_image','ig','hbn','ddcard','coin','fb_post','scbn','lpbn','sba','ams','ar','logo牆','活動總覽'];
+function parseHashKeywords(raw){
+  var s = (raw || '').replace(/^#/,'').trim().toLowerCase();
+  if(!s) return [];
+  var found = [];
+  var sorted = _hashGroupKeys.slice().sort(function(a,b){ return b.length - a.length; });
+  sorted.forEach(function(k){ if(s.indexOf(k) !== -1){ found.push(k); s = s.replace(k,''); } });
+  if(s) found.push(s);
+  return found;
+}
+function matchHashKeywords(name, keywords){
+  var n = (name || '').toLowerCase();
+  return keywords.some(function(k){ return n.indexOf(k) !== -1; });
+}
+
 function renderChecks() {
   var allLayouts = loadLayouts().filter(function(l){ return l.enabled; });
 
-  /* 從 URL hash 讀取過濾關鍵詞（如 #ddcard），並據此篩選版位 */
-  var hash = (location.hash || '').substring(1).trim().toLowerCase();
-  var filterKeyword = hash || null;
+  /* 從 URL hash 讀取過濾關鍵詞（如 #ddcard 或 #hbnddcard），並據此篩選版位 */
+  var hashKeywords = parseHashKeywords(location.hash);
 
-  /* 若有 hash，則只顯示包含該關鍵詞的版位（不分大小寫） */
+  /* 若有 hash，則只顯示包含任一關鍵詞的版位（不分大小寫） */
   var layouts = allLayouts;
-  if (filterKeyword) {
+  if (hashKeywords.length) {
     layouts = allLayouts.filter(function(l) {
-      return (l.file || l.name || '').toLowerCase().indexOf(filterKeyword) !== -1;
+      return matchHashKeywords(l.file || l.name || '', hashKeywords);
     });
   }
 
   var wrap = document.getElementById('layout-checks');
   if (!layouts.length) {
-    if (filterKeyword) {
-      wrap.innerHTML = '<div class="no-layouts">找不到符合「' + esc(filterKeyword) + '」的排版</div>';
+    if (hashKeywords.length) {
+      wrap.innerHTML = '<div class="no-layouts">找不到符合「' + esc(hashKeywords.join(', ')) + '」的排版</div>';
     } else {
       wrap.innerHTML = '<div class="no-layouts">後台尚未啟用任何排版</div>';
     }
@@ -1002,10 +1016,10 @@ window.bnUpdateDownloadOverlay = bnUpdateDownloadOverlay;
 window.bnHideDownloadOverlay = bnHideDownloadOverlay;
 
 function renderPreviews() {
-  var _hash = (location.hash || '').substring(1).trim().toLowerCase();
+  var _hashKw = parseHashKeywords(location.hash);
   var layouts = loadLayouts().filter(function(l){
     if (!l.enabled || !getLayoutCheckedValue(l)) return false;
-    if (_hash && (l.file || l.name || '').toLowerCase().indexOf(_hash) === -1) return false;
+    if (_hashKw.length && !matchHashKeywords(l.file || l.name || '', _hashKw)) return false;
     return true;
   });
   var area  = document.getElementById('preview-area');

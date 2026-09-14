@@ -425,7 +425,7 @@
     window._bnApplyTag = function(){ if(!_bnSkipTag) _bnLoadTagLayers(); };
     var _bnSkipTag = false;
     if(/ddcard/i.test(fname)){
-      try { _bnSkipTag = !/ddcard/i.test(parent.location.hash); } catch(_){}
+      try { _bnSkipTag = !/^#ddcard$/i.test(parent.location.hash.trim()); } catch(_){}
     }
     if(!_bnSkipTag) _bnLoadTagLayers();
 
