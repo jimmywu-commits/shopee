@@ -794,10 +794,27 @@ function markLayoutSelectionManual() {
 }
 
 function renderChecks() {
-  var layouts = loadLayouts().filter(function(l){ return l.enabled; });
+  var allLayouts = loadLayouts().filter(function(l){ return l.enabled; });
+
+  /* 從 URL hash 讀取過濾關鍵詞（如 #ddcard），並據此篩選版位 */
+  var hash = (location.hash || '').substring(1).trim().toLowerCase();
+  var filterKeyword = hash || null;
+
+  /* 若有 hash，則只顯示包含該關鍵詞的版位（不分大小寫） */
+  var layouts = allLayouts;
+  if (filterKeyword) {
+    layouts = allLayouts.filter(function(l) {
+      return (l.file || l.name || '').toLowerCase().indexOf(filterKeyword) !== -1;
+    });
+  }
+
   var wrap = document.getElementById('layout-checks');
   if (!layouts.length) {
-    wrap.innerHTML = '<div class="no-layouts">後台尚未啟用任何排版</div>';
+    if (filterKeyword) {
+      wrap.innerHTML = '<div class="no-layouts">找不到符合「' + esc(filterKeyword) + '」的排版</div>';
+    } else {
+      wrap.innerHTML = '<div class="no-layouts">後台尚未啟用任何排版</div>';
+    }
     return;
   }
   wrap.innerHTML = layouts.map(function(l) {
@@ -933,8 +950,11 @@ window.bnUpdateDownloadOverlay = bnUpdateDownloadOverlay;
 window.bnHideDownloadOverlay = bnHideDownloadOverlay;
 
 function renderPreviews() {
+  var _hash = (location.hash || '').substring(1).trim().toLowerCase();
   var layouts = loadLayouts().filter(function(l){
-    return l.enabled && getLayoutCheckedValue(l);
+    if (!l.enabled || !getLayoutCheckedValue(l)) return false;
+    if (_hash && (l.file || l.name || '').toLowerCase().indexOf(_hash) === -1) return false;
+    return true;
   });
   var area  = document.getElementById('preview-area');
   var empty = document.getElementById('preview-empty');
@@ -2676,6 +2696,29 @@ document.addEventListener("DOMContentLoaded",function(){
    if(e.key==="Escape"&&m.classList.contains("show"))closeManual();
  });
 });
+</script>
+
+<script>
+/* Hash 過濾：當 URL hash 改變時（如從無 hash 改為 #ddcard），
+   重新過濾左側排版列表。用戶也可以手動改 URL 即時切換過濾狀態。 */
+function applyHashFilter() {
+  if (typeof renderChecks === 'function') renderChecks();
+  if (typeof renderPreviews === 'function') renderPreviews();
+}
+
+/* 監聽 hash 改變 */
+window.addEventListener('hashchange', applyHashFilter);
+
+/* 頁面加載時立即檢查並應用 hash 過濾 */
+if (location.hash) {
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function() {
+      setTimeout(applyHashFilter, 300);
+    });
+  } else {
+    setTimeout(applyHashFilter, 300);
+  }
+}
 </script>
 
 <!-- Firebase 使用反饋：按鈕事件與浮動視窗由 feedback-plugin.js 建立 -->
