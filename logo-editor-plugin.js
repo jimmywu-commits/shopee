@@ -187,6 +187,8 @@
       if(/lpbnapp/i.test(norm)) aliases.push('LPBN_APP','lpbn_app');
       if(/lpbnpc/i.test(norm)) aliases.push('LPBN_PC','lpbn_pc');
       if(/scbn/i.test(norm)) aliases.push('SCBN_APP','SCBN','scbn');
+      if(/sbapc|sba_pc/i.test(norm)) aliases.push('SBA_PC','sba_pc');
+      else if(/sba/i.test(norm)) aliases.push('SBA_APP','SBA','sba');
       if(/searchimage1/i.test(norm)) aliases.push('Search_Image1logo','Search_Image1','searchimage1');
       if(/searchimage2/i.test(norm)) aliases.push('Search_Image2logo','Search_Image2','searchimage2');
       if(/searchimage3/i.test(norm)) aliases.push('Search_Image3logo','Search_Image3','searchimage3');

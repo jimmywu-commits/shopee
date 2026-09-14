@@ -299,7 +299,8 @@
       if(/lpbnapp/i.test(norm)) aliases.push('LPBN_APP','lpbn_app');
       if(/lpbnpc/i.test(norm)) aliases.push('LPBN_PC','lpbn_pc');
       if(/scbn/i.test(norm)) aliases.push('SCBN_APP','SCBN','scbn');
-      if(/sba/i.test(norm)) aliases.push('SBA_APP','SBA','sba');
+      if(/sbapc|sba_pc/i.test(norm)) aliases.push('SBA_PC','sba_pc');
+      else if(/sba/i.test(norm)) aliases.push('SBA_APP','SBA','sba');
       if(/searchimage1/i.test(norm)) aliases.push('Search_Image1logo','Search_Image1','searchimage1');
       if(/searchimage2/i.test(norm)) aliases.push('Search_Image2logo','Search_Image2','searchimage2');
       if(/searchimage3/i.test(norm)) aliases.push('Search_Image3logo','Search_Image3','searchimage3');
@@ -418,11 +419,15 @@
     function _bnSetTagColor(color){
       _bnTagColor = (color === 'white') ? 'white' : 'red';
       _bnRefreshTagVisibility();
-      if(!_bnTagSrcs.red && !_bnTagSrcs.white) _bnLoadTagLayers();
+      if(!_bnSkipTag && !_bnTagSrcs.red && !_bnTagSrcs.white) _bnLoadTagLayers();
     }
     window._bnSetTagColor = _bnSetTagColor;
-    window._bnApplyTag = _bnLoadTagLayers;
-    _bnLoadTagLayers();
+    window._bnApplyTag = function(){ if(!_bnSkipTag) _bnLoadTagLayers(); };
+    var _bnSkipTag = false;
+    if(/ddcard/i.test(fname)){
+      try { _bnSkipTag = !/ddcard/i.test(parent.location.hash); } catch(_){}
+    }
+    if(!_bnSkipTag) _bnLoadTagLayers();
 
 
     /* Search_Image：動態置中 */
