@@ -1104,8 +1104,10 @@
         var name = getLayoutNameById(id);
         var src = '';
         try{ src = decodeURIComponent(String((ifrEl && (ifrEl.getAttribute('src') || ifrEl.src)) || '')); }catch(_){ }
-        /* 首頁LOGO牆：版位只吃商品圖，不接受一般背景圖或 SLAB 底圖。 */
-        return /SearchICON_(LOGO|PRODUCT|TEXT)|首頁LOGO牆/i.test(name + ' ' + src);
+        var combined = name + ' ' + src;
+        if(/SearchICON_(LOGO|PRODUCT|TEXT)|首頁LOGO牆/i.test(combined)) return true;
+        if(/\bAR(?:_LOGO)?\b/i.test(combined)) return true;
+        return false;
       }
 
       function cloneBgStates(){
