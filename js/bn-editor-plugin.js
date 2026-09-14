@@ -1734,6 +1734,15 @@
           return /FB_POST_(方|橫)LOGO/i.test(srcName);
         }catch(_){ return false; }
       }
+      function isSbaPc(id, ifrEl){
+        try{
+          var layoutName = getLayoutNameById(id);
+          if(/^SBA_PC$/i.test(layoutName)) return true;
+          var srcName = ifrEl && ifrEl.src ? String(ifrEl.src) : '';
+          try{ srcName = decodeURIComponent(srcName); }catch(_){ }
+          return /SBA_PC/i.test(srcName);
+        }catch(_){ return false; }
+      }
       function getDefaultBgParamsForLayout(id, ifrEl){
         var fit = getDefaultBgFitForLayout(id, ifrEl);
         if(isScbnApp(id, ifrEl)){
@@ -1746,6 +1755,9 @@
              畫面上的格子劃分方式不是這樣切，麻煩告訴我正確的格子寬度，
              我可以重新換算這個百分比。 */
           return { fit: 'width100', scale: 43, x: 71, y: 81 };
+        }
+        if(isSbaPc(id, ifrEl)){
+          return { fit: fit, scale: 100, x: 102, y: 50 };
         }
         if(isFbPost(id, ifrEl)){
           /* FB_POST 吃直式背景圖時：位置在畫面右半部（水平置中點在畫面
