@@ -622,7 +622,8 @@
   function applyPreset(img){
     if(!img) return;
     closeModal();
-    if(statusEl) statusEl.textContent = '套用中…';
+    if(window._bnStatePlugin && typeof window._bnStatePlugin.toast === 'function')
+      window._bnStatePlugin.toast('正在套用背景圖…', 'info', 6000);
     Promise.all([imageToDataUrl(img.horizontalSrc), img.verticalSrc ? imageToDataUrl(img.verticalSrc) : Promise.resolve(null)])
       .then(function(res){
         var dataH = res[0];
@@ -646,9 +647,14 @@
         if(window._bnSetBgStates){
           try{ window._bnSetBgStates(states, null); }catch(_){ }
         }
-        // 若沒有任何 iframe，仍保留原本單張 broadcast 行為。
         if(!iframes.length && typeof window.broadcastBg === 'function') window.broadcastBg(dataH || dataV || img.horizontalSrc);
         try{ document.dispatchEvent(new CustomEvent('bn-state-dirty')); }catch(_){ }
+        if(window._bnStatePlugin && typeof window._bnStatePlugin.toast === 'function')
+          window._bnStatePlugin.toast('背景圖已套用', 'ok', 2000);
+      }).catch(function(err){
+        console.error('[背景圖庫] 套用失敗', err);
+        if(window._bnStatePlugin && typeof window._bnStatePlugin.toast === 'function')
+          window._bnStatePlugin.toast('背景圖套用失敗，請重試', 'err', 3000);
       });
   }
 
@@ -1275,6 +1281,13 @@
   }
 
   installBgColorSamplingHooks();
+
+  /* 頁面載好後偷偷預載 index.json + brand.json，打開圖庫時就不用等 */
+  function preloadBgData(){
+    setTimeout(function(){ loadImages().catch(function(){}); }, 1500);
+  }
+  if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', preloadBgData);
+  else preloadBgData();
 
   window.BNBgLibrary = {
     open: openModal,
