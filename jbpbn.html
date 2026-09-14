@@ -831,9 +831,60 @@ function renderChecks() {
   }).join('');
 }
 
+/* SBA APP ↔ PC 連動：APP 勾選 → PC 隨附，PC 勾選 → APP 隨附 */
+function _syncSbaPc(triggerId, triggerVal) {
+  var sba = loadLayouts().filter(function(l){ return /^SBA_/i.test(l.name || ''); });
+  if (!sba.length) return false;
+
+  var pc = sba.find(function(l){ return /^SBA_PC$/i.test(l.name); });
+  if (!pc) return false;
+
+  /* 若是由手動 checkbox 觸發，走完整雙向邏輯 */
+  if (triggerId !== undefined) {
+    var thisL = sba.find(function(l){ return String(l.id) === String(triggerId); });
+    if (!thisL) return false;
+    var isApp = /SBA_APP/i.test(thisL.name);
+    var isPc  = /^SBA_PC$/i.test(thisL.name);
+
+    if (isApp && triggerVal) {
+      rememberLayoutChecked(pc.id, true);
+      return true;
+    }
+    if (isApp && !triggerVal) {
+      var anyOther = sba.some(function(l){
+        return /SBA_APP/i.test(l.name) && String(l.id) !== String(triggerId) && getLayoutCheckedValue(l);
+      });
+      if (!anyOther) { rememberLayoutChecked(pc.id, false); return true; }
+      return false;
+    }
+    if (isPc && triggerVal) {
+      var anyApp = sba.some(function(l){ return /SBA_APP/i.test(l.name) && getLayoutCheckedValue(l); });
+      if (!anyApp) {
+        sba.forEach(function(l){ if (/SBA_APP橫LOGO/i.test(l.name)) rememberLayoutChecked(l.id, true); });
+        return true;
+      }
+      return false;
+    }
+    if (isPc && !triggerVal) {
+      sba.forEach(function(l){ if (/SBA_APP/i.test(l.name)) rememberLayoutChecked(l.id, false); });
+      return true;
+    }
+    return false;
+  }
+
+  /* 批次模式（setLayoutChecks 後）：單向同步 PC 跟隨 APP */
+  var anyApp = sba.some(function(l){ return /SBA_APP/i.test(l.name) && getLayoutCheckedValue(l); });
+  var pcOn   = getLayoutCheckedValue(pc);
+  if (anyApp && !pcOn)  { rememberLayoutChecked(pc.id, true);  return true; }
+  if (!anyApp && pcOn)  { rememberLayoutChecked(pc.id, false); return true; }
+  return false;
+}
+
 function onCheck(id, val) {
   markLayoutSelectionManual();
   rememberLayoutChecked(id, val);
+  _syncSbaPc(id, val);
+  renderChecks();
   renderPreviews();
 }
 
@@ -857,6 +908,7 @@ function setLayoutChecks(nextById) {
       changed = true;
     }
   });
+  if (_syncSbaPc()) changed = true;
   if(changed){ renderChecks(); renderPreviews(); }
   return changed;
 }

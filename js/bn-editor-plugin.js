@@ -295,9 +295,16 @@
       });
 
       var desiredById = {};
+      var getChecked = typeof window.getLayoutCheckedValue === 'function'
+                       ? window.getLayoutCheckedValue : null;
       Object.keys(groups).forEach(function(key){
         var pair = groups[key];
         if(!pair.square.length || !pair.horizontal.length) return;
+        /* 使用者已手動取消該配對的所有版位時，不強制重新啟用 */
+        if(getChecked){
+          var anyActive = pair.square.some(getChecked) || pair.horizontal.some(getChecked);
+          if(!anyActive) return;
+        }
         pair.square.forEach(function(layout){
           desiredById[layout.id] = mode === 'square';
         });

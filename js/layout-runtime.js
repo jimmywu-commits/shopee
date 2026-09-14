@@ -299,6 +299,7 @@
       if(/lpbnapp/i.test(norm)) aliases.push('LPBN_APP','lpbn_app');
       if(/lpbnpc/i.test(norm)) aliases.push('LPBN_PC','lpbn_pc');
       if(/scbn/i.test(norm)) aliases.push('SCBN_APP','SCBN','scbn');
+      if(/sba/i.test(norm)) aliases.push('SBA_APP','SBA','sba');
       if(/searchimage1/i.test(norm)) aliases.push('Search_Image1logo','Search_Image1','searchimage1');
       if(/searchimage2/i.test(norm)) aliases.push('Search_Image2logo','Search_Image2','searchimage2');
       if(/searchimage3/i.test(norm)) aliases.push('Search_Image3logo','Search_Image3','searchimage3');
@@ -1141,7 +1142,7 @@
         (parseFloat(window.getComputedStyle(_logoZone).width) >
          parseFloat(window.getComputedStyle(_logoZone).height) * 1.5);
       /* HBN：檔名含 hbn，或已知左對齊版位 → 左對齊 absolute 並排 */
-      var _leftAlignNames = ['hbn','coin','fb_post','lpbn','ams','活動總覽'];
+      var _leftAlignNames = ['hbn','coin','fb_post','lpbn','ams','sba','活動總覽'];
       var _isLeftAlign = _leftAlignNames.some(function(n){ return fnLow.indexOf(n) !== -1; });
       var isHBN = _isLeftAlign;
       /* 多張置中：logo範圍是橫條 且 不是左對齊版位 → flex 置中並排（ddcard橫、IG橫等）*/
@@ -1168,7 +1169,9 @@
       if (_bnSingleLogoTemplate) logos = logos.slice(0, 1);
       /* ddcard橫：isMultiCenter → 多張，不限制；ddcard方（isIGSquare）→ 單張 */
 
-      zone.style.background = 'transparent';
+      /* 首頁LOGO牆的 logo範圍是白色圓角卡片（CSS 設計的一部分），不是上傳前的
+         提示色塊，所以放入 LOGO 後仍要維持白底，不能跟其他版位一樣被清成透明。 */
+      zone.style.background = _bnSingleProductForLogoWallTemplate ? '#fff' : 'transparent';
       zone.style.opacity    = '1';
       /* 不覆蓋 position，保持 CSS 的 absolute 定位 */
       zone.style.overflow   = 'hidden';
@@ -3014,17 +3017,19 @@
     menu.style.cssText=[
       'position:fixed;z-index:999999;',
       'background:#1a1d2a;border:1px solid #2e3347;',
-      'border-radius:10px;padding:6px 0;',
+      'border-radius:10px;padding:8px;',
       'box-shadow:0 8px 24px rgba(0,0,0,.5);',
       'min-width:200px;font-size:13px;',
     ].join('');
 
+    /* 選項改成按鈕造型（獨立圓角色塊＋邊框），字級 13px→20px，
+       方便在畫布上快速辨識、點擊。 */
     function menuBtn(label, handler){
       var btn = document.createElement('div');
       btn.textContent = label;
-      btn.style.cssText = 'padding:8px 16px;cursor:pointer;color:#dde3f0;white-space:nowrap;';
-      btn.addEventListener('mouseenter', function(){ btn.style.background='#2b2f42'; });
-      btn.addEventListener('mouseleave', function(){ btn.style.background=''; });
+      btn.style.cssText = 'margin:0 0 6px;padding:9px 16px;border:1px solid #3a4160;border-radius:8px;background:#242942;cursor:pointer;color:#dde3f0;white-space:nowrap;font-size:20px;font-weight:600;text-align:center;transition:background .15s,border-color .15s;';
+      btn.addEventListener('mouseenter', function(){ btn.style.background='#333b5c'; btn.style.borderColor='#4a5480'; });
+      btn.addEventListener('mouseleave', function(){ btn.style.background='#242942'; btn.style.borderColor='#3a4160'; });
       btn.addEventListener('mousedown', function(ev){
         ev.preventDefault();
         menu.remove();
@@ -3035,17 +3040,17 @@
       menu.appendChild(btn);
     }
 
+    /* 按鈕1：$／千分位豁免。同一顆按鈕依目前狀態切換打勾，
+       不再另外多開一顆「恢復」按鈕。 */
     if(isNumSel){
       if(alreadyExempt || !hasDollar){
-        /* 恢復：補回 $ 千分位，從豁免清單移除 */
-        menuBtn('恢復 $'+_addThousands(cleanSel)+' 的千分位格式', function(){
+        menuBtn('✓ 恢復加$和千分位符號', function(){
           var list = _getExempt(el).filter(function(n){ return n !== cleanSel; });
           _setExempt(el, list);
           if(savedRange) _replaceSelText(savedRange, _fmtDollar(cleanSel));
           _sendUpdate(el, cls);
         });
       } else {
-        /* 移除：拿掉 $ 和千分位，加入豁免清單 */
         menuBtn('暫時不加$和千分位符號', function(){
           var list = _getExempt(el);
           if(list.indexOf(cleanSel) === -1) list.push(cleanSel);
@@ -3055,41 +3060,37 @@
         });
       }
     } else {
-      /* 非純數字的選取：整段文字豁免（$／千分位 ＋ 中文數字不強制轉阿拉伯數字） */
-      menuBtn('暫時不加$符號與千分位符號、不強制變阿拉伯數字', function(){
-        /* 把選取範圍的所有數字加進豁免清單，並移除 $ */
-        var nums = savedSelText.match(/\d+/g) || [];
-        var list = _getExempt(el);
-        nums.forEach(function(n){ if(list.indexOf(n)===-1) list.push(n); });
-        _setExempt(el, list);
-        _setNumeralExempt(el, true);
-        var cleaned = savedSelText.replace(/\$/g,'').replace(/(\d),(\d{3})(?!\d)/g,'$1$2');
-        if(savedRange) _replaceSelText(savedRange, cleaned);
-        _sendUpdate(el, cls);
-      });
-      if(_getNumeralExempt(el) || exemptList.length){
-        menuBtn('✓ 已豁免（點擊取消，恢復自動格式）', function(){
+      var dollarAlreadyExempt = exemptList.length > 0;
+      if(dollarAlreadyExempt){
+        menuBtn('✓ 恢復加$和千分位符號', function(){
           _setExempt(el, []);
-          _setNumeralExempt(el, false);
+          _sendUpdate(el, cls);
+        });
+      } else {
+        menuBtn('暫時不加$和千分位符號', function(){
+          var nums = savedSelText.match(/\d+/g) || [];
+          var list = _getExempt(el);
+          nums.forEach(function(n){ if(list.indexOf(n)===-1) list.push(n); });
+          _setExempt(el, list);
+          var cleaned = savedSelText.replace(/\$/g,'').replace(/(\d),(\d{3})(?!\d)/g,'$1$2');
+          if(savedRange) _replaceSelText(savedRange, cleaned);
           _sendUpdate(el, cls);
         });
       }
     }
 
-    /* 阿拉伯數字 ⇄ 中文數字（選取含 $ 一起選也可以）。
-       轉成中文數字時一併開啟中文數字豁免，否則下一次同步就會被
-       banwords 的「一→1」規則改回阿拉伯數字；要還原就再選取一次右鍵解除。 */
-    if(/[0-9]/.test(savedSelText)){
-      menuBtn('數字轉中文數字（暫不轉回阿拉伯數字）', function(){
-        _setNumeralExempt(el, true);
-        if(savedRange) _replaceSelText(savedRange, _digitsToCn(savedSelText));
+    /* 按鈕2：中文數字／阿拉伯數字豁免。跟按鈕1各自獨立，同樣是
+       同一顆按鈕依 numeralExempt 狀態切換打勾。 */
+    if(_getNumeralExempt(el)){
+      menuBtn('✓ 恢復強制變阿拉伯數字', function(){
+        _setNumeralExempt(el, false);
+        if(savedRange && /[零一二三四五六七八九]/.test(savedSelText)) _replaceSelText(savedRange, _cnToDigits(savedSelText));
         _sendUpdate(el, cls);
       });
-    }
-    if(/[零一二三四五六七八九]/.test(savedSelText)){
-      menuBtn('中文數字轉回阿拉伯數字（解除豁免）', function(){
-        _setNumeralExempt(el, false);
-        if(savedRange) _replaceSelText(savedRange, _cnToDigits(savedSelText));
+    } else {
+      menuBtn('不強制變阿拉伯數字', function(){
+        _setNumeralExempt(el, true);
+        if(savedRange && /[0-9]/.test(savedSelText)) _replaceSelText(savedRange, _digitsToCn(savedSelText));
         _sendUpdate(el, cls);
       });
     }

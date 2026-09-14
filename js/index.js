@@ -32,6 +32,10 @@ var BN_LAYOUTS = [
 
   "ddcard無logo.html",
 
+  "SBA_APP方LOGO.html",
+  "SBA_APP橫LOGO.html",
+  "SBA_PC.html",
+
   "AMS BN-方logo.html",
   "AMS BN-橫logo.html",
 
