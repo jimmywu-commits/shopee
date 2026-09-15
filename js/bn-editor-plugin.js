@@ -2606,11 +2606,12 @@
     }
 
     function downloadAll(_layoutSynced){
-      /* 字數硬擋：任何欄位（含系統補上 $ 與千分位後）超過上限就不給下載，
-         跳提醒視窗請使用者先修改。 */
+      /* 字數硬擋／內容警語未確認：直接擋在 modal，不呼叫 setProgress，
+         避免 setProgress 內的 bnUpdateDownloadOverlay 通知外層 BOD A
+         顯示「LOADING · 曝光資源下載」浮層。 */
       if(typeof window.bnCanDownload === 'function' && !window.bnCanDownload()){
-        setProgress('文字超出字數上限，請修改後再下載');
-        setTimeout(function(){ setProgress(''); }, 4000);
+        var _el=document.getElementById('bn-dl-progress');
+        if(_el){ _el.textContent='文字超出字數上限或內容提醒尚未確認，請修改後再下載'; setTimeout(function(){ if(_el) _el.textContent=''; }, 4000); }
         return;
       }
 
