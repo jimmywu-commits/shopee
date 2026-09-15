@@ -303,6 +303,13 @@ html, body { height: 100%; background: var(--bg0); color: var(--text);
 #bnLimitModal .hint{font-size:12.5px;color:#666;margin:0 0 12px;line-height:1.75;}
 #bnLimitModal button{width:100%;padding:11px;border:0;border-radius:8px;background:#2176ff;color:#fff;font-size:14px;cursor:pointer;}
 #bnLimitModal button:hover{background:#1b62d8;}
+#bnContentWarningModal{position:fixed;inset:0;z-index:2147483000;background:rgba(0,0,0,.55);display:none;align-items:center;justify-content:center;}
+#bnContentWarningModal.show{display:flex;}
+#bnContentWarningModal .box{background:#fff;color:#111;border-radius:14px;padding:22px 24px;max-width:460px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,.4);font-size:14px;line-height:1.7;}
+#bnContentWarningModal h3{margin:0 0 10px;font-size:17px;color:#dc2626;}
+#bnContentWarningModal .hint{font-size:12.5px;color:#666;margin:0 0 12px;line-height:1.75;}
+#bnContentWarningModal button{width:100%;padding:11px;border:0;border-radius:8px;background:#2176ff;color:#fff;font-size:14px;cursor:pointer;}
+#bnContentWarningModal button:hover{background:#1b62d8;}
 #cp-hex-row {
   display: flex; align-items: center; gap: 7px; margin-bottom: 10px;
 }
@@ -1294,11 +1301,38 @@ function bnShowLimitBlockModal(list){
   var first=list&&list[0]?document.getElementById(list[0].id):null;
   if(first){ try{ first.focus(); first.scrollIntoView({block:'center'}); }catch(_){} }
 }
+/* 內容警告未確認：擋下載的提醒視窗 */
+function bnShowContentWarningBlockModal(messages){
+  var m=document.getElementById('bnContentWarningModal');
+  if(!m){
+    m=document.createElement('div');
+    m.id='bnContentWarningModal';
+    m.innerHTML='<div class="box">'
+      +'<h3>⚠ 文案內容提醒尚未確認，無法下載</h3>'
+      +'<div id="bnContentWarningModalList"></div>'
+      +'<p class="hint">請先確認畫布上的橘色提醒，按下「我已了解/已補充▶」後再下載。</p>'
+      +'<button type="button" id="bnContentWarningModalOk">知道了</button>'
+      +'</div>';
+    document.body.appendChild(m);
+    m.addEventListener('click',function(e){ if(e.target===m) m.classList.remove('show'); });
+    m.querySelector('#bnContentWarningModalOk').addEventListener('click',function(){ m.classList.remove('show'); });
+    document.addEventListener('keydown',function(e){ if(e.key==='Escape'&&m.classList.contains('show')) m.classList.remove('show'); });
+  }
+  var list=m.querySelector('#bnContentWarningModalList');
+  list.innerHTML=(messages||[]).map(function(msg){ return '<div style="margin:6px 0;color:#ffbc1f;">⚠ '+msg+'</div>'; }).join('');
+  m.classList.add('show');
+}
 /* 給下載流程呼叫：回傳 true 才允許下載 */
 function bnCanDownload(){
   bnRefreshLimitAlert();
   var list=bnGetOverLimitFields();
   if(list.length){ bnShowLimitBlockModal(list); return false; }
+  /* 內容警告未確認（使用者尚未按「我已了解/已補充▶」）也擋下載 */
+  var cwMessages=window._bnContentWarningMessages;
+  if(cwMessages && cwMessages.length){
+    bnShowContentWarningBlockModal(cwMessages);
+    return false;
+  }
   return true;
 }
 
