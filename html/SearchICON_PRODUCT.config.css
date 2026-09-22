@@ -27,6 +27,9 @@
   display: flex !important;
   align-items: center;
   justify-content: center;
+  /* 商品圖周圍的圓形遮色區維持白底，不受 SearchICON 背景色影響。 */
+  background: #fff !important;
+  background-image: none !important;
   overflow: hidden !important;
   border-radius: 50% !important;
 }

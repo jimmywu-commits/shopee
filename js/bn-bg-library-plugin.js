@@ -383,7 +383,14 @@
       hbnList.forEach(function(file){
         if(!isImageFile(file)) return;
         var num = extractNum(file);
-        var dd = findPairByNum(ddList, num);
+        /*
+         * HBN 與 DDCARD 不能只靠數字配對：同一個分類裡會同時存在
+         * EL-9 與 EL-Mockup-9。原本只比 extractNum()，所以會把
+         * EL-Mockup-9-hbn 錯配成 EL-9-ddcard。
+         * 優先用完整公版名稱配對，只有在沒有完整配對且數字候選唯一時
+         * 才使用數字作為相容性備援，避免再次誤配。
+         */
+        var dd = findPairByName(ddList, file);
         out.push({
           name: cleanFileName(file),
           fileName: file,
@@ -410,12 +417,34 @@
     return out;
   }
 
-  function findPairByNum(list, num){
-    if(!Array.isArray(list) || num === null) return null;
-    for(var i=0;i<list.length;i++){
-      if(extractNum(list[i]) === num) return list[i];
+  function pairKey(filename, type){
+    var base = String(filename || '').replace(/\.[^.]+$/, '');
+    /* 支援 Lifestyle 的舊版命名：...-hbn-2 對應 ...-ddcard。 */
+    return base.replace(new RegExp('-(?:' + type + ')(?:-\\d+)?$', 'i'), '').toLowerCase();
+  }
+
+  function findPairByName(list, hbnFile){
+    if(!Array.isArray(list)) return null;
+    var key = pairKey(hbnFile, 'hbn');
+    var candidates = list.filter(function(file){
+      return isImageFile(file) && pairKey(file, 'ddcard') === key;
+    });
+    if(candidates.length){
+      /* 同一個公版若有多個副檔名，優先選與 HBN 相同的格式。 */
+      var hbnExt = String(hbnFile).match(/\.[^.]+$/);
+      hbnExt = hbnExt ? hbnExt[0].toLowerCase() : '';
+      for(var i=0;i<candidates.length;i++){
+        if(String(candidates[i]).match(/\.[^.]+$/)[0].toLowerCase() === hbnExt)
+          return candidates[i];
+      }
+      return candidates[0];
     }
-    return null;
+
+    /* 舊資料若沒有可辨識的完整名稱，僅在數字候選唯一時備援。 */
+    var num = extractNum(hbnFile);
+    if(num === null) return null;
+    var byNum = list.filter(function(file){ return isImageFile(file) && extractNum(file) === num; });
+    return byNum.length === 1 ? byNum[0] : null;
   }
 
   function addGenericItem(out, item, cat){
@@ -1240,7 +1269,11 @@
     if(!m) return null;
     var rawCat = m[1].toLowerCase();
     var catMap = { el:'EL', fmcg:'FMCG', fashion:'Fashion', lifestyle:'Lifestyle' };
-    return { category: catMap[rawCat] || m[1], number: parseInt(m[2], 10), code: (catMap[rawCat] || m[1]) + '-' + parseInt(m[2], 10) };
+    var category = catMap[rawCat] || m[1];
+    var number = parseInt(m[2], 10);
+    var mockup = /mock\s*up/i.test(m[0]);
+    return { category: category, number: number, mockup: mockup,
+      code: category + (mockup ? '-Mockup-' : '-') + number };
   }
 
   function findCardByPublicCode(code){
@@ -1252,11 +1285,22 @@
       var list = listFromCategory(parsed.category);
       currentCat = oldCat;
       if(!list || !list.length) return null;
-      var exactCodeRe = new RegExp('(?:^|[^a-z0-9])' + parsed.category.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*[-_ ]?\\s*0*' + parsed.number + '(?:[^0-9]|$)', 'i');
+      var escapedCategory = parsed.category.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      var codeMiddle = parsed.mockup
+        ? '\\s*[-_ ]?\\s*Mock\\s*up\\s*[-_ ]?\\s*'
+        : '\\s*[-_ ]?\\s*';
+      var exactCodeRe = new RegExp('(?:^|[^a-z0-9])' + escapedCategory + codeMiddle + '0*' + parsed.number + '(?:[^0-9]|$)', 'i');
       var exact = list.find(function(img){
         return exactCodeRe.test(String(img.fileName || '') + ' ' + String(img.name || '') + ' ' + String(img.horizontalSrc || '') + ' ' + String(img.verticalSrc || ''));
       });
       if(exact) return exact;
+      if(parsed.mockup){
+        var mockupFallback = list.find(function(img){
+          return Number(img.num) === parsed.number && /mockup/i.test(String(img.fileName || '') + ' ' + String(img.horizontalSrc || ''));
+        });
+        if(mockupFallback) return mockupFallback;
+      }
+      if(parsed.mockup) return null;
       return list.find(function(img){ return Number(img.num) === parsed.number; }) || null;
     });
   }

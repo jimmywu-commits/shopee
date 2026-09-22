@@ -1745,6 +1745,15 @@
           return /SBA_PC/i.test(srcName);
         }catch(_){ return false; }
       }
+      function isAmsBn(id, ifrEl){
+        try{
+          var layoutName = getLayoutNameById(id);
+          if(/AMS\s*BN/i.test(layoutName)) return true;
+          var srcName = ifrEl && ifrEl.src ? String(ifrEl.src) : '';
+          try{ srcName = decodeURIComponent(srcName); }catch(_){ }
+          return /AMS\s*BN/i.test(srcName) || /AMS\s*BN/i.test(String(id || ''));
+        }catch(_){ return false; }
+      }
       function getDefaultBgParamsForLayout(id, ifrEl){
         var fit = getDefaultBgFitForLayout(id, ifrEl);
         if(isScbnApp(id, ifrEl)){
@@ -1765,6 +1774,11 @@
           /* FB_POST 吃直式背景圖時：位置在畫面右半部（水平置中點在畫面
              75% 的位置，也就是右半邊的正中間），放大 20%（scale:120）。 */
           return { fit: 'width100', scale: 58, x: 110, y: 82 };
+        }
+        if(isAmsBn(id, ifrEl)){
+          /* AMS BN 方 logo／橫 logo 的預設背景：縮放 121%，水平位置 58；
+             垂直位置沿用一般預設 50。 */
+          return { fit: fit, scale: 121, x: 58, y: 50 };
         }
         return { fit: fit, scale: 100, x: 50, y: 50 };
       }
@@ -2380,6 +2394,122 @@
 
         row.appendChild(img);row.appendChild(infoWrap);row.appendChild(moveWrap);row.appendChild(editBtn);row.appendChild(rmBtn);
         return row;
+    }
+
+    /* BODA 工單總覽素材橋接：
+       BODA 只把「已依 B17／LOGO 欄位檔名配對成功」的 data URL 傳進來，
+       這裡再沿用 Shopee 核心原本的 _bnProducts／_bnLogos 狀態與廣播流程。
+       沒有收到這則 postMessage 時，Shopee 仍完全照原本的獨立工具運作。 */
+    var _bnWorkorderAssetSignature = '';
+    var _bnWorkorderAssetApplySeq = 0;
+    function workorderAssetHash(value){
+      var text = String(value || ''), hash = 2166136261;
+      for(var i=0;i<text.length;i++){
+        hash ^= text.charCodeAt(i);
+        hash = Math.imul(hash, 16777619);
+      }
+      return (hash >>> 0).toString(16);
+    }
+    function workorderAssetKey(item){
+      item = item || {};
+      var src = String(item.src || '');
+      return String(item.name || '') + '|' + src.length + '|' + workorderAssetHash(src);
+    }
+    function normalizeWorkorderAssets(items){
+      return (Array.isArray(items) ? items : []).filter(function(item){
+        return item && /^data:image\//i.test(String(item.src || ''));
+      });
+    }
+    function workorderAssetSignature(payload){
+      payload = payload || {};
+      return JSON.stringify({
+        replaceLogos: !!payload.replaceLogos,
+        replaceProducts: !!payload.replaceProducts,
+        logos: normalizeWorkorderAssets(payload.logos).map(workorderAssetKey),
+        products: normalizeWorkorderAssets(payload.products).map(workorderAssetKey)
+      });
+    }
+    function workorderAssetStateMatches(currentItems, expectedItems){
+      var current = Array.isArray(currentItems) ? currentItems : [];
+      var expected = normalizeWorkorderAssets(expectedItems);
+      if(current.length !== expected.length) return false;
+      for(var i=0;i<expected.length;i++){
+        var actual = current[i] || {};
+        var wanted = expected[i] || {};
+        if(String(actual.src || '') !== String(wanted.src || '')) return false;
+      }
+      return true;
+    }
+    function workorderAssetRatio(src){
+      return loadImg(src).then(function(img){
+        return img.naturalWidth && img.naturalHeight ? img.naturalWidth / img.naturalHeight : 1;
+      }).catch(function(){ return 1; });
+    }
+    function applyBodaWorkorderAssets(payload){
+      payload = payload || {};
+      var logos = normalizeWorkorderAssets(payload.logos);
+      var products = normalizeWorkorderAssets(payload.products);
+      var replaceLogos = payload.replaceLogos === true;
+      var replaceProducts = payload.replaceProducts === true;
+      if(!replaceLogos && !replaceProducts) return Promise.resolve(false);
+
+      var seq = ++_bnWorkorderAssetApplySeq;
+      var productJobs = replaceProducts ? Promise.all(products.map(function(item){
+        return workorderAssetRatio(item.src).then(function(ratio){
+          return { item:item, ratio:ratio };
+        });
+      })) : Promise.resolve([]);
+
+      return productJobs.then(function(productResults){
+        if(seq !== _bnWorkorderAssetApplySeq) return false;
+
+        if(replaceLogos){
+          window._bnLogos = logos.map(function(item, index){
+            return {
+              id: 'wo_logo_' + Date.now() + '_' + index,
+              src: item.src,
+              baseSrc: item.baseSrc || item.src,
+              name: item.name || '',
+              ratio: item.ratio || 1
+            };
+          });
+          window._bnLogoDataUrl = window._bnLogos.length ? window._bnLogos[0].src : null;
+          window._bnLogoLayouts = {};
+          broadcast({type:'bn-logos', logos:window._bnLogos, logoLayoutById:window._bnLogoLayouts});
+          renderLogoList();
+          if(typeof syncLogoLayoutSelection === 'function') syncLogoLayoutSelection();
+        }
+
+        if(replaceProducts){
+          var oldIds = (window._bnProducts || []).map(function(product){ return product && product.id; }).filter(Boolean);
+          oldIds.forEach(function(id){ broadcast({type:'bn-product-remove', id:id}); });
+          window._bnProducts = productResults.map(function(result, index){
+            var item = result.item;
+            return {
+              id: 'wo_product_' + Date.now() + '_' + index,
+              src: item.src,
+              baseSrc: item.baseSrc || item.src,
+              ratio: result.ratio || 1,
+              name: item.name || '',
+              sizeScale: 1,
+              position: index,
+              zOrder: index
+            };
+          });
+          window._bnProducts.forEach(function(product, index){
+            broadcast({
+              type:'bn-product-add', id:product.id, src:product.src,
+              ratio:product.ratio, name:product.name, index:index,
+              sizeScale:product.sizeScale, position:product.position, zOrder:product.zOrder
+            });
+          });
+          broadcastZOrder();
+          renderProdList();
+        }
+
+        markStateDirty();
+        return true;
+      });
     }
 
 
@@ -3215,6 +3345,20 @@
     window._bnRenderProdList = function(){ renderProdList(); };
     window._bnRequestProductLayouts = requestProductLayouts;
     window._bnSyncLayoutSnapshot = syncLayoutSnapshot;
+    window._bnApplyWorkorderAssets = function(payload){
+      var signature = workorderAssetSignature(payload);
+      /* 不能只看上一筆訊息的簽章：使用者可能先清空 LOGO／商品圖，
+         再匯入同一份試算表與圖片。此時訊息內容相同，但畫面狀態已不同，
+         必須重新建回素材；只有目前狀態真的一致時才略過。 */
+      var sameSignature = signature === _bnWorkorderAssetSignature;
+      var logoStateSame = !payload || payload.replaceLogos !== true ||
+        workorderAssetStateMatches(window._bnLogos, payload.logos);
+      var productStateSame = !payload || payload.replaceProducts !== true ||
+        workorderAssetStateMatches(window._bnProducts, payload.products);
+      if(sameSignature && logoStateSame && productStateSame) return Promise.resolve(false);
+      _bnWorkorderAssetSignature = signature;
+      return applyBodaWorkorderAssets(payload);
+    };
     window._bnRebroadcastProducts = function(){
       var ids = (window._bnProducts||[]).map(function(p){ return p.id; });
       ids.forEach(function(id){ broadcast({type:'bn-product-remove', id:id}); });
@@ -3234,5 +3378,11 @@
         setTimeout(function(){ broadcast({type:'bn-product-zorder', order:order}); }, 100);
       }, 60);
     };
+    /* jbpbn.html 可能在外層訊息先到時尚未完成外掛載入，補套用最後一筆暫存訊息。 */
+    if(window._bnPendingWorkorderAssets){
+      var pendingWorkorderAssets = window._bnPendingWorkorderAssets;
+      delete window._bnPendingWorkorderAssets;
+      setTimeout(function(){ window._bnApplyWorkorderAssets(pendingWorkorderAssets); }, 0);
+    }
   });
 })();

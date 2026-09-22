@@ -30,7 +30,8 @@
   display: flex !important;
   align-items: center;
   justify-content: center;
-  background: transparent !important;
+  /* LOGO 周圍的圓形遮色區維持白底，不跟著 SearchICON 背景色變色。 */
+  background: #fff !important;
   opacity: 1 !important;
   overflow: hidden !important;
   border-radius: 50% !important;

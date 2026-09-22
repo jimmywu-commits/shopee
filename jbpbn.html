@@ -489,7 +489,7 @@ html[data-host="boda"] #lv-wrap { display:block; }
         <div class="s-field-inline" id="field-date">
           <label>日期</label>
           <div class="s-field-row">
-            <input type="text" id="txt-date" data-limit="14" placeholder="日期文字" value="5/18 12:00 - 5/25 11:59 限定" oninput="broadcastText()">
+            <input type="text" id="txt-date" data-limit="14" placeholder="日期文字" value="5/18 - 5/25 期間限定" oninput="broadcastText()">
             <span class="char-count-badge" id="badge-日期"></span><div class="color-dot" id="dot-dateText" title="日期文字色"></div>
           </div>
         </div>
@@ -1667,7 +1667,7 @@ function bnSyncArTextDefault(){
   if(!el || el.dataset.userTouched==='1') return;
 }
 
-/* 外層 BODA 匯入工單會把「工單總覽」B11～B15 寫入此共用資料。
+/* 外層 BODA 匯入工單會把「工單總覽」B10～B19 寫入此共用資料。
    ts 用來和曝光資源自己的本機暫存比較：只有較新的工單匯入才覆蓋舊狀態，
    使用者在曝光資源後續手動修改並儲存後，重新整理不會又被舊工單蓋回去。 */
 var BODA_WORKORDER_OVERVIEW_TEXT_KEY = 'wo_shared_exposure_text_v1';
@@ -1680,6 +1680,7 @@ function bnNormalizeWorkorderOverviewText(raw) {
     sub: raw.sub == null ? '' : String(raw.sub),
     date: raw.date == null ? '' : String(raw.date),
     icon: raw.icon == null ? '' : String(raw.icon),
+    ar: raw.ar == null ? '' : String(raw.ar),
     ts: isFinite(ts) && ts > 0 ? ts : 0
   };
 }
@@ -1705,7 +1706,8 @@ function bnApplyWorkorderOverviewText(raw, options) {
     ['txt-main', payload.main],
     ['txt-sub', payload.sub],
     ['txt-date', payload.date],
-    ['txt-icon', payload.icon]
+    ['txt-icon', payload.icon],
+    ['txt-ar', payload.ar]
   ];
   fields.forEach(function (pair) {
     var el = document.getElementById(pair[0]);
@@ -3085,9 +3087,17 @@ window.addEventListener('message', function (e) {
   }
   if (e.data.type === 'wo-workorder-exposure-spec' && typeof window._bnApplyWorkorderExposureSpec === 'function') {
     window._bnApplyWorkorderExposureSpec(e.data.spec || {});
+  } else if (e.data.type === 'wo-workorder-exposure-spec') {
+    /* BODA 的版位規則可能早於等級外掛載入，先留最後一筆，
+       待 BODA 專用外掛完成後再套用。 */
+    window._bnPendingWorkorderExposureSpec = e.data.spec || {};
   }
   if (e.data.type === 'wo-workorder-overview-assets' && typeof window._bnApplyWorkorderAssets === 'function') {
     Promise.resolve(window._bnApplyWorkorderAssets(e.data.assets || {})).catch(function (err) { console.warn('工單曝光資源素材訊息處理失敗', err); });
+  } else if (e.data.type === 'wo-workorder-overview-assets') {
+    /* Shopee 核心外掛是動態載入，若 BODA 訊息先到，先留最後一筆，
+       待 bn-editor-plugin.js 完成後再套用，不影響獨立工具流程。 */
+    window._bnPendingWorkorderAssets = e.data.assets || {};
   }
   if (e.data.type === 'wo-bg' && isHexCanvasBg(e.data.color)) {
     applySharedCanvasBg(e.data.color, true);

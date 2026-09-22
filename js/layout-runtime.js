@@ -15,9 +15,16 @@
      訊息，行為才會一致、也才不會漏掉哪個訊息類型沒攔到。 */
   var _bnSingleProductOnlyTemplate = /searchicon_product/i.test(fname || '');
   var _bnSingleLogoTemplate = /^(ar_logo|首頁logo牆)$/i.test(fname || '');
+  var _bnHomepageLogoWallTemplate = /^首頁logo牆$/i.test(fname || '');
+  var _bnSearchIconLogoTemplate = /^searchicon_logo$/i.test(fname || '');
+  var _bnSearchIconProductTemplate = /^searchicon_product$/i.test(fname || '');
   var _bnSingleProductForLogoWallTemplate = /首頁logo牆/i.test(fname || '');
-  /* 首頁LOGO牆：版位只吃商品圖，不接受一般背景圖或 SLAB 底圖。 */
+  var _bnDdcardTemplate = /^ddcard/i.test(fname || '');
+  /* SearchICON／首頁 LOGO 牆都不接受背景圖片；只有首頁 LOGO 牆固定白底，
+     SearchICON 的純色底仍要跟著父頁選取的背景色。 */
   var _bnNoImageBackgroundTemplate = /^(searchicon_(logo|product|text|120)|首頁logo牆)$/i.test(fname || '');
+  var _bnFixedWhiteBackgroundTemplate = _bnHomepageLogoWallTemplate;
+  var _bnCurrentCanvasBg = '';
 
   /* 可編輯文字不得使用近黑／近白；CTA 底色允許近白，但禁用近黑與灰色。
      父頁會先正規化一次；這裡是版型端最後防線，連寫死在 CSS 的預設色也會攔截。 */
@@ -1007,16 +1014,20 @@
 
     if (e.data.type === 'bn-color') {
       var c = Object.assign({},e.data.data||{}), cv = document.getElementById('canvas');
-      if(_bnNoImageBackgroundTemplate && cv){
+      if(_bnFixedWhiteBackgroundTemplate && cv){
         cv.style.setProperty('background', '#fff', 'important');
       }
       _bnRestrictedColorKeys.forEach(function(key){
         if(c[key]!==undefined) c[key]=_bnSafeRestrictedColor(key,c[key]);
       });
       if (c.canvasBg) {
+        _bnCurrentCanvasBg = c.canvasBg;
+        /* 只有首頁 LOGO 牆固定白底；SearchICON 仍吃目前選取的背景色。 */
+        var canvasBgForLayout = _bnFixedWhiteBackgroundTemplate ? '#fff' : c.canvasBg;
         /* 支援 .背景色 和 .bg 兩種 class 名稱 */
         var bg = cv.querySelector('.背景色') || cv.querySelector('.bg') || cv.querySelector('.底色');
-        if(bg) bg.style.backgroundColor = c.canvasBg; else cv.style.background = c.canvasBg;
+        if(bg) bg.style.setProperty('background-color', canvasBgForLayout, 'important');
+        else cv.style.setProperty('background', canvasBgForLayout, 'important');
         /* 漸層顏色跟著背景色同步（讀 CSS --grad-dir 變數）*/
         /* 漸層顏色同步：transparent → rgba(r,g,b,0) 避免截圖變黑 */
         function _toRgba0rt(color){
@@ -1053,9 +1064,9 @@
             var _stop = (_size > GRAD_SAFE_PX)
                         ? (((_size - GRAD_SAFE_PX) / _size) * 100).toFixed(3)
                         : 100;
-            var _c0 = _toRgba0rt(c.canvasBg);
+            var _c0 = _toRgba0rt(canvasBgForLayout);
             gel.style.backgroundColor  = 'transparent';
-            gel.style.backgroundImage  = 'linear-gradient(' + dir + ', ' + c.canvasBg + ' 0%, '
+            gel.style.backgroundImage  = 'linear-gradient(' + dir + ', ' + canvasBgForLayout + ' 0%, '
                                          + _c0 + ' ' + _stop + '%, ' + _c0 + ' 100%)';
             gel.style.backgroundRepeat = 'no-repeat';
             gel.style.backgroundSize   = '100% 100%';
@@ -1064,12 +1075,14 @@
         /* 所有保護色塊跟著背景色同步 */
         ['.文案保護','.右側保護','.左側保護','.上方保護','.下方保護','.上保護','.下保護','.底色'].forEach(function(sel){
           var el = cv.querySelector(sel);
-          if(el) el.style.background = c.canvasBg;
+          if(el) el.style.setProperty('background', canvasBgForLayout, 'important');
         });
         /* .bg 純色塊也同步（Coin 等版位） */
         var bgEl2 = cv.querySelector('.bg');
-        if(bgEl2 && !cv.querySelector('.背景色')) bgEl2.style.backgroundColor = c.canvasBg;
+        if(bgEl2 && !cv.querySelector('.背景色')) bgEl2.style.setProperty('background-color', canvasBgForLayout, 'important');
       }
+      /* 背景色更新後，人物專用漸層也要重新讀取目前版型的漸層顏色。 */
+      syncAllCharGradientOverlays();
       function ac(cls,col){ if(!col)return; document.querySelectorAll('.'+cls).forEach(function(el){ if(!el.querySelector('.cta-text')) el.style.setProperty('color',col,'important'); }); }
       ac('主標',c.mainText); ac('副標',c.subText); ac('日期',c.dateText); ac('品牌名',c.brandText);
       /* Search_Image：副標案型七字內 顏色跟著副標文字色連動 */
@@ -1166,7 +1179,12 @@
       if (e.data.type === 'bn-logos') logos = e.data.logos || [];
       else if (e.data.dataUrl) logos = [{id:'single', src:e.data.dataUrl}];
 
-      if (!logos.length) { zone.style.opacity=''; zone.style.background=''; return; }
+      if (!logos.length) {
+        zone.style.opacity='';
+        zone.style.background = _bnSearchIconLogoTemplate ? '#fff' : '';
+        if(_bnSearchIconLogoTemplate) zone.style.setProperty('background-color','#fff','important');
+        return;
+      }
 
       /* IG方 / 方 Logo 系列：只取第一張，避免方版 logo 區多張擠壓或裁切。 */
       if (isIGSquare || isSquareLogoLayout) logos = logos.slice(0, 1);
@@ -1176,7 +1194,8 @@
 
       /* 首頁LOGO牆的 logo範圍是白色圓角卡片（CSS 設計的一部分），不是上傳前的
          提示色塊，所以放入 LOGO 後仍要維持白底，不能跟其他版位一樣被清成透明。 */
-      zone.style.background = _bnSingleProductForLogoWallTemplate ? '#fff' : 'transparent';
+      zone.style.background = (_bnSingleProductForLogoWallTemplate || _bnSearchIconLogoTemplate) ? '#fff' : 'transparent';
+      if(_bnSearchIconLogoTemplate) zone.style.setProperty('background-color','#fff','important');
       zone.style.opacity    = '1';
       /* 不覆蓋 position，保持 CSS 的 absolute 定位 */
       zone.style.overflow   = 'hidden';
@@ -1356,6 +1375,11 @@
       var oldBox = pzone.querySelector('.bn-prod-box[data-id="'+e.data.id+'"]');
       if(oldBox) oldBox.remove();
       pzone.style.background = 'transparent'; pzone.style.backgroundColor = 'transparent'; pzone.style.opacity = '1';
+      if(_bnSearchIconProductTemplate){
+        /* 圓形商品圖遮色區維持白底，不透出 SearchICON 的背景色。 */
+        pzone.style.setProperty('background-color','#fff','important');
+        pzone.style.setProperty('background-image','none','important');
+      }
       pzone.style.overflow = 'visible'; pzone.style.position = 'relative';
       var box = document.createElement('div');
       box.className = 'bn-prod-box'; box.dataset.id = e.data.id; box.dataset.ratio = e.data.ratio||1;
@@ -1397,6 +1421,10 @@
          如果還有人物圖存在，代表這個範圍其實還有內容，不能還原成淡紅提示色。 */
       if(!remaining.length && !pzone.querySelector('.bn-char-box')) { pzone.style.background=''; pzone.style.opacity=''; }
       else if(remaining.length) layoutProducts(pzone);
+      if(_bnSearchIconProductTemplate){
+        pzone.style.setProperty('background-color','#fff','important');
+        pzone.style.setProperty('background-image','none','important');
+      }
       applyCharacterZ();
       applySingleProductOnlyIfNeeded(pzone);
     }
@@ -1442,10 +1470,14 @@
          aboveMain 決定（true=蓋住商品，false=被商品蓋住）。
        - 2 個人物都存在：商品此時已被 bn-character-visibility 隱藏，兩個人物
          改成只跟彼此比前後，由 bn-character-pair-order 的 pairFirst 決定。
-       ★ _bnSingleProductOnlyTemplate（例如 SearchICON_PRODUCT）這個版位完全
-         不顯示人物圖，不管全域人物圖狀態如何，一律忽略 bn-character-add。 ════════════════════════════════════════════════════ */
+       ★ _bnSingleProductOnlyTemplate（例如 SearchICON_PRODUCT）與首頁 LOGO 牆
+       都完全不顯示人物圖，不管全域人物圖狀態如何，一律忽略 bn-character-add。 ════════════════════════════════════════════════════ */
     if (e.data.type === 'bn-character-add') {
-      if(_bnSingleProductOnlyTemplate) return; /* 這個版位固定只顯示商品，完全不顯示人物圖 */
+      if(_bnSingleProductOnlyTemplate || _bnHomepageLogoWallTemplate){
+        var ignoredCharZone = getProductZone();
+        if(ignoredCharZone) applySingleProductOnlyIfNeeded(ignoredCharZone);
+        return; /* SearchICON_PRODUCT／首頁 LOGO 牆固定不顯示人物圖 */
+      }
       var czone = getProductZone(); if(!czone) return;
       var slotKey = e.data.slot;
       if(slotKey !== '_bnCharacter' && slotKey !== '_bnCharacter2') return;
@@ -1460,6 +1492,7 @@
       }
       if(appliedSaved) cbox.dataset.manualLayout = '1';
       else applyDefaultCharLayout(cbox, czone);
+      syncCharGradientOverlay(cbox);
       setupCharDrag(cbox, czone);
       applyCharacterZ();
       setTimeout(function(){ postCharacterLayout(cbox); }, 0);
@@ -1484,18 +1517,22 @@
       if(box3){
         if(e.data.ratio) box3.dataset.ratio = e.data.ratio;
         var img3 = box3.querySelector('img');
-        if(img3 && e.data.src) img3.src = e.data.src;
+        if(img3 && e.data.src){
+          img3.src = e.data.src;
+          img3.addEventListener('load', function(){ syncCharGradientOverlay(box3); }, {once:true});
+          syncCharGradientOverlay(box3);
+        }
       }
       return;
     }
 
     /* 有人物圖時，商品最多只顯示「目前最上層」的幾件，其餘隱藏（不是移除，
        只是 display:none，移除人物圖後可以直接復原，不用重新排版）。
-       _bnSingleProductOnlyTemplate 的版位無視這則訊息帶來的可見度規則，
-       固定套用自己的「只留最上層 1 張商品、人物圖完全不顯示」規則。 */
+       _bnSingleProductOnlyTemplate／首頁 LOGO 牆的版位無視這則訊息帶來的可見度規則，
+       固定套用自己的「只留指定商品、人物圖完全不顯示」規則。 */
     if (e.data.type === 'bn-character-visibility') {
       var czone4 = getProductZone(); if(!czone4) return;
-      if(_bnSingleProductOnlyTemplate){ applySingleProductOnlyIfNeeded(czone4); return; }
+      if(_bnSingleProductOnlyTemplate || _bnHomepageLogoWallTemplate){ applySingleProductOnlyIfNeeded(czone4); return; }
       var visibleIds = e.data.visibleIds;
       var hasChar = !!e.data.hasChar;
       czone4.querySelectorAll('.bn-prod-box').forEach(function(b){
@@ -1524,6 +1561,7 @@
       if(box6 && e.data.layout){
         applySavedCharLayout(box6, czone6, e.data.layout);
         box6.dataset.manualLayout = '1';
+        syncCharGradientOverlay(box6);
       }
       return;
     }
@@ -1541,12 +1579,19 @@
       var bgX     = e.data.x     !== undefined ? e.data.x     : 50;
       var bgY     = e.data.y     !== undefined ? e.data.y     : 50;
 
-      /* SearchICON_LOGO / PRODUCT / TEXT 的圓底可連動純色，但圓底下方的
-         120x120 基底固定白色，且三個版位完全不接受任何背景圖片。 */
+      /* SearchICON_LOGO / PRODUCT / TEXT 與首頁 LOGO 牆都不接受背景圖片；
+         SearchICON 的純色底跟著目前選取的背景色，首頁 LOGO 牆則固定白色。 */
       if(_bnNoImageBackgroundTemplate){
         var cvSearchIcon = document.getElementById('canvas');
-        if(cvSearchIcon) cvSearchIcon.style.setProperty('background', '#fff', 'important');
-        if(bgContainer) bgContainer.style.setProperty('background-image', 'none', 'important');
+        var noImageBg = _bnFixedWhiteBackgroundTemplate ? '#fff' : _bnCurrentCanvasBg;
+        if(!noImageBg){
+          noImageBg = getComputedStyle(document.documentElement).getPropertyValue('--canvas-bg').trim() || '#fff';
+        }
+        if(cvSearchIcon) cvSearchIcon.style.setProperty('background', noImageBg, 'important');
+        if(bgContainer){
+          bgContainer.style.setProperty('background-color', noImageBg, 'important');
+          bgContainer.style.setProperty('background-image', 'none', 'important');
+        }
         if(bimg2){ bimg2.src=''; bimg2.style.display='none'; bimg2.style.transform=''; }
         return;
       }
@@ -2457,6 +2502,156 @@
      ════════════════════════════════════════════════════ */
   var CHAR_Z_BASE = 400; /* 人物 z-index 基準，跟商品(11~一百多內)清楚分層，不會互相打架 */
 
+  var CHAR_GRADIENT_CLASSES = ['漸層左','漸層右','漸層上','漸層下'];
+  var CHAR_DDCARD_PROTECTION_CLASSES = ['下保護'];
+
+  /* 人物專用漸層：原本的漸層仍留在畫布原本的位置與 z-index；
+     這裡複製目前版型已啟用的漸層樣式，放進人物 box 內，並用人物
+     原圖的 alpha 當 mask。人物仍維持原本跟商品的前後關係，漸層只會
+     壓在人物本身。首頁 LOGO 牆目前沒有漸層 class，因此不會憑空新增
+     未定義的首頁漸層。 */
+  function getCharGradientSources(){
+    var canvas = document.getElementById('canvas');
+    if(!canvas) return [];
+    var sourceClasses = CHAR_GRADIENT_CLASSES.slice();
+    if(_bnDdcardTemplate) sourceClasses = sourceClasses.concat(CHAR_DDCARD_PROTECTION_CLASSES);
+    return sourceClasses.map(function(cls){
+      return canvas.querySelector('.' + cls);
+    }).filter(function(el){
+      if(!el) return false;
+      var cs = window.getComputedStyle(el);
+      return cs.display !== 'none' && cs.visibility !== 'hidden' && parseFloat(cs.opacity || '1') > 0;
+    });
+  }
+
+  function ensureCharGradientMask(box){
+    if(!box) return null;
+    var mask = box.querySelector('.bn-char-gradient-mask');
+    if(mask) return mask;
+    mask = document.createElement('canvas');
+    mask.className = 'bn-char-gradient-mask';
+    mask.style.cssText = [
+      'position:absolute;left:0;top:0;width:100%;height:100%;',
+      'pointer-events:none;z-index:2;display:none;'
+    ].join('');
+    var img = box.querySelector('img');
+    if(img) img.insertAdjacentElement('afterend', mask);
+    else box.insertBefore(mask, box.firstChild || null);
+    return mask;
+  }
+
+  function parseCharGradient(ctx, backgroundImage, direction, width, height){
+    var text = String(backgroundImage || '');
+    if(text.indexOf('linear-gradient') === -1) return null;
+    var colorM = text.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)(?:\s*,\s*([\d.]+))?\s*\)\s*0%/i);
+    if(!colorM) colorM = text.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)(?:\s*,\s*([\d.]+))?\s*\)/i);
+    if(!colorM) return null;
+    var stopM = text.match(/rgba\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*,\s*0\s*\)\s*([\d.]+)%/i);
+    var stop = stopM ? Math.min(1, parseFloat(stopM[1]) / 100) : 1;
+    var dir = String(direction || 'to right').trim().toLowerCase();
+    var coords = {
+      'to right':[0,0,width,0],
+      'to left':[width,0,0,0],
+      'to bottom':[0,0,0,height],
+      'to top':[0,height,0,0]
+    }[dir] || [0,0,width,0];
+    var grad = ctx.createLinearGradient(coords[0], coords[1], coords[2], coords[3]);
+    var solid = 'rgb(' + colorM[1] + ',' + colorM[2] + ',' + colorM[3] + ')';
+    var clear = 'rgba(' + colorM[1] + ',' + colorM[2] + ',' + colorM[3] + ',0)';
+    grad.addColorStop(0, solid);
+    grad.addColorStop(stop, clear);
+    grad.addColorStop(1, clear);
+    return grad;
+  }
+
+  function syncCharGradientOverlay(box){
+    if(!box) return;
+    var mask = ensureCharGradientMask(box);
+    var img = box.querySelector('img');
+    var canvas = document.getElementById('canvas');
+    if(!mask || !img || !canvas) return;
+    var boxWidth = box.offsetWidth || parseFloat(window.getComputedStyle(box).width) || 0;
+    var boxHeight = box.offsetHeight || parseFloat(window.getComputedStyle(box).height) || 0;
+    var naturalW = img.naturalWidth || 0;
+    var naturalH = img.naturalHeight || 0;
+    if(!boxWidth || !boxHeight || !naturalW || !naturalH){
+      mask.style.display = 'none';
+      return;
+    }
+
+    mask.width = Math.max(1, Math.round(boxWidth));
+    mask.height = Math.max(1, Math.round(boxHeight));
+    mask.style.display = '';
+    var ctx = mask.getContext('2d');
+    if(!ctx) return;
+    ctx.clearRect(0, 0, mask.width, mask.height);
+
+    var boxRect = box.getBoundingClientRect();
+    var canvasRect = canvas.getBoundingClientRect();
+    var canvasCssW = canvas.offsetWidth || parseFloat(window.getComputedStyle(canvas).width) || canvasRect.width || 1;
+    var canvasScale = (canvasRect.width || canvasCssW) / canvasCssW || 1;
+    var sources = getCharGradientSources();
+    if(!sources.length){
+      ctx.clearRect(0, 0, mask.width, mask.height);
+      mask.style.display = 'none';
+      return;
+    }
+
+    var fullProtectionSources = [];
+    sources.forEach(function(source){
+      var sourceRect = source.getBoundingClientRect();
+      var cs = window.getComputedStyle(source);
+      var direction = cs.getPropertyValue('--grad-dir').trim();
+      if(!direction){
+        for(var i=0;i<CHAR_GRADIENT_CLASSES.length;i++){
+          if(source.classList.contains(CHAR_GRADIENT_CLASSES[i])){
+            direction = ({'漸層左':'to right','漸層右':'to left','漸層上':'to bottom','漸層下':'to top'})[CHAR_GRADIENT_CLASSES[i]];
+            break;
+          }
+        }
+      }
+      var left = (sourceRect.left - boxRect.left) / canvasScale;
+      var top = (sourceRect.top - boxRect.top) / canvasScale;
+      var width = sourceRect.width / canvasScale;
+      var height = sourceRect.height / canvasScale;
+      var grad = parseCharGradient(ctx, cs.backgroundImage, direction, width, height);
+      var solid = (!grad && cs.backgroundImage === 'none' && cs.backgroundColor && cs.backgroundColor !== 'transparent' && cs.backgroundColor !== 'rgba(0, 0, 0, 0)')
+        ? cs.backgroundColor : null;
+      if((!grad && !solid) || width <= 0 || height <= 0) return;
+      if(_bnDdcardTemplate && source.classList.contains('下保護') && solid){
+        fullProtectionSources.push({left:left, top:top, width:width, height:height, color:solid});
+      }
+      ctx.save();
+      ctx.translate(left, top);
+      ctx.fillStyle = grad || solid;
+      ctx.fillRect(0, 0, width, height);
+      ctx.restore();
+    });
+
+    /* 以人物圖的實際 alpha 遮罩漸層，讓透明背景區不會被染色。 */
+    var imageRatio = naturalW / naturalH;
+    var drawW = boxWidth, drawH = boxWidth / imageRatio;
+    if(drawH > boxHeight){ drawH = boxHeight; drawW = boxHeight * imageRatio; }
+    var drawX = (boxWidth - drawW) / 2;
+    var drawY = (boxHeight - drawH) / 2;
+    ctx.globalCompositeOperation = 'destination-in';
+    ctx.drawImage(img, drawX, drawY, drawW, drawH);
+    ctx.globalCompositeOperation = 'source-over';
+
+    /* ddcard 的最下方「下保護」是背景色實體色塊，不應再受人物 alpha
+       鏤空影響；最後用完整矩形壓上，才能把人物外框完全蓋住。 */
+    fullProtectionSources.forEach(function(protection){
+      ctx.fillStyle = protection.color;
+      ctx.fillRect(protection.left, protection.top, protection.width, protection.height);
+    });
+  }
+
+  function syncAllCharGradientOverlays(){
+    var canvas = document.getElementById('canvas');
+    if(!canvas) return;
+    canvas.querySelectorAll('.bn-char-box').forEach(syncCharGradientOverlay);
+  }
+
   function createCharBox(slotKey, data, zone){
     var old = zone.querySelector('.bn-char-box[data-slot="'+slotKey+'"]');
     if(old) old.remove();
@@ -2469,6 +2664,7 @@
     var img = document.createElement('img');
     img.src = data.src;
     img.style.cssText = 'width:100%;height:100%;object-fit:contain;pointer-events:none;display:block;';
+    img.addEventListener('load', function(){ syncCharGradientOverlay(box); });
     box.appendChild(img);
     ['nw','ne','sw','se'].forEach(function(c){
       var h = document.createElement('div'); h.dataset.corner = c;
@@ -2585,6 +2781,7 @@
         if(c.indexOf('n') !== -1) t = drag.t + (drag.h - bh);
         box.dataset.manualLayout = '1';
         box.style.left=l+'px'; box.style.top=t+'px'; box.style.width=w+'px'; box.style.height=bh+'px';
+        syncCharGradientOverlay(box);
         scheduleCharLayoutPost(box);
       });
       h.addEventListener('pointerup', function(){ postCharacterLayout(box); drag=null; });
@@ -2596,6 +2793,7 @@
       box.dataset.manualLayout = '1';
       box.style.left = (drag.l + e.clientX - drag.sx) + 'px';
       box.style.top  = (drag.t + e.clientY - drag.sy) + 'px';
+      syncCharGradientOverlay(box);
       scheduleCharLayoutPost(box);
     });
     box.addEventListener('pointerup', function(){ postCharacterLayout(box); drag=null; box.style.outline='2px solid transparent'; });
@@ -2611,6 +2809,7 @@
       box.dataset.manualLayout = '1';
       box.style.left = (cx - w/2) + 'px'; box.style.top = (cy - bh/2) + 'px';
       box.style.width = w + 'px'; box.style.height = bh + 'px';
+      syncCharGradientOverlay(box);
       postCharacterLayout(box);
     }, {passive:false});
   }
@@ -2661,16 +2860,18 @@
   function applySingleProductOnlyIfNeeded(zone){
     if(!zone) return;
     var boxes = Array.prototype.slice.call(zone.querySelectorAll('.bn-prod-box'));
+    if(_bnHomepageLogoWallTemplate){
+      /* 首頁 LOGO 牆：只允許商品圖第 1 張，人物圖與其他商品全部隱藏。 */
+      zone.querySelectorAll('.bn-char-box').forEach(function(b){ b.style.display = 'none'; });
+      boxes.forEach(function(b, i){ b.style.display = (i === 0) ? '' : 'none'; });
+      return;
+    }
     if(!boxes.length) return;
 
     if(_bnSingleProductOnlyTemplate){
       zone.querySelectorAll('.bn-char-box').forEach(function(b){ b.style.display = 'none'; });
       var main = boxes.filter(function(b){ return (b.dataset.position || '0') === '0'; })[0] || null;
       boxes.forEach(function(b){ b.style.display = (b === main) ? '' : 'none'; });
-    }
-    else if(_bnSingleProductForLogoWallTemplate){
-      /* 首頁LOGO牆：只顯示第一個商品，隱藏其他 */
-      boxes.forEach(function(b, i){ b.style.display = (i === 0) ? '' : 'none'; });
     }
   }
 

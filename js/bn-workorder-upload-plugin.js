@@ -233,7 +233,9 @@
     var catMap = { el:'EL', fmcg:'FMCG', fashion:'Fashion', lifestyle:'Lifestyle' };
     var cat = catMap[rawCat] || m[1];
     var num = parseInt(m[2], 10);
-    return { category: cat, number: num, code: cat + '-' + num, raw: m[0] };
+    var mockup = /mock\s*up/i.test(m[0]);
+    return { category: cat, number: num, mockup: mockup,
+      code: cat + (mockup ? '-Mockup-' : '-') + num, raw: m[0] };
   }
 
   function isPublicTemplateHeader(v){
