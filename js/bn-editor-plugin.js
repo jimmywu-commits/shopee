@@ -2956,10 +2956,10 @@
 
       /* ★ 選擇性壓縮（2026-08）：
          layers = {bgUrl, fgUrl}（由 iframe 分層截圖提供，可能為空）。
-         策略：先只降「背景層」解析度（照片最吃體積），商品圖/logo/文字
-         維持原樣，以高品質 JPEG(0.9) 合成輸出；背景降到 30% 仍塞不進
-         目標 KB 才退回舊的「整張一起壓」流程。
-         → 大多數情況：背景稍微變軟，商品圖完全不受影響。 */
+         策略：先只處理背景層（照片最吃體積），商品圖/logo/文字維持
+         原始像素尺寸；只有在原始尺寸、高品質 JPEG 仍塞不進目標 KB 時，
+         才逐步降低背景層解析度，最後才退回整張一起壓。
+         → 小幅超標時不會先把整張畫布縮小，降低預覽與下載的解析度落差。 */
       function compressSelectiveBgFirst(layers, targetKb, cb){
         var maxBytes = targetKb * 1024;
         var bgImg = new Image(), fgImg = new Image();
@@ -2970,8 +2970,8 @@
           try{
             var W = bgImg.naturalWidth, H = bgImg.naturalHeight;
             if(!W || !H || fgImg.naturalWidth !== W || fgImg.naturalHeight !== H){ cb(null); return; }
-            var BG_SCALES = [1, 0.85, 0.7, 0.55, 0.4, 0.3];
-            var Q = 0.9; /* 高品質：商品圖幾乎無損 */
+            var BG_SCALES = [1, 0.95, 0.9, 0.85, 0.75, 0.65, 0.55, 0.45, 0.35, 0.3];
+            var QUALITY_STEPS = [0.98, 0.96, 0.94, 0.92, 0.90];
             for(var i = 0; i < BG_SCALES.length; i++){
               var sc = BG_SCALES[i];
               var c = document.createElement('canvas');
@@ -2991,10 +2991,12 @@
                 ctx.drawImage(bgImg, 0, 0);
               }
               ctx.drawImage(fgImg, 0, 0); /* 前景原解析度疊上 */
-              var out = canvasToJpegDataUrl(c, Q);
-              if(out && dataUrlByteSize(out) <= maxBytes){ cb(out); return; }
+              for(var q = 0; q < QUALITY_STEPS.length; q++){
+                var out = canvasToJpegDataUrl(c, QUALITY_STEPS[q]);
+                if(out && dataUrlByteSize(out) <= maxBytes){ cb(out, true); return; }
+              }
             }
-            cb(null); /* 背景壓到底仍超標 → 交回整張壓縮 */
+            cb(null, false); /* 背景壓到底仍超標 → 交回整張壓縮 */
           }catch(e){ cb(null); }
         }
         bgImg.onload = onLoad; bgImg.onerror = onFail;
@@ -3005,14 +3007,18 @@
       function compressDataUrlToTargetKb(dataUrl, targetKb, cb, layers){
         targetKb = parseInt(targetKb,10) || 0;
         if(!targetKb || !dataUrl){ cb(dataUrl); return; }
+        var maxBytes = targetKb * 1024;
+
+        /* 原始 PNG 已經符合容量時，完全保留原始輸出，不重新編碼成 JPG。 */
+        if(dataUrlByteSize(dataUrl) <= maxBytes){ cb(dataUrl, false); return; }
+
         if(layers && layers.bgUrl && layers.fgUrl){
-          compressSelectiveBgFirst(layers, targetKb, function(selUrl){
-            if(selUrl){ cb(selUrl); return; }
+          compressSelectiveBgFirst(layers, targetKb, function(selUrl, selCompressed){
+            if(selUrl){ cb(selUrl, !!selCompressed); return; }
             compressDataUrlToTargetKb(dataUrl, targetKb, cb); /* 退回整張壓縮 */
           });
           return;
         }
-        var maxBytes = targetKb * 1024;
         var img = new Image();
         img.onload = function(){
           try{
@@ -3054,17 +3060,20 @@
               return localBest;
             }
 
-            for(var step=0; step<12; step++){
+            /* 品質不夠時才縮尺寸；每次只降 5%，避免原本 10% 一跳造成
+               下載圖尺寸與編輯畫布出現明顯落差。 */
+            for(var step=0; step<25; step++){
               var canvas = drawCanvas();
               var out = tryQuality(canvas);
-              if(out && dataUrlByteSize(out) <= maxBytes){ cb(out); return; }
-              scale *= 0.9;
+              if(out && dataUrlByteSize(out) <= maxBytes){ cb(out, true); return; }
+              scale *= 0.95;
             }
 
-            cb(best || canvasToJpegDataUrl(drawCanvas(), 0.05) || dataUrl);
-          }catch(e){ cb(dataUrl); }
+            var fallback = best || canvasToJpegDataUrl(drawCanvas(), 0.05);
+            cb(fallback || dataUrl, !!fallback);
+          }catch(e){ cb(dataUrl, false); }
         };
-        img.onerror = function(){ cb(dataUrl); };
+        img.onerror = function(){ cb(dataUrl, false); };
         img.src = dataUrl;
       }
 
@@ -3238,7 +3247,7 @@
             if(dataUrl){
               var isSearchIcon = isSearchIcon0;
               var kbLimit = kbLimit0;
-              var outName = baseName + (kbLimit ? '.jpg' : '.png');
+              var outName = baseName + '.png';
 
               function afterMainReady(mainUrl, mainName){
                 if(!isSearchIcon){ afterCompress(mainUrl, mainName); return; }
@@ -3254,9 +3263,15 @@
               }
 
               if(kbLimit){
+                var sourceBytes = dataUrlByteSize(dataUrl);
+                if(sourceBytes <= kbLimit * 1024){
+                  /* 未超過 KB：維持原始 PNG 與原始畫素，不做任何重新編碼。 */
+                  afterMainReady(dataUrl, baseName + '.png');
+                  return;
+                }
                 setProgress('壓縮 '+baseName+' 至 '+kbLimit+'KB 以下…');
-                compressDataUrlToTargetKb(dataUrl, kbLimit, function(jpgUrl){
-                  afterMainReady(jpgUrl, outName);
+                compressDataUrlToTargetKb(dataUrl, kbLimit, function(jpgUrl, didCompress){
+                  afterMainReady(jpgUrl, baseName + (didCompress ? '.jpg' : '.png'));
                 }, {bgUrl: res && res.bgUrl, fgUrl: res && res.fgUrl});
               }else{
                 afterMainReady(dataUrl, outName);
