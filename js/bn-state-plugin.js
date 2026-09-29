@@ -1033,7 +1033,8 @@
 
     /* 清除本機暫存按鈕 */
     var clrBar=document.createElement('div');
-    clrBar.style.cssText='padding:0 14px 10px;flex-shrink:0;';
+    /* 暫時保留清除邏輯，僅隱藏左側工具列按鈕；之後要恢復時移除此行即可。 */
+    clrBar.style.cssText='display:none;padding:0 14px 10px;flex-shrink:0;';
     var clrBtn=document.createElement('button');
     clrBtn.type='button';
     clrBtn.textContent='🗑 清除本機暫存';
@@ -1082,10 +1083,10 @@
            （雖然馬上就會重新整理頁面，這裡先做一次是為了讓使用者在
            頁面重新整理前，也能立刻看到畫面有反應，而不是按下去像沒反應。）*/
         var defaults = {
-          'txt-brand': '品牌名不放圖9字內',
+          'txt-brand': '品牌名不放圖$9字折內',
           'txt-main':  '滿$200享9折',
           'txt-sub':   '副標$500起',
-          'txt-date':  '5/18 - 5/25 期間限定'
+          'txt-date':  '5/18 12:00 - 5/25 11:59 期間限定'
         };
         Object.keys(defaults).forEach(function(id){
           var el = document.getElementById(id);

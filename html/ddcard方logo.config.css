@@ -56,16 +56,16 @@
 .上保護 {
   position: absolute;
   left: 0; top: 0;
-  width: 531px; height: 337px;
+  width: 531px; height: 347px;
   background: #6ec6e8;
   pointer-events: none;
   z-index: 3;
 }
 
-/* ── 漸層上：起點 y=335px ── */
+/* ── 漸層上：起點 y=345px ── */
 .漸層上 {
   position: absolute;
-  left: 0; top: 335px;
+  left: 0; top: 345px;
   width: 531px; height: 78px;
   background: linear-gradient(to bottom, #6ec6e8 0%, rgba(110, 198, 232, 0) 89.744%,
     rgba(110, 198, 232, 0) 100%);
@@ -97,4 +97,3 @@
   pointer-events: none;
   z-index: 3;
 }
-
