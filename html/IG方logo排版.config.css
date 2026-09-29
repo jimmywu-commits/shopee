@@ -44,17 +44,17 @@
   left: 0;
   top: 0;
   width: 900px;
-  height: 685.9px;
+  height: 695.9px;
   background: #6ec6e8;
   pointer-events: none;
   z-index: 3;
 }
 
-/* ── 漸層上：起點 683.9px ── */
+/* ── 漸層上：起點 693.9px；上方保護色塊同步加高 5px ── */
 .漸層上 {
   position: absolute;
   left: 0;
-  top: 683.9px;
+  top: 693.9px;
   width: 900px;
   height: 78px;
   background: linear-gradient(to bottom, #6ec6e8 0%, rgba(110, 198, 232, 0) 89.744%,
