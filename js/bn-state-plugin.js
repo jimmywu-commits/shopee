@@ -875,7 +875,8 @@
   }
 
   function autoSave(){
-    if(global._bnExporting || global._bnStateDownloading) return;
+    /* 清除暫存時禁止任何計時器／beforeunload 再把舊狀態寫回去。 */
+    if(global._bnExporting || global._bnStateDownloading || global._bnClearingState) return;
     var state;
     try{ state = collectState(); }
     catch(e){ console.warn('[BNState] collectState 失敗', e); return; }
@@ -927,7 +928,7 @@
          舊邏輯只接受 sidebar 事件，導致商品拖曳/縮放、背景畫布設定等不會寫入本機暫存，刷新後就回到舊資料。 */
       var isDirtyEvent = e && e.type === 'bn-state-dirty';
       var fromSidebar = !e || (e.target && e.target.closest && e.target.closest('#sidebar'));
-      if(global._bnExporting || global._bnStateDownloading || global._bnStateApplying) return;
+      if(global._bnExporting || global._bnStateDownloading || global._bnStateApplying || global._bnClearingState) return;
       if(isDirtyEvent || fromSidebar){
         clearTimeout(global._bnSaveTimer);
         global._bnSaveTimer=setTimeout(autoSave, isDirtyEvent ? 250 : 1500);
@@ -1033,8 +1034,7 @@
 
     /* 清除本機暫存按鈕 */
     var clrBar=document.createElement('div');
-    /* 暫時保留清除邏輯，僅隱藏左側工具列按鈕；之後要恢復時移除此行即可。 */
-    clrBar.style.cssText='display:none;padding:0 14px 10px;flex-shrink:0;';
+    clrBar.style.cssText='display:block;padding:0 14px 10px;flex-shrink:0;';
     var clrBtn=document.createElement('button');
     clrBtn.type='button';
     clrBtn.textContent='🗑 清除本機暫存';
@@ -1043,6 +1043,9 @@
     clrBtn.addEventListener('mouseleave',function(){ clrBtn.style.background='transparent'; });
     clrBtn.addEventListener('click',function(){
       if(!confirm('確定要清除本機暫存？頁面將重新整理，畫面會回到預設值。')) return;
+      /* 先鎖住所有自動暫存，避免清除後在 reload 前又把舊資料寫回去。 */
+      global._bnClearingState = true;
+      clearTimeout(global._bnSaveTimer);
       try{
         /* 1. 清除 localStorage + IndexedDB 完整暫存
            ────────────────────────────────────────────────
@@ -1063,10 +1066,44 @@
            流程的優先權不夠高，是清除這個動作本身，把「位置資料要對照
            的那把鑰匙（id）」也一起清掉了。
            這裡明確排除 'bn-layouts'，只清除使用者的編輯狀態，
-           版位清單設定維持不變，id 不會因為清除暫存而改變。 */
-        Object.keys(localStorage).filter(function(k){ return k.startsWith('bn') && k !== 'bn-layouts'; })
-          .forEach(function(k){ localStorage.removeItem(k); });
-        idbClearState().catch(function(e){ console.warn('[BNState] IndexedDB clear 失敗', e); })
+           版位清單設定維持不變，id 不會因為清除暫存而改變。
+
+           這裡也要清掉 BODA 共用的文字／背景色鍵值；它們不以 bn 開頭，
+           若不清除，頁面 reload 後仍會把舊文案或舊背景色重新套回來。 */
+        var preservedLayoutKey = 'bn-layouts';
+        var preservedExternalKeys = { 'bn_feedback_draft_v2': true };
+        Object.keys(localStorage).forEach(function(k){
+          var isBnState = k.indexOf('bn') === 0 && k !== preservedLayoutKey && !preservedExternalKeys[k];
+          var isSharedBnInput = k === 'wo_shared_exposure_text_v1' || k === 'wo_shared_canvas_bg_v1';
+          if(isBnState || isSharedBnInput){
+            try{ localStorage.removeItem(k); }catch(_){ }
+          }
+        });
+
+        /* 版位掛標／蝦皮 LOGO 的網址探測只存在 sessionStorage，
+           不是編輯內容，但清除暫存時一併清掉，確保本分頁也是真正乾淨。 */
+        try{
+          Object.keys(sessionStorage).forEach(function(k){
+            if(k.indexOf('bn') === 0) sessionStorage.removeItem(k);
+          });
+        }catch(_){ }
+
+        /* 保留版位 id／檔名／尺寸／啟用狀態，僅清掉使用者勾選結果，
+           讓畫面回到初次載入時的預設勾選規則。 */
+        try{
+          var rawLayouts = localStorage.getItem(preservedLayoutKey);
+          if(rawLayouts){
+            var savedLayouts = JSON.parse(rawLayouts);
+            if(Array.isArray(savedLayouts)){
+              savedLayouts.forEach(function(layout){
+                if(layout && Object.prototype.hasOwnProperty.call(layout,'checked')) delete layout.checked;
+              });
+              localStorage.setItem(preservedLayoutKey, JSON.stringify(savedLayouts));
+            }
+          }
+        }catch(_){ }
+
+        Promise.resolve(idbClearState()).catch(function(e){ console.warn('[BNState] IndexedDB clear 失敗', e); })
           .then(function(){
             /* 一定要重新整理頁面才會真正回到預設值。
                之前這裡只清掉 localStorage/IndexedDB（儲存層），
@@ -1083,10 +1120,12 @@
            （雖然馬上就會重新整理頁面，這裡先做一次是為了讓使用者在
            頁面重新整理前，也能立刻看到畫面有反應，而不是按下去像沒反應。）*/
         var defaults = {
-          'txt-brand': '品牌名不放圖$9字折內',
+          'txt-brand': '品牌名不放圖9字內',
           'txt-main':  '滿$200享9折',
           'txt-sub':   '副標$500起',
-          'txt-date':  '5/18 12:00 - 5/25 11:59 期間限定'
+          'txt-date':  '5/18 - 5/25 期間限定',
+          'txt-icon':  '文案',
+          'txt-ar':    '最多六個字內'
         };
         Object.keys(defaults).forEach(function(id){
           var el = document.getElementById(id);
@@ -1095,17 +1134,29 @@
 
         /* 3. 顏色還原預設 */
         if(global.colorState){
+          /* 清除畫布色的權威鎖與匯出 guard，避免舊背景色在 reload 前又被套回。 */
+          global._bnAuthoritativeCanvasBg = null;
+          global._bnCanvasBgHardLock = null;
+          global._bnPersistentCanvasBg = null;
+          global._bnUserCanvasBgLocked = false;
+          global._bnLastUserColorState = null;
+          global._bnFrozenColorData = null;
+          global._bnBgColorExportGuardUntil = 0;
           Object.assign(global.colorState, {
             mainText:'#2b79c4', subText:'#2540b5', dateText:'#2b79c4',
             brandText:'#2b79c4', canvasBg:'#6bc0ec', ctaText:'#ffffff', ctaTextAuto:true,
-            ctaBgAuto:true, ctaBg:'#2540b5', searchImageCtaBg:'#2540b5'
+            ctaBgAuto:true, ctaBg:'#2540b5', searchImageCtaBg:'#2540b5',
+            tagColor:'red', logoColor:'white'
           });
           if(typeof global.renderColorPickers==='function') global.renderColorPickers();
           if(typeof global.broadcastColors==='function') global.broadcastColors();
         }
 
+        if(typeof global.applyTagColor === 'function') global.applyTagColor('red');
+        if(typeof global.applyLogoColor === 'function') global.applyLogoColor('white');
+
         showToast('已清除，頁面即將重新整理…','ok');
-      }catch(e){ showToast('清除失敗：'+e.message,'err'); }
+      }catch(e){ global._bnClearingState = false; showToast('清除失敗：'+e.message,'err'); }
     });
     clrBar.appendChild(clrBtn);
 
