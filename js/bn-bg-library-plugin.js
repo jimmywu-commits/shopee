@@ -564,7 +564,10 @@
 
   function shouldInterceptClick(el){
     if(!el || allowNativeUploadOnce) return false;
-    if(el.closest && el.closest('#bnBgLibModal')) return false;
+    /* 背景圖庫用 capture click 攔截「上傳背景圖」入口；
+       但雙欄背景視窗裡的橫式／直式 file input 必須放行。
+       否則點直式 input 時，這裡會再次把背景圖庫打開，造成重複出現。 */
+    if(el.closest && (el.closest('#bnBgLibModal') || el.closest('#bn-bg-modal') || el.closest('#bnSlabFitModal'))) return false;
     if(el.matches && el.matches('input[type="file"]')){
       var idn = ((el.id||'') + ' ' + (el.name||'') + ' ' + (el.className||'') + ' ' + (el.accept||'')).toLowerCase();
       return idn.indexOf('bg') !== -1 || idn.indexOf('背景') !== -1;
