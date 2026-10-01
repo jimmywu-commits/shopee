@@ -2712,12 +2712,24 @@
 
       /* 多張 ZIP 匯出時，iframe 可能還沒同步完而回報預設藍。
          因此背景色一律以父層最後一次使用者設定值為最高優先，
-         不再讓 iframe 的 live background 反向覆蓋父層狀態。 */
-      var authoritativeBg = _bnGetAuthoritativeCanvasBg();
-      if(_bnIsUsableColor(authoritativeBg)) data.canvasBg = authoritativeBg;
-      else {
-        var liveBg = _bnGetLiveCanvasBgColor();
-        if(_bnIsUsableColor(liveBg)) data.canvasBg = liveBg;
+         不再讓 iframe 的 live background 反向覆蓋父層狀態。
+         首頁LOGO牆固定白底，無視父層選擇。 */
+      var isHomepageLogoWall = document.querySelectorAll('.preview-block iframe').some(function(ifr){
+        try{
+          var src = (ifr.getAttribute('src') || ifr.src || '').toLowerCase();
+          return /首頁logo牆/i.test(src);
+        }catch(_){ return false; }
+      });
+
+      if(isHomepageLogoWall){
+        data.canvasBg = '#fff';
+      } else {
+        var authoritativeBg = _bnGetAuthoritativeCanvasBg();
+        if(_bnIsUsableColor(authoritativeBg)) data.canvasBg = authoritativeBg;
+        else {
+          var liveBg = _bnGetLiveCanvasBgColor();
+          if(_bnIsUsableColor(liveBg)) data.canvasBg = liveBg;
+        }
       }
       return data;
     }
