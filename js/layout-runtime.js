@@ -224,11 +224,10 @@
           父層之後發 bn-color 仍可覆蓋（同為 inline style）。── */
     var canvasBgRaw = root.getPropertyValue('--canvas-bg').trim();
     if (canvasBgRaw && canvasBgRaw !== 'none' && canvasBgRaw !== '') {
+      canvas.style.background = canvasBgRaw;
       var _bgEl = canvas.querySelector('.背景色') || canvas.querySelector('.bg') || canvas.querySelector('.底色');
       if (_bgEl) {
         _bgEl.style.backgroundColor = canvasBgRaw;
-      } else {
-        canvas.style.background = canvasBgRaw;
       }
     }
 
