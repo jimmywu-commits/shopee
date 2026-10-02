@@ -1230,6 +1230,7 @@
           total = widths.reduce(function(a,b){ return a + b; }, 0) + gap * Math.max(0, widths.length - 1);
           var x = alignMode === 'center' ? Math.max(0, (zoneW - total) / 2) : 0;
           imgs.forEach(function(img, i){
+            if(img.dataset.manualLayout === '1'){ x += widths[i] + gap; return; }
             img.style.position = 'absolute';
             img.style.left = Math.round(x) + 'px';
             img.style.top = '50%';
@@ -1331,40 +1332,111 @@
            img 尺寸做到「持續放大」，因此這裡要強制蓋回 hidden，讓放大後超出
            logo範圍的部分被遮色裁掉，而不是整張圖片一起放大跑出版位外。 */
         zone.style.overflow = 'hidden';
+
+        /* 滾輪縮放／左鍵拖曳都改成「設計座標」（除掉畫布顯示縮放），並在每次
+           調整後把位置大小回報給外層（bn-searchicon-logo-layout-update 是
+           外層記錄單張 LOGO 版面的通用訊息）。下載時外層會重送 bn-logos 讓
+           iframe 重建，沒有回報＋還原的話，LOGO 就會回到預設大小與位置。 */
+        var _logoWallScale = function(){
+          var dw = zone.offsetWidth || 1;
+          return (zone.getBoundingClientRect().width / dw) || 1;
+        };
+        var _logoWallTakeOver = function(img){
+          if(img.dataset.manualLayout === '1') return;
+          var S = _logoWallScale();
+          var zr = zone.getBoundingClientRect();
+          var ir = img.getBoundingClientRect();
+          var w = ir.width / S, h = ir.height / S;
+          img.dataset.manualLayout = '1';
+          img.dataset.ratio = (w && h) ? w / h : 1;
+          img.style.position = 'absolute';
+          img.style.transform = 'none';
+          img.style.width = w + 'px';
+          img.style.height = h + 'px';
+          img.style.maxWidth = 'none';
+          img.style.maxHeight = 'none';
+          img.style.left = ((ir.left - zr.left) / S) + 'px';
+          img.style.top = ((ir.top - zr.top) / S) + 'px';
+        };
+        var _logoWallPostLayout = function(img){
+          try{
+            window.parent.postMessage({
+              type:'bn-searchicon-logo-layout-update',
+              bnid:getCurrentBnId(),
+              layout:{
+                left: parseFloat(img.style.left) || 0, top: parseFloat(img.style.top) || 0,
+                width: parseFloat(img.style.width) || 0, height: parseFloat(img.style.height) || 0
+              }
+            }, '*');
+          }catch(_){}
+        };
+
+        /* 外層重送 LOGO 時帶回先前存的版面：還原位置與大小。寬度沿用、高度交給
+           圖片比例，避免換成不同比例的新 LOGO 時被拉伸。 */
+        var _savedLogoLayout = e.data.logoLayoutById && e.data.logoLayoutById[getCurrentBnId()];
+        var _logoImgNow = zone.querySelector('img.bn-logo-img');
+        if(_savedLogoLayout && _logoImgNow && _savedLogoLayout.width > 0
+           && isFinite(_savedLogoLayout.left) && isFinite(_savedLogoLayout.top)){
+          _logoImgNow.dataset.manualLayout = '1';
+          _logoImgNow.dataset.ratio = _savedLogoLayout.height > 0 ? _savedLogoLayout.width / _savedLogoLayout.height : 1;
+          _logoImgNow.style.position = 'absolute';
+          _logoImgNow.style.transform = 'none';
+          _logoImgNow.style.width = _savedLogoLayout.width + 'px';
+          _logoImgNow.style.height = 'auto';
+          _logoImgNow.style.maxWidth = 'none';
+          _logoImgNow.style.maxHeight = 'none';
+          _logoImgNow.style.left = _savedLogoLayout.left + 'px';
+          _logoImgNow.style.top = _savedLogoLayout.top + 'px';
+        }
+
         /* 這個 if 區塊在每次收到 bn-logo／bn-logos 訊息時都會重新執行一次
            （同一個 zone 元素不會被移除重建），如果每次都 addEventListener
-           會疊加出多個滾輪監聽器，同一次滾輪就會被放大好幾次（越用越暴衝）。
+           會疊加出多個監聽器，同一次滾輪就會被放大好幾次（越用越暴衝）。
            用 dataset 記一個旗標，確保整個版位存活期間只綁定一次。 */
         if(!zone.dataset.bnWheelBound){
           zone.dataset.bnWheelBound = '1';
+          zone.style.cursor = 'move';
           zone.addEventListener('wheel', function(e){
             e.preventDefault();
-            var imgs = Array.from(zone.querySelectorAll('img.bn-logo-img'));
-            if(!imgs.length) return;
-            var img = imgs[0];
-            var zr = zone.getBoundingClientRect();
-            var ir = img.getBoundingClientRect();
+            var img = zone.querySelector('img.bn-logo-img');
+            if(!img) return;
+            _logoWallTakeOver(img);
             var sc = e.deltaY < 0 ? 1.08 : .93;
-            var r = parseFloat(img.dataset.ratio) || (img.naturalWidth && img.naturalHeight ? img.naturalWidth / img.naturalHeight : 1);
-            var w = Math.max(10, ir.width * sc);
+            var r = parseFloat(img.dataset.ratio) || 1;
+            var curW = parseFloat(img.style.width) || img.offsetWidth;
+            var curH = parseFloat(img.style.height) || img.offsetHeight;
+            var w = Math.max(10, curW * sc);
             var ih = w / r;
-            /* 以縮放前的中心點為基準重新定位，不受限於區域大小──
-               接手成完全獨立的 absolute 定位，脫離 _fitHorizontalLogos
-               預設的 top:50%+translateY(-50%) 置中機制，否則寬度變大時
-               會往右長而不是從中心點放大。*/
-            var cx = (ir.left - zr.left) + ir.width / 2;
-            var cy = (ir.top - zr.top) + ir.height / 2;
-            img.dataset.manualLayout = '1';
-            img.dataset.ratio = r;
-            img.style.position = 'absolute';
-            img.style.transform = 'none';
+            /* 以縮放前的中心點為基準，從中心放大／縮小 */
+            var cx = (parseFloat(img.style.left) || 0) + curW / 2;
+            var cy = (parseFloat(img.style.top) || 0) + curH / 2;
             img.style.width = w + 'px';
             img.style.height = ih + 'px';
-            img.style.maxWidth = 'none';
-            img.style.maxHeight = 'none';
             img.style.left = (cx - w/2) + 'px';
             img.style.top = (cy - ih/2) + 'px';
+            _logoWallPostLayout(img);
           }, {passive: false});
+          zone.addEventListener('mousedown', function(e){
+            if(e.button !== 0) return;
+            var img = zone.querySelector('img.bn-logo-img');
+            if(!img) return;
+            e.preventDefault();
+            _logoWallTakeOver(img);
+            var S = _logoWallScale();
+            var startX = e.clientX, startY = e.clientY;
+            var startLeft = parseFloat(img.style.left) || 0, startTop = parseFloat(img.style.top) || 0;
+            function onMove(ev){
+              img.style.left = (startLeft + (ev.clientX - startX) / S) + 'px';
+              img.style.top = (startTop + (ev.clientY - startY) / S) + 'px';
+            }
+            function onUp(){
+              window.removeEventListener('mousemove', onMove, true);
+              window.removeEventListener('mouseup', onUp, true);
+              _logoWallPostLayout(img);
+            }
+            window.addEventListener('mousemove', onMove, true);
+            window.addEventListener('mouseup', onUp, true);
+          });
         }
       }
     }
@@ -2055,6 +2127,27 @@
       }
       _bnFixObjectFitForCapture('.bn-logo-box img, .bn-prod-box img, .bn-char-box img, .logo範圍_左 img.bn-logo-img, .logo範圍_中 img.bn-logo-img, .logo範圍_右 img.bn-logo-img');
 
+      /* 首頁LOGO牆截圖補償：html2canvas 1.4.1 會把圓角元素的外陰影
+         （box-shadow rgba(0,0,0,.14)）誤畫在元素內部，白色膠囊疊上去就變成
+         #dbdbdb 灰底（實測：拿掉陰影即純白）。截圖時暫時移除陰影並鎖定白底。 */
+      var _logoWallCaptureEls = [];
+      window.__bnLogoWallShadowSpecs = [];
+      if(_bnFixedWhiteBackgroundTemplate){
+        document.querySelectorAll('.logo範圍').forEach(function(zn){
+          var _cs = window.getComputedStyle(zn);
+          if(_cs.boxShadow && _cs.boxShadow !== 'none'){
+            window.__bnLogoWallShadowSpecs.push({el:zn, shadow:_cs.boxShadow, radius:_cs.borderTopLeftRadius});
+          }
+          _logoWallCaptureEls.push({el:zn,
+            prevBg: zn.style.getPropertyValue('background-color'),
+            prevBgPri: zn.style.getPropertyPriority('background-color'),
+            prevShadow: zn.style.getPropertyValue('box-shadow'),
+            prevShadowPri: zn.style.getPropertyPriority('box-shadow')});
+          zn.style.setProperty('background-color','#ffffff','important');
+          zn.style.setProperty('box-shadow','none','important');
+        });
+      }
+
       var _wantLayers = !!e.data.layers;
       captureCanvas(function(dataUrl, bgUrl, fgUrl){
         window.__bnContentWarningCaptureActive=false;
@@ -2074,6 +2167,13 @@
         _transformAdjustEls.forEach(function(o){ o.el.style.setProperty('transform', o.transform, o.priority || ''); });
         _iconRasterEls.forEach(function(o){ o.el.style.setProperty('color', o.color, o.priority || ''); if(o.cnv.parentNode) o.cnv.parentNode.removeChild(o.cnv); });
         _gradRasterEls.forEach(function(o){ o.el.style.setProperty('background', o.background, o.priority || ''); if(o.cnv.parentNode) o.cnv.parentNode.removeChild(o.cnv); });
+        _logoWallCaptureEls.forEach(function(o){
+          o.el.style.removeProperty('background-color');
+          if(o.prevBg) o.el.style.setProperty('background-color', o.prevBg, o.prevBgPri||'');
+          o.el.style.removeProperty('box-shadow');
+          if(o.prevShadow) o.el.style.setProperty('box-shadow', o.prevShadow, o.prevShadowPri||'');
+        });
+        window.__bnLogoWallShadowSpecs = null;
         window.parent.postMessage({type:'bn-snapshot',msgId:e.data.msgId,dataUrl:dataUrl,bgUrl:bgUrl||null,fgUrl:fgUrl||null},'*');
       }, _wantLayers);
     }
@@ -3336,6 +3436,36 @@
       runAfterFonts();
     }
   }
+  /* html2canvas 會把圓角元素的 box-shadow 畫進元素內部（首頁LOGO牆膠囊變灰底），
+     所以截圖時先移除陰影，截完後用 canvas 原生 shadow 只補畫在元素外側。 */
+  function _bnPaintLogoWallShadows(ctx, cv, scale, W, H){
+    var specs = window.__bnLogoWallShadowSpecs;
+    if(!specs || !specs.length) return;
+    var cr = cv.getBoundingClientRect();
+    function rr(x, y, w, h, r){
+      ctx.moveTo(x + r, y);
+      ctx.arcTo(x + w, y, x + w, y + h, r);
+      ctx.arcTo(x + w, y + h, x, y + h, r);
+      ctx.arcTo(x, y + h, x, y, r);
+      ctx.arcTo(x, y, x + w, y, r);
+      ctx.closePath();
+    }
+    specs.forEach(function(s){
+      var m = /(rgba?\([^)]+\))\s+(-?[\d.]+)px\s+(-?[\d.]+)px\s+([\d.]+)px/.exec(s.shadow || '');
+      if(!m || !s.el) return;
+      var r = s.el.getBoundingClientRect();
+      var x = (r.left - cr.left) / scale, y = (r.top - cr.top) / scale;
+      var w = r.width / scale, h = r.height / scale;
+      var rad = Math.min(parseFloat(s.radius) || 0, w / 2, h / 2);
+      ctx.save();
+      ctx.beginPath(); ctx.rect(0, 0, W, H); rr(x, y, w, h, rad);
+      ctx.clip('evenodd');
+      ctx.shadowColor = m[1]; ctx.shadowOffsetX = parseFloat(m[2]); ctx.shadowOffsetY = parseFloat(m[3]); ctx.shadowBlur = parseFloat(m[4]);
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath(); rr(x, y, w, h, rad); ctx.fill();
+      ctx.restore();
+    });
+  }
   function doCapture(cb, wantLayers){
     var cv=document.getElementById('canvas');
     if(!cv){if(cb)cb(null);return;}
@@ -3367,7 +3497,9 @@
         .then(function(c){
           var out = document.createElement('canvas');
           out.width = W; out.height = H;
-          out.getContext('2d').drawImage(c, 0, 0, out.width, out.height);
+          var outCtx = out.getContext('2d');
+          outCtx.drawImage(c, 0, 0, out.width, out.height);
+          _bnPaintLogoWallShadows(outCtx, cv, scale, W, H);
           var mainUrl = out.toDataURL('image/png');
 
           if(!wantLayers){
@@ -3391,10 +3523,12 @@
           }
           var kids = Array.prototype.slice.call(cv.children);
           var hcOpts = {scale:1/scale, useCORS:true, allowTaint:true, backgroundColor: _bnFixedWhiteBackgroundTemplate ? '#ffffff' : null, width:W, height:H, logging:false};
-          function toUrl(c2){
+          function toUrl(c2, withShadow){
             var o = document.createElement('canvas');
             o.width = W; o.height = H;
-            o.getContext('2d').drawImage(c2, 0, 0, W, H);
+            var oc = o.getContext('2d');
+            oc.drawImage(c2, 0, 0, W, H);
+            if(withShadow) _bnPaintLogoWallShadows(oc, cv, scale, W, H);
             return o.toDataURL('image/png');
           }
           var _hid = [];
@@ -3419,7 +3553,7 @@
               unhide();
               cv.style.background = oldCvBg;
               if(overlay) overlay.style.display = '';
-              if(cb) cb(mainUrl, bgUrl, toUrl(cFg));
+              if(cb) cb(mainUrl, bgUrl, toUrl(cFg, true));
             });
           }).catch(function(){
             unhide();

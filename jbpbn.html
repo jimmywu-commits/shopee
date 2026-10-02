@@ -3085,6 +3085,18 @@ window.addEventListener('message', function (e) {
     var overviewPayload = bnStoreWorkorderOverviewText(Object.assign({}, e.data.data || {}, { ts: e.data.ts || Date.now() }));
     bnApplyWorkorderOverviewText(overviewPayload);
   }
+  if (e.data.type === 'wo-workorder-lpbn-text') {
+    var lpbn = e.data.data || {};
+    var pairs = [['txt-main', lpbn.main], ['txt-sub', lpbn.sub], ['txt-date', lpbn.date]];
+    pairs.forEach(function (p) {
+      if (!p[1]) return;
+      var el = document.getElementById(p[0]);
+      if (el) { el.value = p[1]; try { el.dispatchEvent(new Event('input', { bubbles: true })); } catch (_) {} }
+    });
+    if (lpbn.productFiles) {
+      window._bnPendingLpbnProductFiles = lpbn.productFiles;
+    }
+  }
   if (e.data.type === 'wo-workorder-exposure-spec' && typeof window._bnApplyWorkorderExposureSpec === 'function') {
     window._bnApplyWorkorderExposureSpec(e.data.spec || {});
   } else if (e.data.type === 'wo-workorder-exposure-spec') {
