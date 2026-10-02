@@ -49,12 +49,12 @@
   var DEFAULTS = {
     tolerance: 12,
     alphaThreshold: 10,
-    whiteThreshold: 245,
+    whiteThreshold: 230,
     padRatio: 0.02,
     scanMax: 1000,
     minGain: 0.02,
     minAreaRatio: 0.01,
-    cornerSpreadMax: 40
+    cornerSpreadMax: 50
   };
 
   function opt(o, k) {
@@ -188,7 +188,10 @@
 
       var box = findBox(img, opts);
       if (!box) { out.reason = 'no-box'; return out; }
-      if (!box.whiteBackground) {
+      /* 允許裁剪的情況：白色背景（不透明圖）或透明背景（PNG alpha）。
+         只擋有色底、漸層底、照片底（這些 findBox 會回傳 null 或
+         whiteBackground=false 且 hasAlpha=false）。 */
+      if (!box.whiteBackground && !box.hasAlpha) {
         out.reason = 'non-white-background';
         return out;
       }
