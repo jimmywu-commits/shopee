@@ -1721,7 +1721,10 @@ function bnApplyWorkorderOverviewText(raw, options) {
   });
   if (typeof bnRefreshLimitAlert === 'function') bnRefreshLimitAlert();
   try { document.dispatchEvent(new CustomEvent('bn-state-dirty')); } catch (_) {}
-  if (typeof broadcastText === 'function') broadcastText();
+  setTimeout(function(){
+    if (typeof window.bnRunAllFields === 'function') { window.bnRunAllFields(); }
+    else if (typeof broadcastText === 'function') { broadcastText(); }
+  }, 80);
   window._bnLastWorkorderOverviewTextTs = payload.ts || Date.now();
   return true;
 }
@@ -3096,6 +3099,10 @@ window.addEventListener('message', function (e) {
     if (lpbn.productFiles) {
       window._bnPendingLpbnProductFiles = lpbn.productFiles;
     }
+    setTimeout(function(){
+      if (typeof window.bnRunAllFields === 'function') { window.bnRunAllFields(); }
+      else if (typeof broadcastText === 'function') { broadcastText(); }
+    }, 80);
   }
   if (e.data.type === 'wo-workorder-exposure-spec' && typeof window._bnApplyWorkorderExposureSpec === 'function') {
     window._bnApplyWorkorderExposureSpec(e.data.spec || {});
