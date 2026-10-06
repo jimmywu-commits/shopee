@@ -1,0 +1,617 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>JBP編輯器審查文件</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap');
+
+  :root {
+    --bg: #ffffff;
+    --fg: #1e293b;
+    --muted: #64748b;
+    --accent: #1e40af;
+    --surface: #f8fafc;
+    --border: #e2e8f0;
+    --red: #dc2626;
+    --orange: #ea580c;
+    --green: #16a34a;
+    --red-bg: #fef2f2;
+    --orange-bg: #fff7ed;
+    --green-bg: #f0fdf4;
+    --blue-bg: #eff6ff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0f172a;
+      --fg: #e2e8f0;
+      --muted: #94a3b8;
+      --accent: #60a5fa;
+      --surface: #1e293b;
+      --border: #334155;
+      --red: #f87171;
+      --orange: #fb923c;
+      --green: #4ade80;
+      --red-bg: #1c1117;
+      --orange-bg: #1c1710;
+      --green-bg: #0c1f14;
+      --blue-bg: #0f1a2e;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0f172a;
+    --fg: #e2e8f0;
+    --muted: #94a3b8;
+    --accent: #60a5fa;
+    --surface: #1e293b;
+    --border: #334155;
+    --red: #f87171;
+    --orange: #fb923c;
+    --green: #4ade80;
+    --red-bg: #1c1117;
+    --orange-bg: #1c1710;
+    --green-bg: #0c1f14;
+    --blue-bg: #0f1a2e;
+    color-scheme: dark;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font-family: 'Noto Sans TC', system-ui, sans-serif;
+    line-height: 1.8;
+    max-width: 900px;
+    margin: 0 auto;
+    padding-inline: 20px;
+    padding-block: 24px;
+  }
+
+  .doc-header {
+    border-bottom: 3px solid var(--accent);
+    padding-bottom: 16px;
+    margin-bottom: 28px;
+  }
+  .doc-header h1 {
+    font-size: 1.6rem;
+    font-weight: 700;
+    margin: 0 0 4px;
+    text-wrap: balance;
+  }
+  .doc-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    font-size: 0.82rem;
+    color: var(--muted);
+    margin-top: 8px;
+  }
+  .doc-meta span { white-space: nowrap; }
+
+  .toc {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin-bottom: 32px;
+  }
+  .toc h3 {
+    margin: 0 0 8px;
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: var(--muted);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  .toc ol {
+    margin: 0;
+    padding-left: 20px;
+    font-size: 0.9rem;
+    line-height: 2;
+  }
+  .toc a {
+    color: var(--accent);
+    text-decoration: none;
+  }
+  .toc a:hover { text-decoration: underline; }
+
+  h2 {
+    font-size: 1.15rem;
+    font-weight: 700;
+    margin: 40px 0 12px;
+    padding: 8px 0;
+    border-bottom: 2px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  h2 .num {
+    background: var(--accent);
+    color: #fff;
+    font-size: 0.75rem;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  h3 {
+    font-size: 0.95rem;
+    font-weight: 600;
+    margin: 20px 0 8px;
+  }
+
+  .table-wrap { overflow-x: auto; }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 8px 0 20px;
+    font-size: 0.85rem;
+  }
+  th, td {
+    text-align: left;
+    padding: 8px 12px;
+    border: 1px solid var(--border);
+    vertical-align: top;
+  }
+  th {
+    background: var(--surface);
+    font-weight: 600;
+    font-size: 0.8rem;
+    color: var(--muted);
+    letter-spacing: 0.03em;
+  }
+
+  code {
+    font-family: 'Cascadia Code', 'Fira Code', monospace;
+    font-size: 0.82em;
+    background: var(--surface);
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+
+  .badge {
+    display: inline-block;
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 4px;
+    white-space: nowrap;
+    letter-spacing: 0.02em;
+  }
+  .badge.mit { background: var(--green-bg); color: var(--green); }
+  .badge.apache { background: var(--blue-bg); color: var(--accent); }
+  .badge.pending { background: var(--orange-bg); color: var(--orange); }
+  .badge.risk { background: var(--red-bg); color: var(--red); }
+  .badge.ok { background: var(--green-bg); color: var(--green); }
+  .badge.info { background: var(--blue-bg); color: var(--accent); }
+
+  .callout {
+    border-radius: 8px;
+    padding: 14px 18px;
+    margin: 16px 0;
+    font-size: 0.88rem;
+    line-height: 1.7;
+  }
+  .callout.warn {
+    background: var(--orange-bg);
+    border-left: 4px solid var(--orange);
+  }
+  .callout.info {
+    background: var(--blue-bg);
+    border-left: 4px solid var(--accent);
+  }
+  .callout.ok {
+    background: var(--green-bg);
+    border-left: 4px solid var(--green);
+  }
+  .callout strong { display: block; margin-bottom: 4px; }
+
+  .action-item {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    padding: 8px 0;
+    border-bottom: 1px dashed var(--border);
+    font-size: 0.88rem;
+  }
+  .action-item:last-child { border-bottom: none; }
+  .action-check {
+    width: 18px;
+    height: 18px;
+    border: 2px solid var(--border);
+    border-radius: 4px;
+    flex-shrink: 0;
+    margin-top: 3px;
+  }
+
+  .flow-diagram {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px;
+    margin: 16px 0;
+    font-size: 0.85rem;
+    text-align: center;
+    line-height: 2.2;
+    overflow-x: auto;
+  }
+  .flow-step {
+    display: inline-block;
+    padding: 4px 14px;
+    border-radius: 6px;
+    font-weight: 500;
+  }
+  .flow-local { background: var(--green-bg); color: var(--green); border: 1px solid var(--green); }
+  .flow-ext { background: var(--orange-bg); color: var(--orange); border: 1px solid var(--orange); }
+  .flow-arrow { color: var(--muted); margin: 0 4px; }
+
+  .sig-block {
+    margin-top: 48px;
+    padding-top: 20px;
+    border-top: 2px solid var(--border);
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 32px;
+    font-size: 0.88rem;
+  }
+  .sig-block .sig-line {
+    border-bottom: 1px solid var(--fg);
+    height: 40px;
+    margin-bottom: 6px;
+  }
+  .sig-block .sig-label { color: var(--muted); font-size: 0.8rem; }
+
+  @media (max-width: 600px) {
+    .doc-header h1 { font-size: 1.3rem; }
+    .sig-block { grid-template-columns: 1fr; }
+    .doc-meta { flex-direction: column; gap: 4px; }
+  }
+</style>
+
+<div class="doc-header">
+  <h1>JBP Banner 編輯器 — 法務審查文件</h1>
+  <div class="doc-meta">
+    <span>文件編號：JBP-LEGAL-2026-001</span>
+    <span>建立日期：2026-10-06</span>
+    <span>分類：<strong>內部 — 機密</strong></span>
+    <span>撰寫：技術團隊</span>
+  </div>
+</div>
+
+<nav class="toc">
+  <h3>目錄</h3>
+  <ol>
+    <li><a href="#s1">專案概述與用途</a></li>
+    <li><a href="#s2">第三方套件授權清單</a></li>
+    <li><a href="#s3">外部服務連線清單</a></li>
+    <li><a href="#s4">資料流向與處理說明</a></li>
+    <li><a href="#s5">素材授權狀態</a></li>
+    <li><a href="#s6">禁用語規則說明</a></li>
+    <li><a href="#s7">風險摘要與待辦事項</a></li>
+    <li><a href="#s8">簽核</a></li>
+  </ol>
+</nav>
+
+<!-- ═══ 1. 專案概述 ═══ -->
+<h2 id="s1"><span class="num">1</span> 專案概述與用途</h2>
+
+<p>JBP（JBP Banner Processor）是蝦皮台灣行銷團隊內部使用的 <strong>Banner 素材編輯器</strong>，用途為讓行銷人員快速製作各平台（FB、IG、Dcard、蝦皮 APP/PC）的廣告素材圖。</p>
+
+<div class="table-wrap">
+<table>
+  <tr><th style="width:140px;">項目</th><th>說明</th></tr>
+  <tr><td>系統類型</td><td>純前端網頁應用（無後端伺服器），以 iframe 架構組合</td></tr>
+  <tr><td>使用者範圍</td><td>蝦皮內部BD同仁與對外配合廠商服務</td></tr>
+  <tr><td>部署方式</td><td>透過 BODA 平台嵌入 iframe / GitLab Pages 靜態部署</td></tr>
+  <tr><td>版位模板數</td><td>36 套，涵蓋 FB、IG、Dcard、SBA、HBN 等版位</td></tr>
+  <tr><td>資料儲存</td><td>所有圖片處理皆在瀏覽器端（Canvas API），不上傳至外部伺服器</td></tr>
+</table>
+</div>
+
+<!-- ═══ 2. 第三方套件 ═══ -->
+<h2 id="s2"><span class="num">2</span> 第三方套件授權清單</h2>
+
+<p>以下為本專案引用的所有外部程式庫，均透過 CDN 載入（無 npm 安裝）：</p>
+
+<div class="table-wrap">
+<table>
+  <tr>
+    <th>套件名稱</th>
+    <th>版本</th>
+    <th>用途</th>
+    <th>授權</th>
+    <th>風險</th>
+  </tr>
+  <tr>
+    <td><strong>CropperJS</strong></td>
+    <td>1.6.2</td>
+    <td>Logo 圖片裁切功能</td>
+    <td><span class="badge mit">MIT</span></td>
+    <td><span class="badge ok">低</span></td>
+  </tr>
+  <tr>
+    <td><strong>SheetJS (xlsx)</strong></td>
+    <td>0.18.5</td>
+    <td>讀取與參考 banwords.xlsx 禁用語規則(附件)</td>
+    <td><span class="badge apache">Apache 2.0</span></td>
+    <td><span class="badge ok">低</span></td>
+  </tr>
+  <tr>
+    <td><strong>html2canvas</strong></td>
+    <td>1.4.1</td>
+    <td>將編輯完成的 Banner 版位截圖為圖片</td>
+    <td><span class="badge mit">MIT</span></td>
+    <td><span class="badge ok">低</span></td>
+  </tr>
+  <tr>
+    <td><strong>JSZip</strong></td>
+    <td>3.10.1</td>
+    <td>多張 Banner 打包下載為 ZIP</td>
+    <td><span class="badge mit">MIT</span></td>
+    <td><span class="badge ok">低</span></td>
+  </tr>
+  <tr>
+    <td><strong>Firebase SDK</strong></td>
+    <td>10.14.1</td>
+    <td>意見回饋功能（匿名登入 + Firestore 資料庫）</td>
+    <td><span class="badge apache">Apache 2.0</span></td>
+    <td><span class="badge info">中</span> 見第3節</td>
+  </tr>
+</table>
+</div>
+
+<div class="callout ok">
+  <strong>授權結論</strong>
+  所有第三方套件均為 MIT 或 Apache 2.0 授權，允許商業使用、修改與再散布，無 GPL 傳染性授權問題。
+</div>
+
+<!-- ═══ 3. 外部服務 ═══ -->
+<h2 id="s3"><span class="num">3</span> 外部服務連線清單</h2>
+
+<div class="table-wrap">
+<table>
+  <tr>
+    <th>服務</th>
+    <th>用途</th>
+    <th>資料內容</th>
+    <th>傳輸方向</th>
+    <th>備註</th>
+  </tr>
+  <tr>
+    <td><strong>Firebase Firestore</strong><br><code>jbp-ed.firebaseapp.com</code></td>
+    <td>意見回饋功能的資料庫</td>
+    <td>使用者提交的文字回饋（不含圖片）</td>
+    <td>雙向（讀寫）</td>
+    <td>Firebase 專案 ID: <code>jbp-ed</code></td>
+  </tr>
+  <tr>
+    <td><strong>Firebase Auth</strong></td>
+    <td>回饋功能的匿名登入驗證</td>
+    <td>匿名 UID（無個人資料）</td>
+    <td>雙向</td>
+    <td>使用匿名登入，不收集帳號密碼</td>
+  </tr>
+  <tr>
+    <td><strong>CDN 節點</strong><br>
+      <code>cdn.jsdelivr.net</code><br>
+      <code>cdnjs.cloudflare.com</code><br>
+      <code>www.gstatic.com</code></td>
+    <td>載入 JS 程式庫</td>
+    <td>無（僅下載靜態檔案）</td>
+    <td>單向（下載）</td>
+    <td>無資料上傳</td>
+  </tr>
+  <tr>
+    <td><strong>Google Fonts</strong><br><code>fonts.googleapis.com</code></td>
+    <td>載入 Noto Sans TC 字型（僅文件頁面使用）</td>
+    <td>無</td>
+    <td>單向（下載）</td>
+    <td>編輯器本身使用本機字型</td>
+  </tr>
+  <tr>
+    <td><strong>GitHub</strong><br><code>raw.githubusercontent.com</code></td>
+    <td>載入操作說明書圖示（舊版檔案）</td>
+    <td>無</td>
+    <td>單向（下載）</td>
+    <td>未來將上傳到MKT PM團隊經營維護的GITLAB空間</td>
+  </tr>
+</table>
+</div>
+
+<div class="callout info">
+  <strong>重點說明</strong>
+  本系統的核心功能（Banner 編輯、截圖、Logo 裁切）完全在瀏覽器端執行，不與任何外部伺服器交換使用者上傳的圖片資料。唯一的外部資料交換為意見回饋功能（Firebase），且僅傳送文字回饋，不含圖片或個人敏感資訊。
+</div>
+
+<!-- ═══ 4. 資料流向 ═══ -->
+<h2 id="s4"><span class="num">4</span> 資料流向與處理說明</h2>
+
+<h3>4.1 Banner 製作流程（主流程）</h3>
+<div class="flow-diagram">
+  <span class="flow-step flow-local">使用者上傳 Logo / 圖片</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-step flow-local">瀏覽器 Canvas 處理<br>(裁切 / 縮放 / 去背)</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-step flow-local">版位模板套入</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-step flow-local">html2canvas 截圖</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-step flow-local">下載至本機 / 上傳工單</span>
+  <br><br>
+  <span style="font-size:0.8rem;color:var(--green);">■ 綠色 = 瀏覽器端（本機處理）</span>
+  &nbsp;&nbsp;
+  <span style="font-size:0.8rem;color:var(--orange);">■ 橘色 = 涉及外部服務</span>
+</div>
+
+<div class="callout ok">
+  <strong>隱私安全：全程本機處理</strong>
+  使用者上傳的 Logo、商品圖、品牌素材在整個製作流程中皆不離開瀏覽器，處理後直接下載至使用者電腦。
+</div>
+
+<h3>4.2 意見回饋流程（次要功能）</h3>
+<div class="flow-diagram">
+  <span class="flow-step flow-local">使用者輸入文字回饋</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-step flow-ext">Firebase Auth 匿名登入</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-step flow-ext">Firestore 寫入回饋資料</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-step flow-local">管理員後台讀取</span>
+</div>
+
+<h3>4.3 禁用語檢查流程</h3>
+<div class="flow-diagram">
+  <span class="flow-step flow-local">載入 banwords.xlsx（本機）</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-step flow-local">SheetJS 解析規則</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-step flow-local">即時比對使用者輸入文字</span>
+  <span class="flow-arrow">→</span>
+  <span class="flow-step flow-local">自動替換或封鎖</span>
+  <br><br>
+  <span style="font-size:0.8rem;color:var(--green);">全程本機處理，規則表不外傳</span>
+</div>
+
+<!-- ═══ 5. 素材授權 ═══ -->
+<h2 id="s5"><span class="num">5</span> 素材授權狀態</h2>
+
+<div class="callout warn">
+  <strong>需人工補充確認</strong>
+  以下素材的授權來源無法從程式碼中判斷，需由負責人確認並填入。
+</div>
+
+<div class="table-wrap">
+<table>
+  <tr>
+    <th>素材類別</th>
+    <th>數量</th>
+    <th>檔案位置</th>
+    <th>授權來源</th>
+    <th>確認人</th>
+  </tr>
+  <tr>
+    <td><strong>ShopeeNotoSans 字型</strong></td>
+    <td>3 個字重</td>
+    <td><code>fonts/</code></td>
+    <td style="color:var(--orange);">版位尺寸僅適合在蝦皮站上使用，不適用對外廣告素材</td>
+    <td>JimmyWu</td>
+  </tr>
+  <tr>
+    <td><strong>EL 背景底圖</strong><br>(3C 家電)</td>
+    <td>約 80 張</td>
+    <td><code>bgimg/EL/</code><br><code>DDCARD/</code><br><code>HBN/</code></td>
+    <td style="color:var(--orange);">所有背景圖素皆由GD團隊自製(非外包或圖庫購買)</td>
+    <td>JimmyWu</td>
+  </tr>
+  <tr>
+    <td><strong>FMCG 背景底圖</strong><br>(快消品)</td>
+    <td>約 90 張</td>
+    <td><code>bgimg/FMCG/</code></td>
+    <td style="color:var(--orange);">所有背景圖素皆由GD團隊自製(非外包或圖庫購買)</td>
+    <td>JimmyWu</td>
+  </tr>
+  <tr>
+    <td><strong>Fashion 背景底圖</strong><br>(流行時尚)</td>
+    <td>約 80 張</td>
+    <td><code>bgimg/Fashion/</code></td>
+    <td style="color:var(--orange);">所有背景圖素皆由GD團隊自製(非外包或圖庫購買)</td>
+    <td>JimmyWu</td>
+  </tr>
+  <tr>
+    <td><strong>Lifestyle 背景底圖</strong><br>(居家生活)</td>
+    <td>約 90 張</td>
+    <td><code>bgimg/Lifestyle/</code></td>
+    <td style="color:var(--orange);">所有背景圖素皆由GD團隊自製(非外包或圖庫購買)</td>
+    <td>JimmyWu</td>
+  </tr>
+  <tr>
+    <td><strong>版位標籤圖示</strong></td>
+    <td>約 15 張</td>
+    <td><code>html/img/tag/</code></td>
+    <td style="color:var(--orange);">含蝦皮 Logo 使用(無法透過右鍵另存新檔)</td>
+    <td>JimmyWu</td>
+  </tr>
+  <tr>
+    <td><strong>測試底圖</strong></td>
+    <td>約 25 張</td>
+    <td><code>bn測底圖/</code></td>
+    <td style="color:var(--orange);">僅用來核對文字與按鈕的位置並無法另存新檔</td>
+    <td>JimmyWu</td>
+  </tr>
+</table>
+</div>
+
+<!-- ═══ 6. 禁用語 ═══ -->
+<h2 id="s6"><span class="num">6</span> 禁用語規則說明</h2>
+
+<div class="table-wrap">
+<table>
+  <tr><th style="width:140px;">項目</th><th>說明</th></tr>
+  <tr><td>規則檔案</td><td><code>banwords.xlsx</code>（Excel 格式，位於專案根目錄）</td></tr>
+  <tr><td>處理引擎</td><td><code>js/banwords-engine-hbn.js</code></td></tr>
+  <tr><td>處理方式</td><td>兩種模式：<br>
+    1.「自動改成」— 將違禁詞自動替換為指定替代詞<br>
+    2.「直接無法輸入」— 封鎖該詞，無法輸入到版位中</td></tr>
+  <tr><td>觸發時機</td><td>使用者在版位中編輯文字時即時觸發（blur 事件）</td></tr>
+  <tr><td>資料流向</td><td>全程本機處理，規則檔案隨專案部署，不外傳</td></tr>
+  <tr><td>維護方式</td><td style="color:var(--orange);">規則由GD CGD團隊維護；依據蝦皮站上KMS(內部教育中心)素材規範為準；更新頻率隨時(當有過往未考量到的、或是特殊狀況例如品牌名…等，會立即刷新試算表資料)</td></tr>
+</table>
+</div>
+
+<!-- ═══ 7. 風險摘要 ═══ -->
+<h2 id="s7"><span class="num">7</span> 風險摘要與待辦事項</h2>
+
+<h3>7.1 風險評估</h3>
+<div class="table-wrap">
+<table>
+  <tr>
+    <th>風險項目</th>
+    <th>等級</th>
+    <th>說明</th>
+  </tr>
+  <tr>
+    <td>第三方套件授權</td>
+    <td><span class="badge ok">低</span></td>
+    <td>全數為 MIT / Apache 2.0，無授權衝突</td>
+  </tr>
+  <tr>
+    <td>使用者資料外洩</td>
+    <td><span class="badge ok">低</span></td>
+    <td>圖片處理全程在瀏覽器端，不離開本機</td>
+  </tr>
+  <tr>
+    <td>Firebase 資料管理</td>
+    <td><span class="badge info">中</span></td>
+    <td>回饋功能使用 Firebase，需確認 Firestore 安全規則是否正確限制存取範圍</td>
+  </tr>
+  <tr>
+    <td>背景圖庫版權</td>
+    <td><span class="badge pending">中</span></td>
+    <td>約 340 張底圖的版權歸屬蝦皮所有，僅編輯成站上廣告素材使用</td>
+  </tr>
+  <tr>
+    <td>字型授權</td>
+    <td><span class="badge pending">中</span></td>
+    <td>ShopeeNotoSans 授權範圍僅蝦皮站上（不允許用於對外發布的廣告素材）</td>
+  </tr>
+  <tr>
+    <td>禁用語合規</td>
+    <td><span class="badge pending">中</span></td>
+    <td>規則依據與維護流程需確認，確保符合現行法規</td>
+  </tr>
+</table>
+</div>
+
+
+
+<!-- ═══ 8. 其他資訊 ═══ -->
+<h2 id="s8"><span class="num">8</span> 其他資訊</h2>
+
+  <div>
+    <div class="sig-label">編輯器網址：https://jimmywu-commits.github.io/shopee/jbpbn.html</div>
+  </div>
+
+
+</body></html>
