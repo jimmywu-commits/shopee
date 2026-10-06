@@ -259,8 +259,8 @@ body{font-family:'ShopeeNotoSans','Noto Sans TC','PingFang TC',sans-serif;backgr
       <div style="margin-top:10px"></div>
 
 
-<textarea class="ta" id="ta-prod" rows="2" placeholder="輸入標題（最多5字）" oninput="onProd(event)" onblur="applyTextAuditOnBlur('prod')" onkeydown="blockOver(event,'prod')"></textarea>
-      <div class="hint" id="h-prod">0 / 5字</div>
+<textarea class="ta" id="ta-prod" rows="2" placeholder="輸入標題（最多5字）" oninput="onProd(event)" onblur="applyTextAuditOnBlur('prod')" onkeydown="blockOver(event,'prod')">逛逛去</textarea>
+      <div class="hint" id="h-prod">3 / 5字</div>
       <div class="audit-msg" id="audit-prod"></div>
     </div>
 
@@ -407,7 +407,7 @@ const X_FONT_SIZE_MAX=90;
 const X_FONT_SIZE_DEFAULT=52;
 let runtimeXFontSize=X_FONT_SIZE_DEFAULT;
 
-const HBN_EDITOR_STORAGE_KEY='hbn-floating-editor-state-v5-x-tool';
+const HBN_EDITOR_STORAGE_KEY='hbn-floating-editor-state-v6-default-cta';
 const HBN_PENDING_DOWNLOAD_KEY='hbn-floating-editor-pending-product-png-v1';
 let _restoreUsed=false;
 
@@ -508,7 +508,7 @@ window.addEventListener('load',async()=>{
   if(typeof setupProd2Scroll === 'function') setupProd2Scroll();
   loadBanwords();
   const restored=restoreEditorState();
-  if(!restored) draw();
+  if(!restored){ applyStateToUI(false); draw(); }
   else { draw(); setTimeout(()=>toast('已還原上次編輯狀態','ok'),250); }
   setTimeout(showPendingProductDownloadIfAny,500);
 });
