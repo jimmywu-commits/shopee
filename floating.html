@@ -408,6 +408,9 @@ const X_FONT_SIZE_DEFAULT=52;
 let runtimeXFontSize=X_FONT_SIZE_DEFAULT;
 
 const HBN_EDITOR_STORAGE_KEY='hbn-floating-editor-state-v6-default-cta';
+// CTA 標題不允許空白：任何情況下只要是空字串，就強制回填這個預設值
+const PROD_DEFAULT='逛逛去';
+function ensureProd(v){ return String(v==null?'':v).trim()===''?PROD_DEFAULT:v; }
 const HBN_PENDING_DOWNLOAD_KEY='hbn-floating-editor-pending-product-png-v1';
 let _restoreUsed=false;
 
@@ -697,6 +700,11 @@ function updateTextField(type, options){
   }
 
   if(options.audit){
+    // 商品型標題離開欄位時若為空白，強制回填預設值（CTA 不可空白）
+    if(!isText && ta.value.trim()===''){
+      ta.value=PROD_DEFAULT;
+      toast(`標題不可空白，已填入「${PROD_DEFAULT}」`,'ok');
+    }
     const before=ta.value;
     const audited=runAudit(before,msgId);
     if(audited!==before){
@@ -960,7 +968,7 @@ function d2ui(ctx){
   drawX(ctx,255.3+48,8+48);
   roundRect(ctx,6,249,312,64,32,S.ctaColor||'#1a47ae');
 
-  const raw=(S.prod||'');
+  const raw=ensureProd(S.prod);
   const chars=[...raw,' ','▶'];
   const mets=chars.map(ch=>{
     const sz=ch==='▶'?25:46;
@@ -1075,6 +1083,7 @@ function applyStateToUI(shouldDraw=true){
   if(document.getElementById('cta-hex')) document.getElementById('cta-hex').value=S.ctaColor||'#1a47ae';
   if(document.getElementById('cta-col')) document.getElementById('cta-col').value=S.ctaColor||'#1a47ae';
   document.getElementById('ta-text').value=S.text;
+  S.prod=ensureProd(S.prod);
   document.getElementById('ta-prod').value=S.prod;
   document.querySelectorAll('#sws .sw').forEach(s=>s.classList.toggle('on',s.title===S.color));
   document.querySelectorAll('#txt-sws .sw').forEach(s=>s.classList.toggle('on',s.title===S.textColor));
