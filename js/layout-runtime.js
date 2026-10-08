@@ -50,13 +50,32 @@
     }
     return null;
   }
-  function _bnCtaForegroundForBg(value){
+  function _bnLum(rgb){
+    var f=function(v){v=Math.max(0,Math.min(255,Number(v)||0))/255;return v<=0.03928?v/12.92:Math.pow((v+0.055)/1.055,2.4);};
+    return 0.2126*f(rgb[0])+0.7152*f(rgb[1])+0.0722*f(rgb[2]);
+  }
+  function _bnContrast(a,b){
+    var la=_bnLum(a),lb=_bnLum(b);
+    return (Math.max(la,lb)+0.05)/(Math.min(la,lb)+0.05);
+  }
+  function _bnRgbToHex(rgb){
+    return '#'+rgb.map(function(v){var n=Math.round(Math.max(0,Math.min(255,v)));return ('0'+n.toString(16)).slice(-2);}).join('');
+  }
+  /* CTA 字色（比照 color-tool 吃色邏輯）：預設白字；白字對 CTA 底 CR < 3 才改深色字
+     （淺底試主標色、深底試底色→主標色，需 CR ≥ 4.5，否則黑字）。 */
+  function _bnCtaForegroundForBg(value,mainText,canvasBg){
     var rgb=_bnRestrictedColorRgb(value);
     if(!rgb) return '#ffffff';
-    var max=Math.max.apply(Math,rgb);
-    var min=Math.min.apply(Math,rgb);
-    var lightness=(max+min)/510;
-    return lightness>=0.85?'#000000':'#ffffff';
+    if(_bnContrast([255,255,255],rgb)>=3) return '#ffffff';
+    var mainRgb=_bnRestrictedColorRgb(mainText);
+    var bgRgb=_bnRestrictedColorRgb(canvasBg);
+    var tries=[];
+    if(bgRgb&&mainRgb){
+      var bgLight=_bnContrast([0,0,0],bgRgb)>=_bnContrast([255,255,255],bgRgb);
+      tries=bgLight?[mainRgb]:[bgRgb,mainRgb];
+    }else if(mainRgb){ tries=[mainRgb]; }
+    for(var i=0;i<tries.length;i++){ if(_bnContrast(tries[i],rgb)>=4.5) return _bnRgbToHex(tries[i]); }
+    return '#000000';
   }
   function _bnIsBlackOrWhiteColor(value){
     var rgb=_bnRestrictedColorRgb(value);
@@ -80,9 +99,16 @@
     }
     return _bnIsBlackOrWhiteColor(value);
   }
+  /* 父層最後一次廣播、已做過禁色與吃色檢查的顏色；禁色替代時優先用它，而不是固定藍。 */
+  var _bnLastSafeColors={};
+  function _bnFallbackColorFor(key){
+    var v=_bnLastSafeColors&&_bnLastSafeColors[key];
+    if(v&&_bnRestrictedColorRgb(v)&&!_bnIsRestrictedColorForKey(key,v)) return v;
+    return _bnRestrictedColorFallbacks[key];
+  }
   function _bnSafeRestrictedColor(key,value){
     return _bnRestrictedColorKeys.indexOf(key)>=0&&_bnIsRestrictedColorForKey(key,value)
-      ?_bnRestrictedColorFallbacks[key]
+      ?_bnFallbackColorFor(key)
       :value;
   }
   function _bnEnforceRestrictedColors(canvas){
@@ -90,7 +116,7 @@
     function enforce(selector,property,key){
       canvas.querySelectorAll(selector).forEach(function(el){
         var value=window.getComputedStyle(el).getPropertyValue(property);
-        if(_bnIsRestrictedColorForKey(key,value)) el.style.setProperty(property,_bnRestrictedColorFallbacks[key],'important');
+        if(_bnIsRestrictedColorForKey(key,value)) el.style.setProperty(property,_bnFallbackColorFor(key),'important');
       });
     }
     enforce('.品牌名,.主標,.日期,.ICON獨立文案','color','mainText');
@@ -1020,6 +1046,7 @@
       _bnRestrictedColorKeys.forEach(function(key){
         if(c[key]!==undefined) c[key]=_bnSafeRestrictedColor(key,c[key]);
       });
+      _bnLastSafeColors=Object.assign({},_bnLastSafeColors,c);
       if (c.canvasBg) {
         _bnCurrentCanvasBg = c.canvasBg;
         /* 只有首頁 LOGO 牆固定白底；SearchICON 仍吃目前選取的背景色。 */
@@ -1091,10 +1118,10 @@
       document.querySelectorAll('.六字內').forEach(function(el){ if(c.subText) el.style.setProperty('color', c.subText, 'important'); });
       var normalCtaText = c.ctaTextAuto === false && c.ctaText
         ? c.ctaText
-        : _bnCtaForegroundForBg(c.ctaBg);
+        : _bnCtaForegroundForBg(c.ctaBg, c.mainText, c.canvasBg);
       var searchImageCtaText = c.searchImageCtaText || (c.ctaTextAuto === false && c.ctaText
         ? c.ctaText
-        : _bnCtaForegroundForBg(c.searchImageCtaBg));
+        : _bnCtaForegroundForBg(c.searchImageCtaBg, c.mainText, c.canvasBg));
       document.querySelectorAll('.cta-text').forEach(function(el){ el.style.setProperty('color',normalCtaText,'important'); });
       document.querySelectorAll('.cta-arrow').forEach(function(el){ el.style.setProperty('border-left-color',normalCtaText,'important'); });
       /* CTA 底色：.逛逛去按鈕 / .cta底 / .逛逛去底 */

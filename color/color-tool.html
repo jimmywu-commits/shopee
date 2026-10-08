@@ -78,7 +78,15 @@
   .role{border:1px solid var(--line);border-radius:10px;padding:10px;background:var(--card)}
   .role .top{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
   .role .nm{font-weight:600;font-size:13px}
-  .role .box{height:40px;border-radius:6px;border:1px solid rgba(0,0,0,.15);margin-bottom:6px;cursor:pointer}
+  .role .box{position:relative;height:40px;border-radius:6px;border:1px solid rgba(0,0,0,.15);margin-bottom:6px;cursor:pointer;overflow:hidden}
+  .role .box input[type=color]{position:absolute;inset:-6px;width:calc(100% + 12px);height:calc(100% + 12px);opacity:0;cursor:pointer;border:0;padding:0}
+  .role .box::after{content:'✎';position:absolute;right:5px;bottom:3px;font-size:11px;color:rgba(0,0,0,.45);background:rgba(255,255,255,.75);border-radius:3px;padding:0 3px;pointer-events:none}
+  .role.edited{border-color:var(--accent)}
+  .role .top code{cursor:pointer}
+  .role .undo{border:0;background:none;color:var(--accent);font-size:11px;padding:0 2px;cursor:pointer;margin-left:4px}
+  .refs .roles{margin-top:8px}
+  .refs .role{padding:8px}
+  .refs .role .box{height:30px}
   .role code{font:12px ui-monospace,Consolas,monospace}
   .role .cr{font-size:12px;color:var(--muted);margin-top:4px}
   .ok{color:var(--ok);font-weight:600} .bad{color:#dc2626;font-weight:600} .warnc{color:#d97706;font-weight:600}
@@ -95,7 +103,7 @@
 <header>
   <div>
     <h1>HBN Banner 取色工具</h1>
-    <div class="path">固定資料夾：G:\共用雲端硬碟\INT_TWN_SHP_內部-素材\Ellen\測試素材\hbn</div>
+    <div class="path">固定資料夾：同目錄下的 hbndemo/（E:\GitHub\shopee\color\hbndemo）</div>
   </div>
   <div class="bar" id="pickBar">
     <button id="btnPick" class="primary">選擇 / 載入 hbn 資料夾</button>
@@ -130,12 +138,16 @@
     <div class="card">
       <h2>輸入</h2>
       <div class="field"><label>底色</label><input type="color" id="simBg" value="#77C3DB"><input type="text" id="simBgHex" value="#77C3DB" maxlength="7"></div>
-      <div class="field"><label>品牌色（CTA）</label><input type="color" id="simBrand" value="#EE4D2D"><input type="text" id="simBrandHex" value="#EE4D2D" maxlength="7"></div>
       <button id="simRandom">隨機一個底色</button>
     </div>
     <div class="card" style="margin-top:12px">
       <h2>副標候選（點選套用）</h2>
       <div class="opts" id="simOpts"></div>
+    </div>
+    <div class="card" style="margin-top:12px">
+      <h2>輸出</h2>
+      <div class="bar" style="margin:0"><button id="simCsv" class="primary">輸出 CSV 檔</button><button id="simReset">重設手動修改</button></div>
+      <div class="note" style="margin-top:8px">依「色票.xlsx」格式輸出：D2 背景色、D8/D9 滑過底/字、D10/D11 一般底/字、D12/D13 按下底/字、D27/D28 副標、D32 活動價、D33 原價灰；其餘列依表內 VLOOKUP 邏輯帶入對應色。</div>
     </div>
     <div class="card" style="margin-top:12px">
       <h2>規則</h2>
@@ -144,7 +156,7 @@
         <li>主標＝底色同色相、明度降 35–45，對底色 CR ≥ 3。</li>
         <li>副標＝跳色：換到色相差夠大的高彩色（暖色 ≥ 60°，冷色 ≥ 90°）且對底色 CR ≥ 3，暖色排前面；做不到 CR 3 會標示需加粗體/描邊。深底則用淺黃/米。</li>
         <li>警語（日期）與副標同色，不引入第三色。</li>
-        <li>參考畫布：價格與選單背景都是底色；原價＝灰（對底色 CR ≥ 3）、活動價＝副標色；選單一般＝底色略加深/加淺＋主標色字，滑過＝主標色底白字，按下＝近白底＋同色系中間色字。</li>
+        <li>參考畫布：價格與選單背景都是底色；原價＝灰（對底色 CR ≥ 3）、活動價＝副標色；選單一般＝底色略加深/加淺，一般字標準與滑過字同色、會被吃色才改主標色；滑過＝主標色底白字，按下＝近白底＋同色系中間色字。</li>
         <li>CTA 底色用品牌色（對底色 CR ≥ 3），不足時改用副標色；CTA 文字一律白字，只有 CTA 底偏淺（白字 CR &lt; 3）才改深色字。</li>
         <li>整張只用 4 色：底、深、強調、白。</li>
       </ul>
@@ -165,15 +177,15 @@
         <div class="ref">
           <h3>配色參考・價格</h3>
           <div class="canvas" id="rfPrice"><div class="price"><span class="old" id="rfOld">$000.000</span><span class="new" id="rfNew">活動價$000.000</span></div></div>
-          <div class="legend" id="rfPriceLg"></div>
+          <div class="roles" id="rfPriceRoles"></div>
         </div>
         <div class="ref">
           <h3>配色參考・選單（1、3 一般／2 滑過／4 滑過＋按下）</h3>
           <div class="canvas" id="rfMenu"><div class="menu"><span class="b1">類別</span><span class="b2">類別</span><span class="b3">類別</span><span class="b4">下拉選單</span></div></div>
-          <div class="legend" id="rfMenuLg"></div>
+          <div class="roles" id="rfMenuRoles"></div>
         </div>
       </div>
-      <div class="bar" style="margin-top:12px"><button id="simCopy">複製全部色碼</button><span id="simMsg" class="hint"></span></div>
+      <div class="bar" style="margin-top:12px"><button id="simCopy">複製全部色碼</button><span class="hint">點色塊可手動換色，點色碼可複製</span><span id="simMsg" class="hint"></span></div>
     </div>
   </div>
 </div>
@@ -324,12 +336,12 @@ const tbody=$('#tbl tbody'); const results=[];
 function setStatus(t){$('#status').textContent=t;}
 
 async function loadFromHttpListing(){
-  const res=await fetch('./',{cache:'no-store'}); if(!res.ok) throw new Error('no listing');
+  const res=await fetch('hbndemo/',{cache:'no-store'}); if(!res.ok) throw new Error('no listing');
   const html=await res.text(); const doc=new DOMParser().parseFromString(html,'text/html');
   const names=[...doc.querySelectorAll('a[href]')].map(a=>decodeURIComponent(a.getAttribute('href'))).filter(n=>IMG_RE.test(n)&&!n.includes('/'));
   if(!names.length) throw new Error('no images');
   const files=[];
-  for(const nm of names){ const r=await fetch('./'+encodeURIComponent(nm)); files.push(new File([await r.blob()],nm)); }
+  for(const nm of names){ const r=await fetch('hbndemo/'+encodeURIComponent(nm)); files.push(new File([await r.blob()],nm)); }
   return files;
 }
 
@@ -468,8 +480,8 @@ function suggest(bgHex,brandHex){
   return {bg,light,H,S,L,main:main.rgb,mainOk:main.ok,options:ordered,pick,brand:hexToRgb(brandHex)};
 }
 
-function finish(sg,subRgb){
-  const {bg,main,brand}=sg;
+function finish(sg,subRgb,ov={}){
+  const bg=sg.bg, brand=sg.brand, main=ov.main||sg.main; subRgb=ov.sub||subRgb;
   const crS=contrast(subRgb,bg);
   const warn=subRgb, warnSrc='與副標同色';
   let ctabg=brand,ctaSrc='品牌色';
@@ -490,77 +502,84 @@ function finish(sg,subRgb){
   // ---- 參考畫布：選單
   const menuBg=bg;
   const btnNormal=light?hslToRgb([H,S,clamp(L-6,0,100)]):hslToRgb([H,S,clamp(L+6,0,100)]);   // 一般：底色略加深/加淺
-  const mh=rgbToHsl(main); const btnNormalTxt=fitL(mh[0],mh[1],mh[2],light?-1:+1,btnNormal,3).rgb;   // 主標色，必要時再微調到對一般底 CR ≥ 3
   const btnHover=main, btnHoverTxt=contrast([255,255,255],main)>=3?[255,255,255]:(light?priceBg:bg);   // 滑過：主標色底、白字
+  // 一般字：標準與滑過字同色；只有在一般底上會被吃色（CR < 3）時，才改用主標色（必要時再微調到 CR ≥ 3）
+  let btnNormalTxt=btnHoverTxt, btnNormalTxtSrc='與滑過字同色';
+  if(contrast(btnHoverTxt,btnNormal)<3){ const mh=rgbToHsl(main); btnNormalTxt=fitL(mh[0],mh[1],mh[2],light?-1:+1,btnNormal,3).rgb; btnNormalTxtSrc='滑過字會被吃色，改主標色'; }
   const btnActive=light?hslToRgb([H,tintS,96]):hslToRgb([H,tintS,10]);   // 按下：近白（深底則近黑）
   const btnActiveTxt=fitL(H,clamp(Math.max(S,45),0,90),light?62:55,light?-1:+1,btnActive,3).rgb;   // 同色系中間色
-  return {bg,main,sub:subRgb,warn,warnSrc,ctatxt,ctaTxtSrc,ctabg,ctaSrc,
-    ref:{priceBg,grey,priceNew,menuBg,btnNormal,btnNormalTxt,btnHover,btnHoverTxt,btnActive,btnActiveTxt}};
+  const out={bg,main,sub:subRgb,warn,warnSrc,ctatxt,ctaTxtSrc,ctabg,ctaSrc,
+    ref:{priceBg,grey,priceNew,menuBg,btnNormal,btnNormalTxt,btnHover,btnHoverTxt,btnActive,btnActiveTxt},btnNormalTxtSrc};
+  // 手動覆寫（葉節點角色）
+  for(const k of ['warn','ctatxt','ctabg']) if(ov[k]) out[k]=ov[k];
+  for(const k of Object.keys(out.ref)) if(ov[k]) out.ref[k]=ov[k];
+  return out;
 }
 
 /* ========== 模擬頁 UI ========== */
 let simState=null;
 function setSimBg(h){$('#simBg').value=h;$('#simBgHex').value=h.toUpperCase();runSim();}
 function validHex(v){return /^#?[0-9a-fA-F]{6}$/.test(v)?('#'+v.replace('#','')).toUpperCase():null;}
+const BRAND='#EE4D2D';   // CTA 品牌色（蝦皮橘），不在介面上呈現
 function runSim(){
-  const bgHex=validHex($('#simBgHex').value)||$('#simBg').value, brandHex=validHex($('#simBrandHex').value)||$('#simBrand').value;
-  const sg=suggest(bgHex,brandHex);
-  simState={sg,subKey:sg.pick.key};
+  const bgHex=validHex($('#simBgHex').value)||$('#simBg').value;
+  const sg=suggest(bgHex,BRAND);
+  simState={sg,subKey:sg.pick.key,ov:{}};
   renderSim();
 }
 function renderSim(){
   const {sg,subKey}=simState; const opt=sg.options.find(o=>o.key===subKey)||sg.options[0];
-  const res=finish(sg,opt.rgb); simState.res=res;
+  const res=finish(sg,opt.rgb,simState.ov); simState.res=res;
   const box=$('#simOpts'); box.innerHTML='';
   for(const o of sg.options){
     const d=document.createElement('div'); d.className='opt'+(o.key===opt.key?' sel':'');
     d.innerHTML=`<div class="box" style="background:${hex(o.rgb)}"></div><div><div><b>${o.name}</b> <code>${hex(o.rgb)}</code></div><div class="d">CR ${o.cr.toFixed(1)} <span class="${o.ok?'ok':'warnc'}">${o.ok?'可用':'注意'}</span>・${o.desc}</div></div>`;
-    d.onclick=()=>{simState.subKey=o.key;renderSim();};
+    d.onclick=()=>{simState.subKey=o.key;delete simState.ov.sub;renderSim();};
     box.appendChild(d);
   }
   $('#simPreview').style.background=hex(res.bg);
   $('#pvMain').style.color=hex(res.main); $('#pvSub').style.color=hex(res.sub); $('#pvWarn').style.color=hex(res.warn);
   $('#pvCta').style.background=hex(res.ctabg); $('#pvCta').style.color=hex(res.ctatxt);
-  const roles=[
-    ['底色',res.bg,null,null,sg.light?'淺底 → 深色文字':'深底 → 白主標、淺色副標'],
-    ['主標',res.main,res.bg,3,'底色同色相、降明度'],
-    ['副標',res.sub,res.bg,3,opt.name],
-    ['警語',res.warn,res.bg,3,res.warnSrc],
-    ['CTA 文字',res.ctatxt,res.ctabg,3,res.ctaTxtSrc+'，對 CTA 底'],
-    ['CTA 底色',res.ctabg,res.bg,3,res.ctaSrc],
-  ];
-  const rb=$('#simRoles'); rb.innerHTML='';
-  for(const [nm,c,ref,need,desc] of roles){
-    const h=hex(c); const d=document.createElement('div'); d.className='role';
-    let cr='';
-    if(ref){const v=contrast(c,ref);cr=`CR <span class="${v>=need?'ok':(v>=need-1?'warnc':'bad')}">${v.toFixed(1)}</span> / 需 ${need}`;}
-    d.innerHTML=`<div class="top"><span class="nm">${nm}</span><code>${h}</code></div><div class="box" style="background:${h}" title="點擊複製"></div><div class="cr">${desc}${cr?'<br>'+cr:''}</div>`;
-    d.querySelector('.box').onclick=()=>navigator.clipboard.writeText(h).then(()=>{$('#simMsg').textContent='已複製 '+h;});
-    rb.appendChild(d);
-  }
+  const ov=simState.ov;
+  roleCards($('#simRoles'),[
+    ['bg','底色',res.bg,null,null,sg.light?'淺底 → 深色文字':'深底 → 白主標、淺色副標'],
+    ['main','主標',res.main,res.bg,3,ov.main?'手動':'底色同色相、降明度'],
+    ['sub','副標',res.sub,res.bg,3,ov.sub?'手動':opt.name],
+    ['warn','警語',res.warn,res.bg,3,ov.warn?'手動':res.warnSrc],
+    ['ctatxt','CTA 文字',res.ctatxt,res.ctabg,3,(ov.ctatxt?'手動':res.ctaTxtSrc)+'，對 CTA 底'],
+    ['ctabg','CTA 底色',res.ctabg,res.bg,3,ov.ctabg?'手動':res.ctaSrc],
+  ]);
   renderRefs(res.ref);
 }
-function legend(el,items){
-  el.innerHTML='';
-  for(const [nm,c,ref,need] of items){
-    const h=hex(c); const sp=document.createElement('span');
-    let cr=''; if(ref){const v=contrast(c,ref);cr=` CR <span class="${v>=need?'ok':(v>=need-1?'warnc':'bad')}">${v.toFixed(1)}</span>`;}
-    sp.innerHTML=`<i class="sw" style="background:${h}"></i>${nm} <code title="點擊複製">${h}</code>${cr}`;
-    sp.querySelector('code').onclick=()=>navigator.clipboard.writeText(h).then(()=>{$('#simMsg').textContent='已複製 '+h;});
-    el.appendChild(sp);
+/* 角色色卡：點色碼複製；點色塊開啟選色器可手動覆寫（key='bg' 直接改底色） */
+function roleCards(rb,items){
+  const ov=simState.ov; rb.innerHTML='';
+  for(const [key,nm,c,ref,need,desc] of items){
+    const h=hex(c); const edited=!!ov[key]; const d=document.createElement('div'); d.className='role'+(edited?' edited':'');
+    let cr='';
+    if(ref){const v=contrast(c,ref);cr=`CR <span class="${v>=need?'ok':(v>=need-1?'warnc':'bad')}">${v.toFixed(1)}</span> / 需 ${need}`;}
+    d.innerHTML=`<div class="top"><span class="nm">${nm}</span><span><code title="點擊複製">${h}</code>${edited?'<button class="undo" title="還原建議色">↺</button>':''}</span></div><div class="box" style="background:${h}" title="點擊手動換色"><input type="color" value="${h}"></div><div class="cr">${desc}${cr?'<br>'+cr:''}</div>`;
+    d.querySelector('code').onclick=()=>navigator.clipboard.writeText(h).then(()=>{$('#simMsg').textContent='已複製 '+h;});
+    const inp=d.querySelector('input'); let t=null;
+    inp.oninput=e=>{ const v=e.target.value.toUpperCase(); clearTimeout(t); t=setTimeout(()=>{ if(key==='bg'){setSimBg(v);} else {ov[key]=hexToRgb(v);renderSim();} },60); };
+    const u=d.querySelector('.undo'); if(u) u.onclick=()=>{delete ov[key];renderSim();};
+    rb.appendChild(d);
   }
 }
 function renderRefs(r){
   $('#rfPrice').style.background=hex(r.priceBg);
   $('#rfOld').style.color=hex(r.grey); $('#rfNew').style.color=hex(r.priceNew);
-  legend($('#rfPriceLg'),[['背景（底色）',r.priceBg,null],['原價灰',r.grey,r.priceBg,3],['活動價（副標色）',r.priceNew,r.priceBg,3]]);
+  const ov=simState.ov;
+  roleCards($('#rfPriceRoles'),[['bg','背景（底色）',r.priceBg,null,null,'同底色'],['grey','原價灰',r.grey,r.priceBg,3,ov.grey?'手動':'中性灰，對底色'],['priceNew','活動價',r.priceNew,r.priceBg,3,ov.priceNew?'手動':'副標色']]);
   $('#rfMenu').style.background=hex(r.menuBg);
   const m=$('#rfMenu');
   for(const k of ['b1','b3']){const e=m.querySelector('.'+k);e.style.background=hex(r.btnNormal);e.style.color=hex(r.btnNormalTxt);}
   const b2=m.querySelector('.b2'); b2.style.background=hex(r.btnHover); b2.style.color=hex(r.btnHoverTxt);
   const b4=m.querySelector('.b4'); b4.style.background=hex(r.btnActive); b4.style.color=hex(r.btnActiveTxt);
-  legend($('#rfMenuLg'),[['背景（底色）',r.menuBg,null],['一般底',r.btnNormal,null],['一般字（主標色）',r.btnNormalTxt,r.btnNormal,3],
-    ['滑過底（主標色）',r.btnHover,r.menuBg,3],['滑過字',r.btnHoverTxt,r.btnHover,3],['按下底',r.btnActive,r.menuBg,1.5],['按下字',r.btnActiveTxt,r.btnActive,3]]);
+  roleCards($('#rfMenuRoles'),[['bg','背景（底色）',r.menuBg,null,null,'同底色'],
+    ['btnNormal','一般底',r.btnNormal,null,null,ov.btnNormal?'手動':'底色略加深/加淺'],['btnNormalTxt','一般字',r.btnNormalTxt,r.btnNormal,3,ov.btnNormalTxt?'手動':simState.res.btnNormalTxtSrc+'，對一般底'],
+    ['btnHover','滑過底',r.btnHover,r.menuBg,3,ov.btnHover?'手動':'主標色，對背景'],['btnHoverTxt','滑過字',r.btnHoverTxt,r.btnHover,3,ov.btnHoverTxt?'手動':'白字，對滑過底'],
+    ['btnActive','按下底',r.btnActive,r.menuBg,1.5,ov.btnActive?'手動':'同色相近白，對背景'],['btnActiveTxt','按下字',r.btnActiveTxt,r.btnActive,3,ov.btnActiveTxt?'手動':'同色系中間色，對按下底']]);
 }
 $('#simCopy').onclick=()=>{const r=simState.res,f=r.ref;
   const rows=[['底色',r.bg],['主標',r.main],['副標',r.sub],['警語',r.warn],['CTA文字',r.ctatxt],['CTA底色',r.ctabg],
@@ -569,9 +588,31 @@ $('#simCopy').onclick=()=>{const r=simState.res,f=r.ref;
   const t=rows.map(([n,c])=>n+'\t'+hex(c)).join('\n');
   navigator.clipboard.writeText(t).then(()=>{$('#simMsg').textContent='已複製 '+rows.length+' 色';});};
 $('#simBg').oninput=e=>{$('#simBgHex').value=e.target.value.toUpperCase();runSim();};
-$('#simBrand').oninput=e=>{$('#simBrandHex').value=e.target.value.toUpperCase();runSim();};
 $('#simBgHex').onchange=e=>{const v=validHex(e.target.value);if(v){$('#simBg').value=v;runSim();}};
-$('#simBrandHex').onchange=e=>{const v=validHex(e.target.value);if(v){$('#simBrand').value=v;runSim();}};
+
+/* ========== 輸出 CSV（格式同 色票.xlsx） ========== */
+const SHEET_ROWS=[["Component", "Position", "Detail", "Color", "對照邏輯"], ["Page Style", "Page Background Color", "(現在 GD 固定會提供的顏色) 頁面底色", "#FFFFFF", "Page Background Color"], ["Page Style", "Header Background Color", "頁面標題底色跟頁面底色相同", "=VLOOKUP(E3,B:D,3,0)", "Page Background Color"], ["Page Style", "Page Title Text Color", "頁面標題文字顏色", "=VLOOKUP(E4,B:D,3,0)", "Unselected Sticky Tab Text Color"], ["Page Style", "Page Header Icons Color Before Page Scrolled Up", "標題 Icon 點選前的顏色", "=VLOOKUP(E5,B:D,3,0)", "Unselected Sticky Tab Text Color"], ["Page Style", "Page Header Icons Color After Page Scrolled Up", "標題 Icon 點選後的顏色", "=VLOOKUP(E6,B:D,3,0)", "Unselected Sticky Tab Text Color"], ["Anchor Tab Bar", "Component Background", "錨點背景色", "=VLOOKUP(E7,B:D,3,0)", "Page Background Color"], ["Anchor Tab Bar", "Selected Sticky Tab Bg Color", "(現在 GD 固定會提供的顏色)", "#d12f60", "Selected Sticky Tab Bg Color"], ["Anchor Tab Bar", "Selected Sticky Tab Text Color", "", "#FFFFFF", "Selected Sticky Tab Text Color"], ["Anchor Tab Bar", "Unselected Sticky Tab Bg Color", "", "#FFFFFF", "Unselected Sticky Tab Bg Color"], ["Anchor Tab Bar", "Unselected Sticky Tab Text Color", "", "#d12f60", "Unselected Sticky Tab Text Color"], ["Anchor Tab Bar", "Show More and Dropdown > More Background Color", "", "#FFFFFF", "Show More and Dropdown > More Background Color"], ["Anchor Tab Bar", "Show More and Dropdown > More Icon and Text Color", "", "#d12f60", "Show More and Dropdown > More Icon and Text Color"], ["Gap", "Color", "Gap 的顏色跟頁面底色一樣", "=VLOOKUP(E14,B:D,3,0)", "Page Background Color"], ["Voucher Grid", "Able to Claim All Vouchers > Claim All Button Borderline Color", "一鑑領取 Voucher 按鈕外框顏色", "=VLOOKUP(E15,B:D,3,0)", "Unselected Sticky Tab Bg Color"], ["Voucher Grid", "Able to Claim All Voucher > Claim All Button Background Color", "一鑑領取 Voucher 按鈕背景顏色", "=VLOOKUP(E16,B:D,3,0)", "Selected Sticky Tab Bg Color"], ["Voucher Grid", "Able to Claim All Voucher > Claim All Button Text Color", "一鑑領取 Voucher 按鈕文字顏色", "=VLOOKUP(E17,B:D,3,0)", "Unselected Sticky Tab Text Color"], ["Product Collection", "Multi Tabs > Selected Tab Background Color", "Product Collection Tab 選擇後的背景顏色", "=VLOOKUP(E18,B:D,3,0)", "Selected Sticky Tab Bg Color"], ["Product Collection", "Multi Tabs > Selected Tab Text Color", "Product Collection Tab 選擇後的文字顏色", "=VLOOKUP(E19,B:D,3,0)", "Selected Sticky Tab Text Color"], ["Product Collection", "Multi Tabs > Unselected Tab Background Color", "Product Collection Tab 選擇前的背景顏色", "=VLOOKUP(E20,B:D,3,0)", "Unselected Sticky Tab Bg Color"], ["Product Collection", "Multi Tabs > Unselected Tab Text Color", "Product Collection Tab 選擇前的文字顏色", "=VLOOKUP(E21,B:D,3,0)", "Unselected Sticky Tab Text Color"], ["Product Collection", "Footer/Header See All Color", "Product Collection 看全部的顏色", "=VLOOKUP(E22,B:D,3,0)", "Selected Sticky Tab Bg Color"], ["Product Collection", "Product Collection", "Product Collection 看全部的顏色", "=VLOOKUP(E23,B:D,3,0)", "Selected Sticky Tab Bg Color"], ["CTA Button", "Button Text Color", "系統 CTA 文字顏色", "=VLOOKUP(E24,B:D,3,0)", "Selected Sticky Tab Text Color"], ["CTA Button", "Background Color", "系統 CTA 背景顏色", "=VLOOKUP(E25,B:D,3,0)", "Selected Sticky Tab Bg Color"], ["CTA Button", "Border Color", "系統 CTA 邊框顏色", "=VLOOKUP(E26,B:D,3,0)", "Unselected Sticky Tab Bg Color"], ["時間軸", "Text Color (時間)", "(現在 GD 固定會提供的顏色)", "9D1500", "Text Color (時間)"], ["時間軸", "Text Color (提醒我)", "", "EE4E68", "Text Color (提醒我)"], ["Header", "Header Text Color", "系統標的文字顏色", "=VLOOKUP(E29,B:D,3,0)", "Selected Sticky Tab Text Color"], ["Header", "Display Trapezoidal/Rectangle Bg under Text > Text Background Color", "系統標的背景顏色", "=VLOOKUP(E30,B:D,3,0)", "Selected Sticky Tab Bg Color"], ["Header", "Display See All > See All Color", "系統標 \"看更多\" 的文字顏色", "=VLOOKUP(E31,B:D,3,0)", "Selected Sticky Tab Text Color"], ["Section: MSBN_A-1-1 \nSection: MSBN_A-1-2 \nSection: MSBN_A-2-1 \nSection: MSBN_A-2-2 \nSection: MSBN_A-3-1", "Text Color (**活動價$000,000**)", "(現在 GD 固定會提供的顏色)", "9D1500", "Text Color (**活動價$000,000**)"], ["Section: MSBN_A-1-1 \nSection: MSBN_A-1-2 \nSection: MSBN_A-2-1 \nSection: MSBN_A-2-2 \nSection: MSBN_A-3-1", "Text Color (<s>$000,000</s>)", "(現在 GD 固定會提供的顏色)", "EE4E68", "Text Color (<s>$000,000</s>)"]];
+// 第 1 列為表頭；D 欄為 "#RRGGBB"/"RRGGBB" 字面值，或 =VLOOKUP(E,B:D,3,0) 參照 E 欄名稱對應列的 D 值
+function buildSheet(){
+  const r=simState.res,f=r.ref;
+  const fill={ 2:r.bg, 8:f.btnHover, 9:f.btnHoverTxt, 10:f.btnNormal, 11:f.btnNormalTxt, 12:f.btnActive, 13:f.btnActiveTxt,
+    27:r.sub, 28:r.sub, 32:f.priceNew, 33:f.grey };
+  const rows=SHEET_ROWS.map(x=>x.slice());
+  // 先填字面值（沿用範本是否帶 #）
+  for(const [rowNo,c] of Object.entries(fill)){ const i=+rowNo-1; const tpl=String(rows[i][3]||''); const h=hex(c); rows[i][3]=tpl.startsWith('#')?h:h.slice(1); }
+  // 再解 VLOOKUP：E 名稱 → 第一個 B 欄相同的列的 D 值
+  const byName={}; for(let i=1;i<rows.length;i++){ const nm=rows[i][1]; if(nm&&!(nm in byName)) byName[nm]=i; }
+  for(let i=1;i<rows.length;i++){ const d=String(rows[i][3]||''); if(d.startsWith('=')){ const j=byName[rows[i][4]]; rows[i][3]=(j!==undefined&&!String(rows[j][3]).startsWith('='))?rows[j][3]:''; } }
+  return rows;
+}
+function toCsv(rows){ const q=v=>{v=String(v??'');return /[",\n\r]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;}; return rows.map(r=>r.map(q).join(',')).join('\r\n'); }
+$('#simCsv').onclick=()=>{
+  const rows=buildSheet(); const csv='\ufeff'+toCsv(rows);
+  const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
+  a.download='色票_'+hex(simState.res.bg).slice(1)+'.csv'; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),2000);
+  $('#simMsg').textContent='已輸出 '+a.download;
+};
+$('#simReset').onclick=()=>{simState.ov={};renderSim();$('#simMsg').textContent='已還原為建議色';};
 $('#simRandom').onclick=()=>{const h=Math.random()*360,s=35+Math.random()*60,l=Math.random()<0.75?62+Math.random()*28:30+Math.random()*16;setSimBg(hex(hslToRgb([h,s,l])));};
 
 /* ========== 頁簽 ========== */

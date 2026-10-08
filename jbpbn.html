@@ -1651,12 +1651,19 @@ function getColorData() {
   bnSanitizeRestrictedColorData(colorState);
   bnSanitizeRestrictedColorData(window._bnLastUserColorState);
   bnSanitizeRestrictedColorData(window._bnFrozenColorData);
-  /* CTA 前景預設自動取對比色：深色底用白、淺色底用黑。
+  /* CTA 前景預設白字；CTA 底接近白／淺色（白字 CR < 3）才改深色字（主標色／底色／黑）。
      使用者若曾明確選過 CTA 文字色，ctaTextAuto=false，保留手動選色。 */
-  if (data.ctaTextAuto !== false) data.ctaText = bnCtaForegroundForBg(data.ctaBg);
+  if (data.ctaTextAuto !== false) data.ctaText = bnCtaForegroundForBg(data.ctaBg, data.mainText, data.canvasBg);
   data.searchImageCtaText = data.ctaTextAuto !== false
-    ? bnCtaForegroundForBg(data.searchImageCtaBg)
+    ? bnCtaForegroundForBg(data.searchImageCtaBg, data.mainText, data.canvasBg)
     : data.ctaText;
+  /* 吃色防護：任何角色與底色（CTA 字與 CTA 底）相同時改色，並同步回目前狀態。 */
+  var eatenFixed = bnFixEatenColors(data);
+  if (eatenFixed.length && colorState) {
+    eatenFixed.forEach(function(k){ if (k in colorState) colorState[k] = data[k]; });
+    if (window._bnLastUserColorState) eatenFixed.forEach(function(k){ if (k in window._bnLastUserColorState) window._bnLastUserColorState[k] = data[k]; });
+    bnUpdateAutoTextColorDots();
+  }
   return data;
 }
 
@@ -1769,7 +1776,12 @@ function applySharedCanvasBg(v, silent){
   if(changed){
     var dot = document.getElementById('dot-canvasBg');
     if(dot) dot.style.background = v;
-    broadcastColors();
+    /* 底色變了，文字／CTA 色也要依新底色重算，否則會沿用舊底色的配色而吃色。 */
+    if(colorState && typeof applyAutoTextPalette === 'function' && !window._bnSkipAutoTextPalette){
+      try { applyAutoTextPalette(v, v); } catch(_) { broadcastColors(); }
+    } else {
+      broadcastColors();
+    }
   }
 }
 
@@ -1820,13 +1832,27 @@ function bnRestrictedColorRgb(value){
   }
   return null;
 }
-function bnCtaForegroundForBg(value){
+/* CTA 字色（比照 color-tool 吃色邏輯）：
+   預設白字；只有白字對 CTA 底 CR < 3（CTA 底接近白／淺色）才改深色字，
+   深色字依序試主標色、（深底時）底色，需達 CR 4.5，否則黑字。 */
+function bnCtaForegroundForBg(value, mainText, canvasBg){
   var rgb=bnRestrictedColorRgb(value);
   if(!rgb) return '#ffffff';
-  var max=Math.max.apply(Math,rgb);
-  var min=Math.min.apply(Math,rgb);
-  var lightness=(max+min)/510;
-  return lightness>=0.85 ? '#000000' : '#ffffff';
+  if(bnContrastRatio([255,255,255], rgb) >= 3) return '#ffffff';
+  var state = (typeof colorState !== 'undefined' && colorState) ? colorState : {};
+  var mainRgb = bnRestrictedColorRgb(mainText || state.mainText);
+  var bgRgb = bnRestrictedColorRgb(canvasBg || state.canvasBg);
+  var tries = [];
+  if(bgRgb && mainRgb){
+    var bgLight = bnContrastRatio([0,0,0], bgRgb) >= bnContrastRatio([255,255,255], bgRgb);
+    tries = bgLight ? [mainRgb] : [bgRgb, mainRgb];
+  }else if(mainRgb){
+    tries = [mainRgb];
+  }
+  for(var i=0;i<tries.length;i++){
+    if(bnContrastRatio(tries[i], rgb) >= 4.5) return bnRgbToHex(tries[i]);
+  }
+  return '#000000';
 }
 function bnIsBlackOrWhiteColor(value){
   var rgb=bnRestrictedColorRgb(value);
@@ -1850,11 +1876,66 @@ function bnIsRestrictedColorForKey(key,value){
   }
   return bnIsBlackOrWhiteColor(value);
 }
+/* 禁色（文字黑／白、CTA 底黑／灰）時的替代色：
+   依目前底色用吃色邏輯算出該角色的顏色；沒有底色可參考時才退回固定藍。 */
+function bnRoleFallbackColor(key){
+  var state = (typeof colorState !== 'undefined' && colorState) ? colorState : null;
+  var bg = state && state.canvasBg;
+  if(bg && bnRestrictedColorRgb(bg) && typeof bnBuildAutoTextPalette === 'function'){
+    try{
+      if(key === 'ctaBg' || key === 'searchImageCtaBg') return bnAutoCtaBackground(bg, state.mainText, state.subText);
+      var pal = bnBuildAutoTextPalette(bg, bg);
+      return (key === 'subText' || key === 'dateText') ? pal.subText : pal.mainText;
+    }catch(_){}
+  }
+  return BN_RESTRICTED_COLOR_FALLBACKS[key];
+}
 function bnSafeRestrictedColor(key,value){
   return BN_RESTRICTED_COLOR_KEYS.indexOf(key)>=0 && bnIsRestrictedColorForKey(key,value)
-    ? BN_RESTRICTED_COLOR_FALLBACKS[key]
+    ? bnRoleFallbackColor(key)
     : value;
 }
+
+/* 吃色防護：主標／副標／日期／品牌名／CTA 底不得與底色相同或幾乎相同（CR < 1.3），
+   CTA 字不得與 CTA 底相同。違反時改用吃色邏輯算出的該角色顏色。 */
+var BN_EATEN_CR = 1.3;
+function bnIsEatenBy(colorHex, bgHex){
+  var a = bnRestrictedColorRgb(colorHex), b = bnRestrictedColorRgb(bgHex);
+  if(!a || !b) return false;
+  if(String(colorHex).trim().toLowerCase() === String(bgHex).trim().toLowerCase()) return true;
+  return bnContrastRatio(a, b) < BN_EATEN_CR;
+}
+function bnAutoRoleColor(key, data){
+  var bg = data.canvasBg;
+  if(!bnRestrictedColorRgb(bg)) return null;
+  if(key === 'mainText' || key === 'brandText' || key === 'subText' || key === 'dateText'){
+    var pal = bnBuildAutoTextPalette(bg, bg);
+    return (key === 'subText' || key === 'dateText') ? pal.subText : pal.mainText;
+  }
+  if(key === 'ctaBg' || key === 'searchImageCtaBg') return bnAutoCtaBackground(bg, data.mainText, data.subText);
+  if(key === 'ctaText') return bnCtaForegroundForBg(data.ctaBg, data.mainText, bg);
+  if(key === 'searchImageCtaText') return bnCtaForegroundForBg(data.searchImageCtaBg, data.mainText, bg);
+  return null;
+}
+/* 就地修正 data 內吃色的角色，回傳被修正的 key 清單。 */
+function bnFixEatenColors(data){
+  var fixed = [];
+  if(!data || !bnRestrictedColorRgb(data.canvasBg)) return fixed;
+  var bg = data.canvasBg;
+  ['mainText','brandText','subText','dateText','ctaBg','searchImageCtaBg'].forEach(function(k){
+    if(data[k] === undefined || !bnIsEatenBy(data[k], bg)) return;
+    var c = bnAutoRoleColor(k, data);
+    if(c){ data[k] = bnSafeRestrictedColor(k, c); fixed.push(k); }
+  });
+  if(data.ctaText !== undefined && data.ctaBg && bnIsEatenBy(data.ctaText, data.ctaBg)){
+    data.ctaText = bnAutoRoleColor('ctaText', data) || '#ffffff'; fixed.push('ctaText');
+  }
+  if(data.searchImageCtaText !== undefined && data.searchImageCtaBg && bnIsEatenBy(data.searchImageCtaText, data.searchImageCtaBg)){
+    data.searchImageCtaText = bnAutoRoleColor('searchImageCtaText', data) || '#ffffff'; fixed.push('searchImageCtaText');
+  }
+  return fixed;
+}
+window.bnFixEatenColors = bnFixEatenColors;
 function bnSanitizeRestrictedColorData(data){
   if(!data||typeof data!=='object') return data;
   BN_RESTRICTED_COLOR_KEYS.forEach(function(key){
@@ -1868,7 +1949,9 @@ window.bnSanitizeRestrictedColorData=bnSanitizeRestrictedColorData;
    背景圖：左半取文字區平均色，右半取視覺主色；
    純色背景：同一色同時作為文字區與視覺主色。
 ════════════════════════════════════════ */
-var BN_TEXT_MIN_CONTRAST = 4.5;
+/* 吃色門檻：主標／副標／日期／CTA 底對背景、白字對 CTA 底皆需 CR ≥ 3，深色 CTA 字需 CR ≥ 4.5。 */
+var BN_TEXT_MIN_CONTRAST = 3;
+var BN_CTA_BRAND_COLOR = '#ee4d2d';
 
 function bnClampColorNumber(value, min, max){
   return Math.max(min, Math.min(max, Number(value) || 0));
@@ -1947,103 +2030,103 @@ function bnHslToRgb(h, s, l){
   ];
 }
 
-function bnTextHueFromVisual(rgb){
-  var hsl = bnRgbToHsl(rgb);
-  var hue = hsl.s < 0.15 ? 220 : hsl.h;
-  /* 黃底使用橘色系，保留同色相關聯但避免文字融入背景。 */
-  if(hue >= 38 && hue <= 78) hue = (hue + 12) % 360;
-  return hue;
+
+function bnHueDiff(a, b){
+  var d = Math.abs(a - b) % 360;
+  return Math.min(d, 360 - d);
 }
 
-function bnReadableTextColor(bgRgb, hue, saturation, desiredLightness, preferLight){
-  var sat = Math.max(0.42, Math.min(0.95, saturation));
-  var initial = bnHslToRgb(hue, sat, desiredLightness);
-  var initialHex = bnRgbToHex(initial);
-  if(bnContrastRatio(bnRestrictedColorRgb(initialHex), bgRgb) >= BN_TEXT_MIN_CONTRAST) return initialHex;
+/* HSL 以百分比輸入（h 0-360, s 0-100, l 0-100），回傳 rgb 陣列。 */
+function bnHsl100ToRgb(h, s, l){
+  return bnHslToRgb(h, bnClampColorNumber(s, 0, 100) / 100, bnClampColorNumber(l, 0, 100) / 100);
+}
 
-  /* 保持色相與彩度，找距離目標明度最近且達到 4.5:1 的顏色。 */
-  var best = null;
-  var bestScore = Infinity;
-  for(var i=2;i<=98;i++){
-    var lightness = i / 100;
-    var rgb = bnHslToRgb(hue, sat, lightness);
-    var hex = bnRgbToHex(rgb);
-    if(bnContrastRatio(bnRestrictedColorRgb(hex), bgRgb) < BN_TEXT_MIN_CONTRAST) continue;
-    var oppositeSide = preferLight ? (lightness < desiredLightness) : (lightness > desiredLightness);
-    var score = Math.abs(lightness - desiredLightness) + (oppositeSide ? 0.08 : 0);
-    if(score < bestScore){
-      best = hex;
-      bestScore = score;
-    }
+/* 從起始明度往 dir 方向逐步調整，直到對 ref 的對比達 target。 */
+function bnFitLightness(h, s, l, dir, refRgb, target){
+  l = bnClampColorNumber(l, 0, 100);
+  for(var i=0;i<120;i++){
+    var c = bnHsl100ToRgb(h, s, l);
+    if(bnContrastRatio(c, refRgb) >= target) return { rgb:c, l:l, ok:true };
+    var nl = l + dir;
+    if(nl < 0 || nl > 100) break;
+    l = nl;
   }
-  if(best) return best;
-
-  /* 同色相無法達標時，優先使用規則指定的安全色。 */
-  var safeColors = ['#00004f', '#fffefa'];
-  var safeRgb = safeColors.map(function(color){ return bnRestrictedColorRgb(color); });
-  var safest = safeRgb.reduce(function(best, rgb, index){
-    var ratio = bnContrastRatio(rgb, bgRgb);
-    if(!best || ratio > best.ratio) return { color:safeColors[index], ratio:ratio };
-    return best;
-  }, null);
-  if(safest && safest.ratio >= BN_TEXT_MIN_CONTRAST) return safest.color;
-
-  /* 臨界背景連指定安全色也不足時，使用近黑／近白候選補足對比。 */
-  var emergencyColors = ['#01010f', '#fffefe'];
-  var emergencyRgb = emergencyColors.map(function(color){ return bnRestrictedColorRgb(color); });
-  var emergencyBest = emergencyRgb.reduce(function(best, rgb, index){
-    var ratio = bnContrastRatio(rgb, bgRgb);
-    if(!best || ratio > best.ratio) return { color:emergencyColors[index], ratio:ratio };
-    return best;
-  }, null);
-  return emergencyBest ? emergencyBest.color : safeColors[0];
+  return { rgb:bnHsl100ToRgb(h, s, bnClampColorNumber(l, 0, 100)), l:l, ok:false };
 }
 
+/* 深底主標：color-tool 用純白，但編輯器文字色禁用純白，改用帶底色色相的近白。 */
+function bnNearWhiteForHue(h){
+  return bnHsl100ToRgb(h, 20, 94);
+}
+
+/* 副標跳色候選（比照 color-tool suggest()）：
+   暖色優先（黃／粉紅／紅／橘），冷色（紫紅／綠／藍）僅作參考；
+   背景有彩度時，色相差需 ≥ 60°（暖）／90°（冷）；明度調到 CR ≥ 3；
+   為達標而過暗／過淡者降權。深底另加「淺黃／米」為第一候選。 */
+function bnAccentOptions(bgRgb, light){
+  var hsl = bnRgbToHsl(bgRgb);
+  var H = hsl.h, S = hsl.s * 100;
+  var options = [];
+  if(!light){
+    var mono = bnFitLightness(48, 95, 80, +1, bgRgb, 4.5);
+    options.push({ key:'cream', rgb:mono.rgb, cr:bnContrastRatio(mono.rgb, bgRgb), ok:mono.ok, warm:1 });
+  }
+  var cands = [[55,1],[335,1],[5,1],[22,1],[300,0],[150,0],[212,0]];
+  for(var i=0;i<cands.length;i++){
+    var h = cands[i][0], warm = cands[i][1];
+    if(S >= 10 && bnHueDiff(h, H) < (warm ? 60 : 90)) continue;
+    var r = light ? bnFitLightness(h, 92, 62, -1, bgRgb, 3) : bnFitLightness(h, 90, 62, +1, bgRgb, 3);
+    var cr = bnContrastRatio(r.rgb, bgRgb);
+    var rl = bnRgbToHsl(r.rgb).l * 100;
+    var vivid = light ? rl >= 38 : rl <= 90;
+    options.push({ key:'acc' + h, rgb:r.rgb, cr:cr, ok:(r.ok && vivid) ? 1 : 0, warm:warm });
+  }
+  var byPref = function(a, b){ return (b.ok - a.ok) || (b.warm - a.warm) || (b.cr - a.cr); };
+  if(light) return options.sort(byPref);
+  return [options[0]].concat(options.slice(1).sort(byPref));
+}
+
+/* 主標／副標／日期（比照 color-tool）：
+   淺底（黑字比白字清楚）→ 主標同色相降明度（S 上限 85、L−40）調到 CR ≥ 3；
+   深底 → 主標近白（禁純白）。副標 = 跳色第一候選；日期 = 副標同色。 */
 function bnBuildAutoTextPalette(canvasBg, visualBg){
   var bgRgb = bnRestrictedColorRgb(canvasBg) || [107, 192, 236];
-  var visualRgb = bnRestrictedColorRgb(visualBg) || bgRgb;
-  var visualHsl = bnRgbToHsl(visualRgb);
-  var hue = bnTextHueFromVisual(visualRgb);
-  var baseSaturation = visualHsl.s < 0.15 ? 0.72 : Math.max(0.42, Math.min(0.92, visualHsl.s));
-  var bgLuminance = bnRelativeLuminance(bgRgb);
-  var roles;
-  var preferLight;
-
-  if(bgLuminance < 0.22){
-    preferLight = true;
-    roles = {
-      main: { l:0.70, s:baseSaturation },
-      sub:  { l:0.86, s:Math.max(0.42, baseSaturation * 0.68) },
-      date: { l:0.62, s:Math.max(0.42, baseSaturation * 0.82) }
-    };
-  }else if(bgLuminance > 0.55){
-    preferLight = false;
-    roles = {
-      main: { l:0.29, s:baseSaturation },
-      sub:  { l:0.39, s:Math.max(0.42, baseSaturation * 0.72) },
-      date: { l:0.48, s:Math.max(0.42, baseSaturation * 0.58) }
-    };
+  var hsl = bnRgbToHsl(bgRgb);
+  var H = hsl.h, S = hsl.s * 100, L = hsl.l * 100;
+  var crW = bnContrastRatio([255,255,255], bgRgb);
+  var crK = bnContrastRatio([0,0,0], bgRgb);
+  var light = crK >= crW;
+  var main;
+  if(light){
+    main = bnFitLightness(H, bnClampColorNumber(Math.max(S, 35), 0, 85), L - 40, -1, bgRgb, 3).rgb;
   }else{
-    /* 中間色背景先比較同色系深／亮兩側的對比，再建立層級。 */
-    var darkCandidate = bnHslToRgb(hue, baseSaturation, 0.30);
-    var lightCandidate = bnHslToRgb(hue, baseSaturation, 0.78);
-    preferLight = bnContrastRatio(lightCandidate, bgRgb) >= bnContrastRatio(darkCandidate, bgRgb);
-    roles = preferLight ? {
-      main: { l:0.70, s:baseSaturation },
-      sub:  { l:0.84, s:Math.max(0.42, baseSaturation * 0.68) },
-      date: { l:0.62, s:Math.max(0.42, baseSaturation * 0.82) }
-    } : {
-      main: { l:0.30, s:baseSaturation },
-      sub:  { l:0.40, s:Math.max(0.42, baseSaturation * 0.72) },
-      date: { l:0.48, s:Math.max(0.42, baseSaturation * 0.58) }
-    };
+    main = bnNearWhiteForHue(H);
   }
-
+  var options = bnAccentOptions(bgRgb, light);
+  var sub = options[0].rgb;
   return {
-    mainText: bnReadableTextColor(bgRgb, hue, roles.main.s, roles.main.l, preferLight),
-    subText:  bnReadableTextColor(bgRgb, hue, roles.sub.s, roles.sub.l, preferLight),
-    dateText: bnReadableTextColor(bgRgb, hue, roles.date.s, roles.date.l, preferLight)
+    light: light,
+    mainText: bnRgbToHex(main),
+    subText:  bnRgbToHex(sub),
+    dateText: bnRgbToHex(sub)
   };
+}
+
+/* CTA 底色（比照 color-tool finish()）：品牌橘對背景 CR ≥ 3 用品牌橘；
+   不足則用副標色（需 CR ≥ 3）；再不足用主標色。 */
+function bnAutoCtaBackground(canvasBg, mainText, subText){
+  var bgRgb = bnRestrictedColorRgb(canvasBg);
+  var brand = bnRestrictedColorRgb(BN_CTA_BRAND_COLOR);
+  if(!bgRgb) return BN_CTA_BRAND_COLOR;
+  if(bnContrastRatio(brand, bgRgb) >= 3) return BN_CTA_BRAND_COLOR;
+  var subRgb = bnRestrictedColorRgb(subText);
+  if(subRgb && bnContrastRatio(subRgb, bgRgb) >= 3) return bnRgbToHex(subRgb);
+  var mainRgb = bnRestrictedColorRgb(mainText);
+  if(mainRgb){
+    var mainHex = bnRgbToHex(mainRgb);
+    return bnIsRestrictedColorForKey('ctaBg', mainHex) ? '#ffffff' : mainHex;
+  }
+  return subText || BN_CTA_BRAND_COLOR;
 }
 
 function bnUpdateAutoTextColorDots(){
@@ -2057,15 +2140,18 @@ function bnUpdateAutoTextColorDots(){
 
 function bnSyncAutoCtaBackground(){
   if(!colorState || colorState.ctaBgAuto === false) return;
-  colorState.ctaBg = bnSafeRestrictedColor('ctaBg', colorState.subText);
-  colorState.searchImageCtaBg = bnSafeRestrictedColor('searchImageCtaBg', colorState.subText);
+  var bg = (typeof getAuthoritativeCanvasBg === 'function' && getAuthoritativeCanvasBg()) || colorState.canvasBg;
+  var auto = bnAutoCtaBackground(bg, colorState.mainText, colorState.subText);
+  colorState.ctaBg = bnSafeRestrictedColor('ctaBg', auto);
+  colorState.searchImageCtaBg = bnSafeRestrictedColor('searchImageCtaBg', auto);
   if(colorState.ctaTextAuto !== false){
-    colorState.ctaText = bnCtaForegroundForBg(colorState.ctaBg);
+    colorState.ctaText = bnCtaForegroundForBg(colorState.ctaBg, colorState.mainText, bg);
   }
 }
 function applyAutoTextPalette(canvasBg, visualBg){
   if(!colorState) return null;
   var palette = bnBuildAutoTextPalette(canvasBg, visualBg || canvasBg);
+  if(/^#[0-9a-fA-F]{6}$/.test(canvasBg || '') && !colorState.canvasBg) colorState.canvasBg = canvasBg;
   colorState.mainText = palette.mainText;
   colorState.subText = palette.subText;
   colorState.dateText = palette.dateText;
@@ -2162,6 +2248,17 @@ var colorState = {
   tagColor: 'red',
   logoColor: 'white'
 };
+/* 預設文字／CTA 色改由吃色邏輯依預設底色推算，不再用固定藍。 */
+(function(){
+  try{
+    var pal = bnBuildAutoTextPalette(colorState.canvasBg, colorState.canvasBg);
+    colorState.mainText = pal.mainText; colorState.brandText = pal.mainText;
+    colorState.subText = pal.subText; colorState.dateText = pal.dateText;
+    var cta = bnSafeRestrictedColor('ctaBg', bnAutoCtaBackground(colorState.canvasBg, pal.mainText, pal.subText));
+    colorState.ctaBg = cta; colorState.searchImageCtaBg = cta;
+    colorState.ctaText = bnCtaForegroundForBg(cta, pal.mainText, colorState.canvasBg);
+  }catch(_){}
+})();
 
 /* 使用者目前設定的背景色唯一權威來源。
    多圖 ZIP 匯出、iframe ready、舊暫存回灌時，都不得用預設藍覆蓋它。 */
@@ -2373,8 +2470,9 @@ var cpActiveKey = null;
 function renderColorPickers() {
   if (colorState.ctaBgAuto !== false) bnSyncAutoCtaBackground();
   bnSanitizeRestrictedColorData(colorState);
+  bnFixEatenColors(colorState);
   if (colorState.ctaTextAuto !== false) {
-    colorState.ctaText = bnCtaForegroundForBg(colorState.ctaBg);
+    colorState.ctaText = bnCtaForegroundForBg(colorState.ctaBg, colorState.mainText, colorState.canvasBg);
   }
   var wrap = document.getElementById('color-rows');
   if (!wrap) return;
@@ -2521,6 +2619,22 @@ function applyColor(color) {
   if (!cpActiveKey) return;
   color = bnSafeRestrictedColor(cpActiveKey,color);
   colorState[cpActiveKey] = color;
+  /* 吃色防護：文字／CTA 底不得與底色相同，CTA 字不得與 CTA 底相同。 */
+  var eatenNote = '';
+  if (cpActiveKey !== 'canvasBg') {
+    var probe = Object.assign({}, colorState);
+    var eaten = bnFixEatenColors(probe);
+    if (eaten.indexOf(cpActiveKey) >= 0) {
+      color = probe[cpActiveKey];
+      colorState[cpActiveKey] = color;
+      eatenNote = cpActiveKey === 'ctaText' ? '與 CTA 底相同會吃色，已自動改色' : '與底色相同會吃色，已自動改色';
+    }
+  }
+  var cpHexLabel = document.getElementById('cp-hex-label');
+  if (cpHexLabel) {
+    if (eatenNote) cpHexLabel.textContent = eatenNote;
+    else if (/吃色/.test(cpHexLabel.textContent || '')) cpHexLabel.textContent = '色碼';
+  }
   if (cpActiveKey === 'canvasBg' && /^#[0-9a-fA-F]{6}$/.test(color || '')) {
     setAuthoritativeCanvasBg(color);
   }
@@ -2531,12 +2645,12 @@ function applyColor(color) {
   if (cpActiveKey === 'ctaBg' || cpActiveKey === 'searchImageCtaBg') {
     colorState.ctaBgAuto = false;
   }
-  if (cpActiveKey === 'subText' && colorState.ctaBgAuto !== false) {
+  if ((cpActiveKey === 'subText' || cpActiveKey === 'mainText') && colorState.ctaBgAuto !== false) {
     bnSyncAutoCtaBackground();
   }
   if (cpActiveKey === 'ctaText') colorState.ctaTextAuto = false;
-  if (cpActiveKey === 'ctaBg' && colorState.ctaTextAuto !== false) {
-    colorState.ctaText = bnCtaForegroundForBg(colorState.ctaBg);
+  if ((cpActiveKey === 'ctaBg' || cpActiveKey === 'mainText') && colorState.ctaTextAuto !== false) {
+    colorState.ctaText = bnCtaForegroundForBg(colorState.ctaBg, colorState.mainText, colorState.canvasBg);
   }
   rememberCurrentColorState();
 
@@ -2549,9 +2663,15 @@ function applyColor(color) {
     var iconDot = document.getElementById('dot-iconTextMirror');
     if (iconDot) iconDot.style.background = color;
   }
-  if (cpActiveKey === 'ctaBg' && colorState.ctaTextAuto !== false) {
+  if (colorState.ctaTextAuto !== false) {
     var ctaTextDot = document.getElementById('dot-ctaText');
     if (ctaTextDot) ctaTextDot.style.background = colorState.ctaText;
+  }
+  if (colorState.ctaBgAuto !== false) {
+    ['ctaBg','searchImageCtaBg'].forEach(function(k){
+      var d = document.getElementById('dot-' + k);
+      if (d && colorState[k]) d.style.background = colorState[k];
+    });
   }
 
   /* 更新面板 hex input 和 native color picker */

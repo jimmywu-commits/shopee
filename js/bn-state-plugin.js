@@ -832,6 +832,9 @@
         nextColors = global.bnSanitizeRestrictedColorData(nextColors);
       }
       Object.assign(global.colorState,nextColors);
+      if(typeof global.bnFixEatenColors==='function'){
+        try{ global.bnFixEatenColors(global.colorState); }catch(_){ }
+      }
       global._bnLastUserColorState = clone(global.colorState);
       if(typeof global.renderColorPickers==='function') global.renderColorPickers();
       if(typeof global.broadcastColors==='function') global.broadcastColors();
@@ -1188,6 +1191,10 @@
             ctaBgAuto:true, ctaBg:'#2540b5', searchImageCtaBg:'#2540b5',
             tagColor:'red', logoColor:'white'
           });
+          /* 預設文字／CTA 色改由父層吃色邏輯依預設底色推算（舊的固定藍對預設底會吃色）。 */
+          if(typeof global.applyAutoTextPalette==='function'){
+            try{ global.applyAutoTextPalette('#6bc0ec','#6bc0ec'); }catch(_){ }
+          }
           if(typeof global.renderColorPickers==='function') global.renderColorPickers();
           if(typeof global.broadcastColors==='function') global.broadcastColors();
         }
