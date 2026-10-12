@@ -228,7 +228,16 @@
        Lifestyle-3
     */
     var m = s.match(/\b(EL|FMCG|Fashion|Lifestyle)\s*[-_ ]?\s*(?:Mock\s*up|Mockup)?\s*[-_ ]?\s*0*(\d{1,3})\b/i);
-    if(!m) return null;
+    if(!m){
+      /* A 活動公版（bgimg/A）：a_001 / a_001_H / a_001_W / A-001 / a 001。
+         結尾的 _H / _W 只是直式／橫式檔名，編號本身不分方向，套用時
+         會依版位寬高比自動挑橫式(W)或直式(H)。 */
+      var ma = s.match(/(?:^|[^a-z0-9])a\s*[-_ ]\s*0*(\d{1,3})(?:\s*[-_ ]?\s*[HW])?(?![a-z0-9])/i);
+      if(!ma) return null;
+      var numA = parseInt(ma[1], 10);
+      var codeA = 'a_' + String(numA).padStart(3, '0');
+      return { category: 'A', number: numA, mockup: false, code: codeA, raw: ma[0] };
+    }
     var rawCat = m[1].toLowerCase();
     var catMap = { el:'EL', fmcg:'FMCG', fashion:'Fashion', lifestyle:'Lifestyle' };
     var cat = catMap[rawCat] || m[1];

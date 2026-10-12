@@ -33,16 +33,28 @@
   var CATEGORIES = CFG.categories || ['EL','Fashion','FMCG','Lifestyle'];
   var DEFAULT_IMAGES = CFG.images || [];
 
-  var modal, grid, tabsEl, searchEl, statusEl, selectedEl, applyBtn;
+  var modal, grid, tabsEl, filtersEl, searchEl, statusEl, selectedEl, applyBtn;
   var allowNativeUploadOnce = false;
   var pendingNativeTarget = null;
   var imagesLoaded = false;
   var indexData = null;
   var brandData = null;
-  var currentCat = CATEGORIES[0];
+  /* 「全部」是虛擬分類：一打開圖庫預設就顯示所有分類的預覽圖，
+     使用者再用上面的分類頁籤或下面的 風格／素材／顏色 篩選縮小範圍。 */
+  var ALL_CAT = '全部';
+  var currentCat = ALL_CAT;
   var searchQuery = '';
   var cards = [];
   var selected = null;
+  /* 風格／素材／顏色 三組篩選（來源：A+與A活動公版管理表.xlsx 的「#分類規則」頁籤，
+     由 index.json 的 _rules 帶進來）。每組都是單選，預設「全部」；三組之間是 AND。 */
+  var FILTER_DEFS = [
+    { key:'style',    label:'風格', field:'style' },
+    { key:'material', label:'素材', field:'materials' },
+    { key:'color',    label:'顏色', field:'color' }
+  ];
+  var rulesData = null;
+  var filters = { style: ALL_CAT, material: ALL_CAT, color: ALL_CAT };
 
   function esc(s){
     return String(s == null ? '' : s).replace(/[&<>"']/g, function(ch){
@@ -196,6 +208,15 @@
       '.bn-bglib-tabs{display:flex;gap:8px;padding:12px 16px 0;background:#111827;flex-wrap:wrap}',
       '.bn-bglib-tab{background:#1c2333;color:#8b949e;border:1px solid #30363d;border-radius:999px;padding:6px 13px;font-size:12px;font-weight:700;cursor:pointer}',
       '.bn-bglib-tab.active{background:#1f6feb;color:#fff;border-color:#388bfd}',
+      '.bn-bglib-filters{display:flex;flex-direction:column;gap:6px;padding:10px 16px 0;background:#111827}',
+      '.bn-bglib-frow{display:flex;align-items:flex-start;gap:6px;flex-wrap:wrap}',
+      '.bn-bglib-flabel{flex:0 0 auto;color:#8b949e;font-size:12px;font-weight:700;line-height:24px;min-width:36px}',
+      '.bn-bglib-chip{background:#0d1117;color:#c9d3df;border:1px solid #30363d;border-radius:999px;padding:3px 10px;font-size:12px;cursor:pointer;line-height:16px}',
+      '.bn-bglib-chip:hover{border-color:#58a6ff}',
+      '.bn-bglib-chip.active{background:#238636;color:#fff;border-color:#2ea043}',
+      '.bn-bglib-chip.dim{opacity:.4}',
+      '.bn-bglib-chip small{opacity:.7;margin-left:3px;font-size:10px}',
+      '.bn-bglib-tags{padding:0 9px 7px;font-size:10px;color:#8b949e;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
       '.bn-bglib-body{padding:14px 16px 16px;overflow:auto}',
       '.bn-bglib-status{color:#8b949e;font-size:12px;margin-bottom:12px}',
       '.bn-bglib-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}',
@@ -274,10 +295,11 @@
       '<div class="bn-bglib-modal" role="dialog" aria-modal="true" aria-labelledby="bn-bglib-title">'+
         '<div class="bn-bglib-head">'+
           '<h3 id="bn-bglib-title">🖼 背景圖庫</h3>'+
-          '<input class="bn-bglib-search" type="search" placeholder="搜尋檔名 / 編號">'+
+          '<input class="bn-bglib-search" type="search" placeholder="搜尋檔名 / 編號 / 風格 / 素材 / 顏色">'+
           '<button type="button" class="bn-bglib-close">關閉</button>'+
         '</div>'+
         '<div class="bn-bglib-tabs" role="tablist"></div>'+
+        '<div class="bn-bglib-filters"></div>'+
         '<div class="bn-bglib-body"><div class="bn-bglib-status"></div><div class="bn-bglib-grid"></div></div>'+
         '<div class="bn-bglib-foot">'+
           '<div class="bn-bglib-hint">選預設圖會依版位寬高比自動套用；要用自己的圖，請按右側按鈕。</div>'+
@@ -287,6 +309,7 @@
     document.body.appendChild(modal);
     grid = modal.querySelector('.bn-bglib-grid');
     tabsEl = modal.querySelector('.bn-bglib-tabs');
+    filtersEl = modal.querySelector('.bn-bglib-filters');
     searchEl = modal.querySelector('.bn-bglib-search');
     statusEl = modal.querySelector('.bn-bglib-status');
     selectedEl = modal.querySelector('.bn-bglib-hint');
@@ -305,7 +328,8 @@
 
   function renderTabs(){
     if(!tabsEl) return;
-    tabsEl.innerHTML = CATEGORIES.map(function(cat){
+    var tabs = CATEGORIES.length > 1 ? [ALL_CAT].concat(CATEGORIES) : CATEGORIES.slice();
+    tabsEl.innerHTML = tabs.map(function(cat){
       return '<button type="button" class="bn-bglib-tab'+(cat===currentCat?' active':'')+'" data-cat="'+esc(cat)+'">'+esc(cat)+'</button>';
     }).join('');
     tabsEl.querySelectorAll('.bn-bglib-tab').forEach(function(tab){
@@ -316,6 +340,73 @@
         if(searchEl) searchEl.value = '';
         renderTabs();
         buildCards();
+        /* 切到沒有任何標籤的分類（EL / Fashion…）時，篩選列會整個隱藏，
+           這時若還留著上一個頁籤選的 風格／素材／顏色，清單會變成 0 張而且
+           沒地方可以取消，所以一併把三組篩選重設回「全部」。 */
+        if(!cards.some(hasAnyTag)) FILTER_DEFS.forEach(function(def){ filters[def.key] = ALL_CAT; });
+        renderFilters();
+        renderGrid();
+      });
+    });
+  }
+
+  /* 風格／素材／顏色 的篩選列。每個 chip 後面的數字是「目前分類頁籤 + 其他兩組
+     篩選」條件下會剩幾張，0 張的 chip 變淡但仍可點（點了會看到空清單提示）。 */
+  function getRules(){
+    if(rulesData) return rulesData;
+    /* index.json 沒有 _rules 時，從圖片本身的標籤反推出清單當備援 */
+    var derived = { style:[], material:[], color:[] };
+    listFromCategory(ALL_CAT).forEach(function(img){
+      if(img.style && derived.style.indexOf(img.style) === -1) derived.style.push(img.style);
+      (img.materials || []).forEach(function(m){ if(derived.material.indexOf(m) === -1) derived.material.push(m); });
+      if(img.color && derived.color.indexOf(img.color) === -1) derived.color.push(img.color);
+    });
+    return derived;
+  }
+  function matchFilter(img, def, value){
+    if(value === ALL_CAT) return true;
+    var v = img[def.field];
+    if(Array.isArray(v)) return v.indexOf(value) !== -1;
+    return v === value;
+  }
+  function matchAllFilters(img, except){
+    for(var i = 0; i < FILTER_DEFS.length; i++){
+      var def = FILTER_DEFS[i];
+      if(def.key === except) continue;
+      if(!matchFilter(img, def, filters[def.key])) return false;
+    }
+    return true;
+  }
+  function hasAnyTag(img){ return !!(img.style || (img.materials && img.materials.length) || img.color); }
+  function renderFilters(){
+    if(!filtersEl) return;
+    var rules = getRules();
+    /* 目前分類裡完全沒有任何標籤（例如只看 EL）時，整列篩選沒有意義，直接隱藏 */
+    if(!cards.some(hasAnyTag)){
+      filtersEl.innerHTML = '';
+      filtersEl.style.display = 'none';
+      return;
+    }
+    filtersEl.style.display = '';
+    filtersEl.innerHTML = FILTER_DEFS.map(function(def){
+      var opts = [ALL_CAT].concat(rules[def.key] || []);
+      return '<div class="bn-bglib-frow"><span class="bn-bglib-flabel">'+esc(def.label)+'</span>'+
+        opts.map(function(opt){
+          var count = opt === ALL_CAT ? null : cards.filter(function(img){
+            return matchFilter(img, def, opt) && matchAllFilters(img, def.key);
+          }).length;
+          var cls = 'bn-bglib-chip' + (filters[def.key] === opt ? ' active' : '') + (count === 0 ? ' dim' : '');
+          return '<button type="button" class="'+cls+'" data-key="'+esc(def.key)+'" data-val="'+esc(opt)+'">'+esc(opt)+
+            (count === null ? '' : '<small>'+count+'</small>')+'</button>';
+        }).join('')+
+      '</div>';
+    }).join('');
+    filtersEl.querySelectorAll('.bn-bglib-chip').forEach(function(chip){
+      chip.addEventListener('click', function(){
+        filters[chip.dataset.key] = chip.dataset.val;
+        selected = null;
+        if(applyBtn) applyBtn.disabled = true;
+        renderFilters();
         renderGrid();
       });
     });
@@ -341,10 +432,16 @@
     ]).then(function(res){
       indexData = res[0] || {};
       brandData = res[1] || null;
+      rulesData = (indexData && indexData._rules && typeof indexData._rules === 'object') ? {
+        style: indexData._rules.style || indexData._rules['風格'] || [],
+        material: indexData._rules.material || indexData._rules['素材'] || [],
+        color: indexData._rules.color || indexData._rules['顏色'] || []
+      } : null;
       var keys = detectCategories(indexData);
       if(keys.length){
         CATEGORIES = keys;
-        if(CATEGORIES.indexOf(currentCat) === -1) currentCat = CATEGORIES[0];
+        if(currentCat !== ALL_CAT && CATEGORIES.indexOf(currentCat) === -1) currentCat = ALL_CAT;
+        if(CATEGORIES.length === 1) currentCat = CATEGORIES[0];
       }
     });
   }
@@ -368,8 +465,37 @@
       indexData._default.forEach(function(item){ addGenericItem(out, item, cat); });
       return out;
     }
+    if(cat === ALL_CAT){
+      CATEGORIES.forEach(function(c){ out = out.concat(listFromCategory(c)); });
+      return out;
+    }
     var catData = indexData[cat];
     if(!catData) return out;
+
+    // A 活動公版格式：{ A: { items:[ {code,h,v,num,style,materials,color} ] } }
+    //   h = 橫式檔（實際量到 1200×360，檔名結尾 _W）→ horizontalSrc，跟 HBN 同規則
+    //   v = 直式檔（實際量到 531×792，檔名結尾 _H）→ verticalSrc，跟 DDCARD 同規則
+    //   圖檔直接放在 bgimg/A/ 下（沒有 hbn/ddcard 子資料夾）
+    if(Array.isArray(catData.items)){
+      catData.items.forEach(function(it){
+        if(!it) return;
+        var h = it.h || it.horizontal || null;
+        var v = it.v || it.vertical || null;
+        if(!isImageFile(h) && !isImageFile(v)) return;
+        out.push({
+          name: it.code || cleanFileName(h || v),
+          fileName: h || v,
+          cat: cat,
+          horizontalSrc: h ? IMG_BASE_URL + cat + '/' + h : null,
+          verticalSrc: v ? IMG_BASE_URL + cat + '/' + v : null,
+          num: (it.num != null) ? it.num : extractNum(h || v),
+          style: it.style || '',
+          materials: Array.isArray(it.materials) ? it.materials : (it.materials ? [it.materials] : []),
+          color: it.color || ''
+        });
+      });
+      return out;
+    }
 
     // HBN 格式：{ EL: { hbn:[...], ddcard:[...] } }
     if(catData.hbn || catData.HBN){
@@ -474,23 +600,36 @@
   function renderGrid(){
     if(!grid) return;
     var q = String(searchQuery||'').trim().toLowerCase();
+    var filtering = FILTER_DEFS.some(function(def){ return filters[def.key] !== ALL_CAT; });
     var list = cards.filter(function(img){
+      /* 風格／素材／顏色：三組 AND。沒有標籤的舊分類圖（EL 等）只要有任一組
+         不是「全部」就會被排除，因為它們沒有可比對的資料。 */
+      if(!matchAllFilters(img)) return false;
       if(!q) return true;
-      return String(img.name||'').toLowerCase().indexOf(q) !== -1 || String(img.fileName||'').toLowerCase().indexOf(q) !== -1 || String(img.num||'').indexOf(q) !== -1;
+      var hay = [img.name, img.fileName, img.num, img.style, img.color].concat(img.materials || [])
+        .map(function(s){ return String(s == null ? '' : s).toLowerCase(); }).join(' ');
+      return hay.indexOf(q) !== -1;
     });
     if(statusEl){
-      statusEl.textContent = list.length ? ('分類：' + currentCat + '，共 ' + list.length + ' 張' + (cards.some(function(x){return x.verticalSrc;}) ? '（含直式對應圖）' : '')) : '';
+      var cond = FILTER_DEFS.filter(function(def){ return filters[def.key] !== ALL_CAT; })
+        .map(function(def){ return def.label + '：' + filters[def.key]; }).join('，');
+      statusEl.textContent = '分類：' + currentCat + (cond ? '，' + cond : '') + '，共 ' + list.length + ' 張' +
+        (list.some(function(x){return x.verticalSrc;}) ? '（含直式對應圖）' : '');
     }
     if(!list.length){
-      grid.innerHTML = '<div class="bn-bglib-empty">目前沒有載入背景圖。<br>請確認 <code>bgimg/index.json</code> 與圖片資料夾是否存在。</div>';
+      grid.innerHTML = (filtering || q)
+        ? '<div class="bn-bglib-empty">這個條件下沒有符合的背景圖。<br>請換一個 風格／素材／顏色，或把篩選切回「全部」。</div>'
+        : '<div class="bn-bglib-empty">目前沒有載入背景圖。<br>請確認 <code>bgimg/index.json</code> 與圖片資料夾是否存在。</div>';
       if(applyBtn) applyBtn.disabled = true;
       return;
     }
     grid.innerHTML = list.map(function(img, idx){
-      var src = encodeSrc(img.horizontalSrc);
+      var src = encodeSrc(img.horizontalSrc || img.verticalSrc);
+      var tags = [img.style, (img.materials || []).join('、'), img.color].filter(Boolean).join(' / ');
       return '<button type="button" class="bn-bglib-card'+(selected===img?' selected':'')+'" data-idx="'+idx+'">'+
-        '<div class="bn-bglib-thumb"><img src="'+esc(src)+'" alt=""></div>'+
+        '<div class="bn-bglib-thumb"><img src="'+esc(src)+'" alt="" loading="lazy" decoding="async"></div>'+
         '<div class="bn-bglib-name" title="'+esc(img.fileName || img.name)+'">'+esc(img.name)+'</div>'+
+        (tags ? '<div class="bn-bglib-tags" title="'+esc(tags)+'">'+esc(tags)+'</div>' : '')+
         '<div class="bn-bglib-check">✓</div>'+
       '</button>';
     }).join('');
@@ -504,7 +643,9 @@
   function selectCard(img){
     selected = img;
     if(selectedEl){
-      selectedEl.textContent = '已選：' + (img.name || '') + (img.verticalSrc ? '（橫式用 HBN、直式/方版用 DDCARD）' : '');
+      selectedEl.textContent = '已選：' + (img.name || '') + (img.verticalSrc
+        ? (img.cat === 'A' ? '（橫式版位用 _W 圖、直式/方版用 _H 圖）' : '（橫式用 HBN、直式/方版用 DDCARD）')
+        : '');
     }
     if(applyBtn) applyBtn.disabled = false;
     renderGrid();
@@ -515,7 +656,7 @@
     ensureModal();
     modal.classList.add('open');
     if(statusEl) statusEl.textContent = '載入背景圖庫中…';
-    loadImages().then(function(){ renderTabs(); buildCards(); renderGrid(); }).catch(function(){
+    loadImages().then(function(){ renderTabs(); buildCards(); renderFilters(); renderGrid(); }).catch(function(){
       if(grid) grid.innerHTML = '<div class="bn-bglib-empty">無法載入 <code>bgimg/index.json</code>。</div>';
     });
   }
@@ -1269,7 +1410,14 @@
     if(!s) return null;
     s = s.replace(/[＿]/g, '_').replace(/[－—–]/g, '-');
     var m = s.match(/\b(EL|FMCG|Fashion|Lifestyle)\s*[-_ ]?\s*(?:Mock\s*up|Mockup)?\s*[-_ ]?\s*0*(\d{1,3})\b/i);
-    if(!m) return null;
+    if(!m){
+      /* A 活動公版：a_001 / a_001_H / a_001_W / A-001。_H/_W 只是檔名方向，
+         編號不分方向，套用時依版位寬高比自動挑橫式(W)或直式(H)。 */
+      var ma = s.match(/(?:^|[^a-z0-9])a\s*[-_ ]\s*0*(\d{1,3})(?:\s*[-_ ]?\s*[HW])?(?![a-z0-9])/i);
+      if(!ma) return null;
+      var numA = parseInt(ma[1], 10);
+      return { category:'A', number:numA, mockup:false, code:'a_' + String(numA).padStart(3, '0') };
+    }
     var rawCat = m[1].toLowerCase();
     var catMap = { el:'EL', fmcg:'FMCG', fashion:'Fashion', lifestyle:'Lifestyle' };
     var category = catMap[rawCat] || m[1];
@@ -1288,6 +1436,9 @@
       var list = listFromCategory(parsed.category);
       currentCat = oldCat;
       if(!list || !list.length) return null;
+      if(parsed.category === 'A'){
+        return list.find(function(img){ return Number(img.num) === parsed.number; }) || null;
+      }
       var escapedCategory = parsed.category.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       var codeMiddle = parsed.mockup
         ? '\\s*[-_ ]?\\s*Mock\\s*up\\s*[-_ ]?\\s*'
@@ -1344,6 +1495,6 @@
     openSlab: openSlabUpload,
     slabFit: openSlabFit,        /* 直接餵一個 File 進對位視窗（測試／外部整合用） */
     findByCode: findCardByPublicCode,
-    reload: function(){ imagesLoaded=false; selected=null; return loadImages().then(function(){ renderTabs(); buildCards(); renderGrid(); }); }
+    reload: function(){ imagesLoaded=false; selected=null; return loadImages().then(function(){ renderTabs(); buildCards(); renderFilters(); renderGrid(); }); }
   };
 })();
