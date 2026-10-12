@@ -51,10 +51,11 @@
   var FILTER_DEFS = [
     { key:'style',    label:'風格', field:'style' },
     { key:'material', label:'素材', field:'materials' },
-    { key:'color',    label:'顏色', field:'color' }
+    { key:'color',    label:'顏色', field:'color' },
+    { key:'cat',      label:'類別', field:'cat' }
   ];
   var rulesData = null;
-  var filters = { style: ALL_CAT, material: ALL_CAT, color: ALL_CAT };
+  var filters = { style: ALL_CAT, material: ALL_CAT, color: ALL_CAT, cat: ALL_CAT };
 
   function esc(s){
     return String(s == null ? '' : s).replace(/[&<>"']/g, function(ch){
@@ -198,9 +199,10 @@
     var style = document.createElement('style');
     style.id = 'bn-bglib-style';
     style.textContent = [
-      '.bn-bglib-overlay{position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:2147483000;display:none;align-items:center;justify-content:center;padding:24px}',
+      /* 視窗置上對齊、高度固定：篩選列的位置不會因為下面的張數多寡而上下跳動 */
+      '.bn-bglib-overlay{position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:2147483000;display:none;align-items:flex-start;justify-content:center;padding:24px}',
       '.bn-bglib-overlay.open{display:flex}',
-      '.bn-bglib-modal{width:min(1040px,96vw);max-height:90vh;background:#111827;border:1px solid #30363d;border-radius:14px;box-shadow:0 24px 80px rgba(0,0,0,.65);display:flex;flex-direction:column;overflow:hidden;color:#e6edf3;font-family:"Segoe UI","PingFang TC",Arial,sans-serif}',
+      '.bn-bglib-modal{width:min(1040px,96vw);height:calc(100vh - 48px);max-height:calc(100vh - 48px);background:#111827;border:1px solid #30363d;border-radius:14px;box-shadow:0 24px 80px rgba(0,0,0,.65);display:flex;flex-direction:column;overflow:hidden;color:#e6edf3;font-family:"Segoe UI","PingFang TC",Arial,sans-serif}',
       '.bn-bglib-head{display:flex;align-items:center;gap:12px;padding:14px 18px;background:#161b22;border-bottom:1px solid #30363d}',
       '.bn-bglib-head h3{font-size:15px;margin:0;white-space:nowrap}',
       '.bn-bglib-search{flex:1;min-width:160px;background:#0d1117;border:1px solid #30363d;border-radius:8px;color:#e6edf3;padding:7px 10px;outline:none}',
@@ -208,7 +210,7 @@
       '.bn-bglib-tabs{display:flex;gap:8px;padding:12px 16px 0;background:#111827;flex-wrap:wrap}',
       '.bn-bglib-tab{background:#1c2333;color:#8b949e;border:1px solid #30363d;border-radius:999px;padding:6px 13px;font-size:12px;font-weight:700;cursor:pointer}',
       '.bn-bglib-tab.active{background:#1f6feb;color:#fff;border-color:#388bfd}',
-      '.bn-bglib-filters{display:flex;flex-direction:column;gap:6px;padding:10px 16px 0;background:#111827}',
+      '.bn-bglib-filters{display:flex;flex-direction:column;gap:6px;padding:12px 16px 0;background:#111827;flex-shrink:0}',
       '.bn-bglib-frow{display:flex;align-items:flex-start;gap:6px;flex-wrap:wrap}',
       '.bn-bglib-flabel{flex:0 0 auto;color:#8b949e;font-size:12px;font-weight:700;line-height:24px;min-width:36px}',
       '.bn-bglib-chip{background:#0d1117;color:#c9d3df;border:1px solid #30363d;border-radius:999px;padding:3px 10px;font-size:12px;cursor:pointer;line-height:16px}',
@@ -217,7 +219,7 @@
       '.bn-bglib-chip.dim{opacity:.4}',
       '.bn-bglib-chip small{opacity:.7;margin-left:3px;font-size:10px}',
       '.bn-bglib-tags{padding:0 9px 7px;font-size:10px;color:#8b949e;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
-      '.bn-bglib-body{padding:14px 16px 16px;overflow:auto}',
+      '.bn-bglib-body{padding:14px 16px 16px;overflow:auto;flex:1;min-height:0}',
       '.bn-bglib-status{color:#8b949e;font-size:12px;margin-bottom:12px}',
       '.bn-bglib-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}',
       '.bn-bglib-card{background:#1c2333;border:1px solid #30363d;border-radius:10px;overflow:hidden;cursor:pointer;text-align:left;color:#e6edf3;transition:transform .12s,border-color .12s;position:relative}',
@@ -326,42 +328,32 @@
     return modal;
   }
 
+  /* 舊版的分類頁籤列已拿掉，分類改成最下面一列「類別」篩選（跟風格／素材／顏色同一種 chip）。
+     保留這個函式名稱是為了相容其他呼叫點，現在只負責把頁籤列清空。 */
   function renderTabs(){
-    if(!tabsEl) return;
-    var tabs = CATEGORIES.length > 1 ? [ALL_CAT].concat(CATEGORIES) : CATEGORIES.slice();
-    tabsEl.innerHTML = tabs.map(function(cat){
-      return '<button type="button" class="bn-bglib-tab'+(cat===currentCat?' active':'')+'" data-cat="'+esc(cat)+'">'+esc(cat)+'</button>';
-    }).join('');
-    tabsEl.querySelectorAll('.bn-bglib-tab').forEach(function(tab){
-      tab.addEventListener('click', function(){
-        currentCat = tab.dataset.cat;
-        selected = null;
-        searchQuery = '';
-        if(searchEl) searchEl.value = '';
-        renderTabs();
-        buildCards();
-        /* 切到沒有任何標籤的分類（EL / Fashion…）時，篩選列會整個隱藏，
-           這時若還留著上一個頁籤選的 風格／素材／顏色，清單會變成 0 張而且
-           沒地方可以取消，所以一併把三組篩選重設回「全部」。 */
-        if(!cards.some(hasAnyTag)) FILTER_DEFS.forEach(function(def){ filters[def.key] = ALL_CAT; });
-        renderFilters();
-        renderGrid();
-      });
-    });
+    if(tabsEl){ tabsEl.innerHTML = ''; tabsEl.style.display = 'none'; }
   }
 
-  /* 風格／素材／顏色 的篩選列。每個 chip 後面的數字是「目前分類頁籤 + 其他兩組
-     篩選」條件下會剩幾張，0 張的 chip 變淡但仍可點（點了會看到空清單提示）。 */
+  /* 風格／素材／顏色／類別 四列篩選。每個 chip 後面的數字是「其他三組篩選」條件下
+     會剩幾張，0 張的 chip 變淡但仍可點（點了會看到空清單提示）。
+     「類別」列只列 EL / Fashion / FMCG / Lifestyle，A 不列出來（A 的圖透過「全部」
+     以及上面三組風格／素材／顏色來找）。 */
+  var CATEGORY_CHIP_HIDE = ['A'];
   function getRules(){
-    if(rulesData) return rulesData;
-    /* index.json 沒有 _rules 時，從圖片本身的標籤反推出清單當備援 */
-    var derived = { style:[], material:[], color:[] };
-    listFromCategory(ALL_CAT).forEach(function(img){
-      if(img.style && derived.style.indexOf(img.style) === -1) derived.style.push(img.style);
-      (img.materials || []).forEach(function(m){ if(derived.material.indexOf(m) === -1) derived.material.push(m); });
-      if(img.color && derived.color.indexOf(img.color) === -1) derived.color.push(img.color);
-    });
-    return derived;
+    var base;
+    if(rulesData){
+      base = { style: rulesData.style, material: rulesData.material, color: rulesData.color };
+    } else {
+      /* index.json 沒有 _rules 時，從圖片本身的標籤反推出清單當備援 */
+      base = { style:[], material:[], color:[] };
+      listFromCategory(ALL_CAT).forEach(function(img){
+        if(img.style && base.style.indexOf(img.style) === -1) base.style.push(img.style);
+        (img.materials || []).forEach(function(m){ if(base.material.indexOf(m) === -1) base.material.push(m); });
+        if(img.color && base.color.indexOf(img.color) === -1) base.color.push(img.color);
+      });
+    }
+    base.cat = CATEGORIES.filter(function(c){ return CATEGORY_CHIP_HIDE.indexOf(c) === -1; });
+    return base;
   }
   function matchFilter(img, def, value){
     if(value === ALL_CAT) return true;
@@ -381,13 +373,7 @@
   function renderFilters(){
     if(!filtersEl) return;
     var rules = getRules();
-    /* 目前分類裡完全沒有任何標籤（例如只看 EL）時，整列篩選沒有意義，直接隱藏 */
-    if(!cards.some(hasAnyTag)){
-      filtersEl.innerHTML = '';
-      filtersEl.style.display = 'none';
-      return;
-    }
-    filtersEl.style.display = '';
+    /* 四列永遠都畫出來（就算某列全部是 0 張），位置才會固定不跳動 */
     filtersEl.innerHTML = FILTER_DEFS.map(function(def){
       var opts = [ALL_CAT].concat(rules[def.key] || []);
       return '<div class="bn-bglib-frow"><span class="bn-bglib-flabel">'+esc(def.label)+'</span>'+
@@ -613,7 +599,7 @@
     if(statusEl){
       var cond = FILTER_DEFS.filter(function(def){ return filters[def.key] !== ALL_CAT; })
         .map(function(def){ return def.label + '：' + filters[def.key]; }).join('，');
-      statusEl.textContent = '分類：' + currentCat + (cond ? '，' + cond : '') + '，共 ' + list.length + ' 張' +
+      statusEl.textContent = (cond || '全部') + '，共 ' + list.length + ' 張' +
         (list.some(function(x){return x.verticalSrc;}) ? '（含直式對應圖）' : '');
     }
     if(!list.length){
