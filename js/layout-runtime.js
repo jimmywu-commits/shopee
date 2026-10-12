@@ -20,10 +20,12 @@
   var _bnSearchIconProductTemplate = /^searchicon_product$/i.test(fname || '');
   var _bnSingleProductForLogoWallTemplate = /首頁logo牆/i.test(fname || '');
   var _bnDdcardTemplate = /^ddcard/i.test(fname || '');
-  /* SearchICON／首頁 LOGO 牆都不接受背景圖片；只有首頁 LOGO 牆固定白底，
-     SearchICON 的純色底仍要跟著父頁選取的背景色。 */
+  /* SearchICON／首頁 LOGO 牆都不接受背景圖片；只有首頁 LOGO 牆固定白底（整張）。
+     SearchICON_LOGO / PRODUCT / TEXT：圓底（.背景色）跟著父頁選取的背景色，
+     但圓底之下的畫布（#canvas）固定白色，不跟著背景色跑。 */
   var _bnNoImageBackgroundTemplate = /^(searchicon_(logo|product|text|120)|首頁logo牆)$/i.test(fname || '');
   var _bnFixedWhiteBackgroundTemplate = _bnHomepageLogoWallTemplate;
+  var _bnWhiteCanvasUnderCircleTemplate = /^searchicon_(logo|product|text)$/i.test(fname || '');
   var _bnCurrentCanvasBg = '';
 
   /* 可編輯文字不得使用近黑／近白；CTA 底色允許近白，但禁用近黑與灰色。
@@ -1040,7 +1042,7 @@
 
     if (e.data.type === 'bn-color') {
       var c = Object.assign({},e.data.data||{}), cv = document.getElementById('canvas');
-      if(_bnFixedWhiteBackgroundTemplate && cv){
+      if((_bnFixedWhiteBackgroundTemplate || _bnWhiteCanvasUnderCircleTemplate) && cv){
         cv.style.setProperty('background', '#fff', 'important');
       }
       _bnRestrictedColorKeys.forEach(function(key){
@@ -1049,12 +1051,13 @@
       _bnLastSafeColors=Object.assign({},_bnLastSafeColors,c);
       if (c.canvasBg) {
         _bnCurrentCanvasBg = c.canvasBg;
-        /* 只有首頁 LOGO 牆固定白底；SearchICON 仍吃目前選取的背景色。 */
+        /* 只有首頁 LOGO 牆固定白底；SearchICON 的圓底（.背景色）仍吃目前選取的背景色，
+           圓底之下的 #canvas 已在上面鎖白，這裡不要再把顏色寫到 #canvas。 */
         var canvasBgForLayout = _bnFixedWhiteBackgroundTemplate ? '#fff' : c.canvasBg;
         /* 支援 .背景色 和 .bg 兩種 class 名稱 */
         var bg = cv.querySelector('.背景色') || cv.querySelector('.bg') || cv.querySelector('.底色');
         if(bg) bg.style.setProperty('background-color', canvasBgForLayout, 'important');
-        else cv.style.setProperty('background', canvasBgForLayout, 'important');
+        else if(!_bnWhiteCanvasUnderCircleTemplate) cv.style.setProperty('background', canvasBgForLayout, 'important');
         /* 漸層顏色跟著背景色同步（讀 CSS --grad-dir 變數）*/
         /* 漸層顏色同步：transparent → rgba(r,g,b,0) 避免截圖變黑 */
         function _toRgba0rt(color){
@@ -1685,14 +1688,15 @@
       var bgY     = e.data.y     !== undefined ? e.data.y     : 50;
 
       /* SearchICON_LOGO / PRODUCT / TEXT 與首頁 LOGO 牆都不接受背景圖片；
-         SearchICON 的純色底跟著目前選取的背景色，首頁 LOGO 牆則固定白色。 */
+         SearchICON 的圓底跟著目前選取的背景色、圓底之下的畫布固定白色，
+         首頁 LOGO 牆則整張固定白色。 */
       if(_bnNoImageBackgroundTemplate){
         var cvSearchIcon = document.getElementById('canvas');
         var noImageBg = _bnFixedWhiteBackgroundTemplate ? '#fff' : _bnCurrentCanvasBg;
         if(!noImageBg){
           noImageBg = getComputedStyle(document.documentElement).getPropertyValue('--canvas-bg').trim() || '#fff';
         }
-        if(cvSearchIcon) cvSearchIcon.style.setProperty('background', noImageBg, 'important');
+        if(cvSearchIcon) cvSearchIcon.style.setProperty('background', _bnWhiteCanvasUnderCircleTemplate ? '#fff' : noImageBg, 'important');
         if(bgContainer){
           bgContainer.style.setProperty('background-color', noImageBg, 'important');
           bgContainer.style.setProperty('background-image', 'none', 'important');
@@ -3522,7 +3526,7 @@
           scale: 1 / scale,   /* 把螢幕縮放還原回設計原始尺寸 */
           useCORS: true,
           allowTaint: true,
-          backgroundColor: _bnFixedWhiteBackgroundTemplate ? '#ffffff' : null,
+          backgroundColor: (_bnFixedWhiteBackgroundTemplate || _bnWhiteCanvasUnderCircleTemplate) ? '#ffffff' : null,
           width: W,
           height: H,
           logging: false
@@ -3555,7 +3559,7 @@
             return false;
           }
           var kids = Array.prototype.slice.call(cv.children);
-          var hcOpts = {scale:1/scale, useCORS:true, allowTaint:true, backgroundColor: _bnFixedWhiteBackgroundTemplate ? '#ffffff' : null, width:W, height:H, logging:false};
+          var hcOpts = {scale:1/scale, useCORS:true, allowTaint:true, backgroundColor: (_bnFixedWhiteBackgroundTemplate || _bnWhiteCanvasUnderCircleTemplate) ? '#ffffff' : null, width:W, height:H, logging:false};
           function toUrl(c2, withShadow){
             var o = document.createElement('canvas');
             o.width = W; o.height = H;
