@@ -2284,6 +2284,10 @@ function setAuthoritativeCanvasBg(v){
   if(colorState) colorState.canvasBg = v;
   if(window._bnLastUserColorState) window._bnLastUserColorState.canvasBg = v;
   if(window._bnFrozenColorData) window._bnFrozenColorData.canvasBg = v;
+  try { localStorage.setItem(BODA_SHARED_CANVAS_BG_KEY, v); } catch(_) {}
+  if(window.parent && window.parent !== window){
+    try { window.parent.postMessage({ type:'wo-bg', color:v }, '*'); } catch(_) {}
+  }
 }
 function getAuthoritativeCanvasBg(){
   if(isHexCanvasBg(window._bnAuthoritativeCanvasBg) && (window._bnUserCanvasBgLocked || isNonDefaultCanvasBg(window._bnAuthoritativeCanvasBg))) return window._bnAuthoritativeCanvasBg;
@@ -2291,6 +2295,7 @@ function getAuthoritativeCanvasBg(){
 }
 window._bnSetAuthoritativeCanvasBg = setAuthoritativeCanvasBg;
 window._bnGetAuthoritativeCanvasBg = getAuthoritativeCanvasBg;
+window._bnApplySharedCanvasBg = applySharedCanvasBg;
 function getCanvasBgHardLock(){
   var authoritativeCanvasBg = getAuthoritativeCanvasBg();
   if (authoritativeCanvasBg) return authoritativeCanvasBg;

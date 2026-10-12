@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>HBN 取色工具</title>
 <style>
+  @font-face{font-family:"ShopeeNotoSans (content)";font-weight:300;src:url("../fonts/ShopeeNotoSans(content)-Regular.ttf") format("truetype")}
+  @font-face{font-family:"ShopeeNotoSans (content)";font-weight:400;src:url("../fonts/ShopeeNotoSans(content)-Medium.ttf") format("truetype")}
+  @font-face{font-family:"ShopeeNotoSans (content)";font-weight:700;src:url("../fonts/ShopeeNotoSans(content)-Bold.ttf") format("truetype")}
   :root{
     --bg:#f5f6f8; --card:#fff; --text:#1f2328; --muted:#6b7280; --line:#e5e7eb; --accent:#ee4d2d; --ok:#15803d;
   }
@@ -55,16 +58,16 @@
   .field input[type=color]{width:40px;height:32px;border:1px solid var(--line);border-radius:6px;padding:0;background:none;cursor:pointer}
   .field input[type=text]{width:100px;font:13px ui-monospace,Consolas,monospace;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--text)}
   .field select{padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--text);font:inherit}
-  .preview{position:relative;width:100%;aspect-ratio:1200/360;border-radius:10px;overflow:hidden;border:1px solid var(--line);font-family:"Noto Sans TC","Microsoft JhengHei",sans-serif;container-type:inline-size}
+  .preview{position:relative;width:100%;aspect-ratio:1200/360;border-radius:10px;overflow:hidden;border:1px solid var(--line);font-family:"ShopeeNotoSans (content)","Noto Sans TC","Microsoft JhengHei",sans-serif;container-type:inline-size}
   .preview .logo{position:absolute;left:4%;top:26%;height:14%;width:18%;border-radius:6px;background:rgba(255,255,255,.55);border:1px dashed rgba(0,0,0,.25)}
-  .preview .t1{position:absolute;left:4%;top:42%;font-size:2.9cqw;font-weight:600;line-height:1}
-  .preview .t2{position:absolute;left:4%;top:55%;font-size:4.6cqw;font-weight:900;line-height:1;letter-spacing:.02em}
-  .preview .t3{position:absolute;left:4%;top:76%;font-size:1.7cqw;line-height:1}
-  .preview .cta{position:absolute;right:2%;bottom:7%;padding:.9cqw 2cqw;border-radius:.5cqw;font-size:1.9cqw;font-weight:600;line-height:1}
+  .preview .t1{position:absolute;left:4%;top:42%;font-size:2.9cqw;font-weight:300;line-height:1}
+  .preview .t2{position:absolute;left:4%;top:55%;font-size:4.6cqw;font-weight:700;line-height:1;letter-spacing:.02em}
+  .preview .t3{position:absolute;left:4%;top:76%;font-size:1.7cqw;font-weight:300;line-height:1}
+  .preview .cta{position:absolute;right:2%;bottom:7%;padding:.9cqw 2cqw;border-radius:.5cqw;font-size:1.9cqw;font-weight:300;line-height:1}
   .refs{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}
   @media (max-width:900px){ .refs{grid-template-columns:1fr} }
   .ref h3{font-size:13px;color:var(--muted);font-weight:600;margin:0 0 6px}
-  .canvas{border:1px solid var(--line);border-radius:8px;padding:14px 16px;font-family:"Noto Sans TC","Microsoft JhengHei",sans-serif}
+  .canvas{border:1px solid var(--line);border-radius:8px;padding:14px 16px;font-family:"ShopeeNotoSans (content)","Noto Sans TC","Microsoft JhengHei",sans-serif}
   .price{display:flex;align-items:baseline;gap:14px;font-weight:700}
   .price .old{font-size:18px;text-decoration:line-through;font-weight:500}
   .price .new{font-size:24px}
@@ -135,10 +138,16 @@
 <section id="tab-sim" hidden>
 <div class="sim">
   <div>
-    <div class="card">
+    <div class="card" style="position:relative">
       <h2>輸入</h2>
       <div class="field"><label>底色</label><input type="color" id="simBg" value="#77C3DB"><input type="text" id="simBgHex" value="#77C3DB" maxlength="7"></div>
       <button id="simRandom">隨機一個底色</button>
+      <button id="simLink" type="button" style="display:none;position:absolute;right:10px;bottom:10px;width:32px;height:32px;padding:0;border-radius:8px;border:1px solid var(--line);background:var(--card);cursor:pointer;color:var(--text);line-height:1" title="與曝光資源底色連動中">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block;margin:auto">
+          <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+          <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+        </svg>
+      </button>
     </div>
     <div class="card" style="margin-top:12px">
       <h2>副標候選（點選套用）</h2>
@@ -638,6 +647,67 @@ runSim();
     setStatus(h?'請按「選擇 / 載入 hbn 資料夾」重新授權讀取（上次已記住資料夾）。':'請按「選擇 / 載入 hbn 資料夾」並選取 hbn 資料夾。');
   }
 })();
+
+/* ========== BODA 嵌入橋接 API ========== */
+const _isBodaHost = (new URLSearchParams(location.search)).get('host') === 'boda';
+let _bodaLinked = true;
+let _settingBgFromParent = false;
+window._colorToolSetBg = function(h) { const v = validHex(h); if (v) { _settingBgFromParent = true; setSimBg(v); _settingBgFromParent = false; } };
+window._colorToolGetCsvString = function() { if (!simState || !simState.res) return ''; return '﻿' + toCsv(buildSheet()); };
+window._colorToolGetResult = function() { return simState && simState.res ? simState.res : null; };
+window._colorToolIsLinked = function() { return _bodaLinked; };
+window._colorToolSetLinked = function(v) { _bodaLinked = !!v; _updateLinkUI(); };
+
+const _linkSvgLinked = '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>';
+const _linkSvgUnlinked = '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/><line x1="4" y1="4" x2="20" y2="20" stroke-width="2.5"/>';
+function _updateLinkUI() {
+  const btn = $('#simLink');
+  if (!btn) return;
+  const svg = btn.querySelector('svg');
+  if (svg) svg.innerHTML = _bodaLinked ? _linkSvgLinked : _linkSvgUnlinked;
+  btn.title = _bodaLinked ? '與曝光資源底色連動中（點擊解除）' : '已解除連動（點擊恢復連動）';
+  btn.style.background = _bodaLinked ? 'var(--card)' : 'var(--bg)';
+  btn.style.opacity = _bodaLinked ? '1' : '.55';
+}
+
+if (_isBodaHost) {
+  switchTab('sim', true);
+  const linkBtn = $('#simLink');
+  if (linkBtn) {
+    linkBtn.style.display = '';
+    linkBtn.onclick = function() {
+      _bodaLinked = !_bodaLinked;
+      _updateLinkUI();
+      if (window.parent !== window) {
+        window.parent.postMessage({ type: 'wo-color-tool-link', linked: _bodaLinked }, '*');
+      }
+      if (_bodaLinked && window.parent !== window) {
+        window.parent.postMessage({ type: 'wo-color-tool-request-bg' }, '*');
+      }
+    };
+    _updateLinkUI();
+  }
+  window.addEventListener('message', function(e) {
+    if (!e.data || typeof e.data !== 'object') return;
+    if (e.data.type === 'wo-color-tool-set-bg') {
+      if (!_bodaLinked) return;
+      const v = validHex(e.data.hex);
+      if (v) { _settingBgFromParent = true; setSimBg(v); _settingBgFromParent = false; }
+    }
+  });
+  let _lastPostedBg = '';
+  const _origRunSim = runSim;
+  runSim = function() {
+    _origRunSim();
+    if (simState && simState.res && window.parent !== window && !_settingBgFromParent) {
+      const bg = hex(simState.res.bg);
+      if (bg !== _lastPostedBg) {
+        _lastPostedBg = bg;
+        window.parent.postMessage({ type: 'wo-color-tool-colors', bg: bg, linked: _bodaLinked }, '*');
+      }
+    }
+  };
+}
 </script>
 </body>
 </html>
