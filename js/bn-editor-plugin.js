@@ -2195,8 +2195,16 @@
         var prod = {id:id,src:src,ratio:item.ratio||1,name:item.name,sizeScale:sizeScale,position:pos,zOrder:i};
         if(item.baseSrc) prod.baseSrc = item.baseSrc;
         if(item.meta) prod.meta = JSON.parse(JSON.stringify(item.meta));
+        /* 新上傳的商品：自動合成貼地陰影（bn-shadow-plugin.js）。
+           baseSrc 保留去背/裁切後的原圖，src 換成「原圖＋影子」。 */
+        if(!item.fromExisting && window._bnGroundShadow){
+          try{
+            prod.baseSrc = src;
+            await window._bnGroundShadow.applyToProduct(prod, window._bnGroundShadow.DEFAULT);
+          }catch(err){ console.warn('[bn-editor] 自動影子合成失敗', err); prod.src = src; }
+        }
         window._bnProducts.push(prod);
-        broadcast({type:'bn-product-add',id:id,src:src,ratio:item.ratio||1,name:item.name,index:i,sizeScale:sizeScale,position:pos,layoutById:item.layouts||null,layout:item.layout||null});
+        broadcast({type:'bn-product-add',id:id,src:prod.src,ratio:prod.ratio||1,name:item.name,index:i,sizeScale:sizeScale,position:pos,layoutById:item.layouts||null,layout:item.layout||null});
         await new Promise(function(r){setTimeout(r,50);});
       }
       renderProdList();
@@ -2317,6 +2325,14 @@
           openProductEditor(pid);
         };})(p.id));
 
+        var shadowBtn=document.createElement('button');shadowBtn.textContent='影子';
+        var gsOn = p.meta && p.meta.groundShadow && p.meta.groundShadow.enabled;
+        shadowBtn.title = gsOn ? '編輯影子（目前：開）' : '編輯影子（目前：關）';
+        if(gsOn) shadowBtn.style.color='#58a6ff';
+        shadowBtn.addEventListener('click',(function(pid){return function(){
+          openGroundShadowEditor(pid);
+        };})(p.id));
+
         var rmBtn=document.createElement('button');rmBtn.textContent='移除';rmBtn.className='rm';
         rmBtn.addEventListener('click',function(){
           window._bnProducts=window._bnProducts.filter(function(x){return x.id!==p.id;});
@@ -2392,7 +2408,7 @@
         moveWrap.appendChild(upBtn);
         moveWrap.appendChild(downBtn);
 
-        row.appendChild(img);row.appendChild(infoWrap);row.appendChild(moveWrap);row.appendChild(editBtn);row.appendChild(rmBtn);
+        row.appendChild(img);row.appendChild(infoWrap);row.appendChild(moveWrap);row.appendChild(editBtn);row.appendChild(shadowBtn);row.appendChild(rmBtn);
         return row;
     }
 
@@ -2456,7 +2472,12 @@
       var seq = ++_bnWorkorderAssetApplySeq;
       var productJobs = replaceProducts ? Promise.all(products.map(function(item){
         return workorderAssetRatio(item.src).then(function(ratio){
-          return { item:item, ratio:ratio };
+          /* 工單匯入的商品也自動合成貼地陰影（失敗就用原圖） */
+          if(!window._bnGroundShadow) return { item:item, ratio:ratio };
+          var tmp = { src:item.src, baseSrc:item.baseSrc || item.src, ratio:ratio, meta:{} };
+          return window._bnGroundShadow.applyToProduct(tmp, window._bnGroundShadow.DEFAULT)
+            .then(function(){ return { item:item, ratio:tmp.ratio, src:tmp.src, baseSrc:tmp.baseSrc, meta:tmp.meta }; })
+            .catch(function(err){ console.warn('[bn-editor] 工單商品影子合成失敗', err); return { item:item, ratio:ratio }; });
         });
       })) : Promise.resolve([]);
 
@@ -2485,16 +2506,18 @@
           oldIds.forEach(function(id){ broadcast({type:'bn-product-remove', id:id}); });
           window._bnProducts = productResults.map(function(result, index){
             var item = result.item;
-            return {
+            var prod = {
               id: 'wo_product_' + Date.now() + '_' + index,
-              src: item.src,
-              baseSrc: item.baseSrc || item.src,
+              src: result.src || item.src,
+              baseSrc: result.baseSrc || item.baseSrc || item.src,
               ratio: result.ratio || 1,
               name: item.name || '',
               sizeScale: 1,
               position: index,
               zOrder: index
             };
+            if(result.meta) prod.meta = result.meta;
+            return prod;
           });
           window._bnProducts.forEach(function(product, index){
             broadcast({
@@ -2534,10 +2557,41 @@
       doOpenEditor(pid);
     }
 
+    /* 開啟貼地陰影編輯器（bn-shadow-plugin.js）。套用後 p.src 已換成合成圖，就地更新版位。 */
+    function openGroundShadowEditor(pid){
+      var p=window._bnProducts.find(function(x){return x.id===pid;});
+      if(!p)return;
+      if(!window._bnGroundShadow){
+        loadScriptOnce('js/bn-shadow-plugin.js').then(function(){ openGroundShadowEditor(pid); })['catch'](function(){ alert('bn-shadow-plugin.js 載入失敗'); });
+        return;
+      }
+      window._bnGroundShadow.openEditor(p, function(){
+        markStateDirty();
+        renderProdList();
+        broadcast({type:'bn-product-update-image', id:p.id, src:p.src, ratio:p.ratio});
+      });
+    }
+
+    /* 攔截 editor-plugin 舊的「加 / 編輯影子」按鈕：改開新的貼地陰影編輯器。
+       capture 階段攔下，editor-plugin 自己的 delegated click 就不會跑到 setShadowMode。 */
+    var _editingShadowPid = null;
+    document.addEventListener('click', function(e){
+      var btn = e.target && e.target.closest ? e.target.closest('.hbn-plugin-modal [data-act="shadow"]') : null;
+      if(!btn || !_editingShadowPid) return;
+      e.stopPropagation(); e.preventDefault();
+      var pid = _editingShadowPid;
+      /* 先關掉 editor-plugin（走它的 nudge 關閉路徑，等同取消），再開影子編輯器 */
+      var closeBtn = document.querySelector('.hbn-plugin-modal [data-act="pluginNudgeClose"]');
+      if(closeBtn) closeBtn.click();
+      _editingShadowPid = null;
+      openGroundShadowEditor(pid);
+    }, true);
+
     function doOpenEditor(pid){
       if(!window.HBNProductEditorPlugin){ alert('editor-plugin.js 未載入'); return; }
       var p=window._bnProducts.find(function(x){return x.id===pid;});
       if(!p)return;
+      _editingShadowPid = pid;
 
       /* 建一個暫存的 .editor-item 結構讓 plugin 使用 */
       var wrap=document.getElementById('bn-edit-wrap');
@@ -2563,7 +2617,10 @@
       }
       box.style.cssText='position:relative;width:400px;height:400px;';
       var img=document.createElement('img');
-      img.src=p.src;
+      /* 有貼地陰影時，裁切/去背/擦除要在「沒有影子的原圖」上做，做完再重新合成影子 */
+      var gsCfg = (editMeta.groundShadow && editMeta.groundShadow.enabled) ? editMeta.groundShadow : null;
+      var openSrc = gsCfg ? baseSrc : p.src;
+      img.src=openSrc;
       img.style.cssText='width:100%;height:100%;object-fit:contain;display:block;';
       box.appendChild(img);
       wrap.appendChild(box);
@@ -2571,8 +2628,27 @@
       /* 覆寫 imgRef.src 後同步回 _bnProducts 和 iframe */
       var origOnload=img.onload;
       var observer=new MutationObserver(function(){
-        if(img.src && img.src!==p.src && img.src.startsWith('data:')){
+        if(img.src && img.src!==openSrc && img.src.startsWith('data:')){
           observer.disconnect();
+          _editingShadowPid = null;
+          /* 有貼地陰影：編輯結果當新的 baseSrc，重新合成影子後再就地更新 */
+          if(gsCfg && window._bnGroundShadow){
+            var newBase = img.src;
+            p.baseSrc = newBase;
+            p.meta = p.meta || {};
+            p.meta.baseSrc = newBase;
+            p.meta.shadow = {enabled:false};
+            window._bnGroundShadow.applyToProduct(p, gsCfg)['catch'](function(err){
+              console.warn('[bn-editor] 影子重新合成失敗', err);
+              p.src = newBase;
+              p.ratio = img.naturalWidth && img.naturalHeight ? img.naturalWidth/img.naturalHeight : p.ratio;
+            }).then(function(){
+              markStateDirty();
+              renderProdList();
+              broadcast({type:'bn-product-update-image', id:p.id, src:p.src, ratio:p.ratio});
+            });
+            return;
+          }
           /* 更新狀態 */
           p.src=img.src;
           p.baseSrc = (box.dataset && box.dataset.baseSrc) ? box.dataset.baseSrc : p.src;
