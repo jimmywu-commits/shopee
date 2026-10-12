@@ -38,9 +38,9 @@
     '.bn-wn-tag.tip{color:#58a6ff;border-color:rgba(88,166,255,.4)}',
     '.bn-wn-foot{display:flex;justify-content:flex-end;gap:8px;padding:10px 16px;border-top:1px solid #252b3d}',
     '.bn-wn-btn{padding:7px 16px;border-radius:7px;border:1px solid #1f6feb;background:#1f6feb;color:#fff;cursor:pointer;font-size:12px;font-weight:600}',
-    '#bn-wn-badge{margin-left:auto;font-size:10px;font-weight:600;color:#8b949e;background:#1c2333;border:1px solid #30363d;border-radius:10px;padding:1px 8px;cursor:pointer;line-height:1.6}',
-    '#bn-wn-badge:hover{color:#58a6ff;border-color:#58a6ff}',
-    '#bn-wn-badge.unread::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:#f0883e;margin-right:5px;vertical-align:middle}'
+    '#bn-wn-open{cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px}',
+    '#bn-wn-open:hover{color:#58a6ff}',
+    '#bn-wn-open.unread::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:#f0883e;margin-right:5px;vertical-align:middle}'
   ].join('\n');
   var st = document.createElement('style'); st.textContent = css; document.head.appendChild(st);
 
@@ -94,21 +94,19 @@
     updateBadge();
   }
 
+  /* 右上角「版本更新說明」小字（jbpbn.html #tab-title 內的 #bn-wn-open）：
+     點了開完整紀錄；有沒看過的版本時前面亮一顆橘點。 */
   function updateBadge(){
-    var b = document.getElementById('bn-wn-badge');
+    var b = document.getElementById('bn-wn-open');
     if(!b) return;
-    b.textContent = latest() ? 'v' + latest() : '更新紀錄';
+    b.title = latest() ? '查看版本更新紀錄（目前 v' + latest() + '）' : '查看版本更新紀錄';
     b.classList.toggle('unread', unseen().length > 0);
   }
   function insertBadge(){
-    var head = document.getElementById('sidebar-head');
-    if(!head || document.getElementById('bn-wn-badge')) return;
-    head.style.display = 'flex'; head.style.alignItems = 'center';
-    var b = document.createElement('span');
-    b.id = 'bn-wn-badge';
-    b.title = '查看版本更新紀錄';
+    var b = document.getElementById('bn-wn-open');
+    if(!b || b.dataset.wnBound) return;
+    b.dataset.wnBound = '1';
     b.addEventListener('click', function(){ open(releases, '更新紀錄'); });
-    head.appendChild(b);
     updateBadge();
   }
 

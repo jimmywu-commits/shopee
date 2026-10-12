@@ -358,7 +358,6 @@ box-shadow:0 3px 12px rgba(0,0,0,.24);}
 @media(max-width:700px){#manual-modal{padding:10px;}#manual-box{width:96vw;height:94vh;}}
 html.boda-hosted #manual-btn,html.boda-hosted #feedback-btn{display:none!important;}
 html[data-host="boda"] #feedback-btn{top:auto;bottom:76px;}
-html[data-host="boda"] #tab-title::after{content:'曝光資源';}
 /* 等級下拉 CSS（由 boda-level-plugin.js 使用） */
 #lv-wrap { padding: 4px 14px 8px; display:none; }
 html[data-host="boda"] #lv-wrap { display:block; }
@@ -385,7 +384,7 @@ html[data-host="boda"] #lv-wrap { display:block; }
   <div id="tab-bar">
     <div class="tab" onclick="switchTab('admin')">⚙️ 後台</div>
     <div class="tab active" onclick="switchTab('frontend')">🖥️ 前台預覽</div>
-    <div id="tab-title"><script>document.write(IS_BODA?'曝光資源':'BN 編輯器');</script></div>
+    <div id="tab-title"><script>document.write(IS_BODA?'曝光資源 ・ ':'');</script><span id="bn-wn-open" title="查看版本更新紀錄">版本更新說明</span></div>
   </div>
 
   <!-- ══════════════════════════════
