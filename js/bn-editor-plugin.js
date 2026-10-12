@@ -2204,10 +2204,15 @@
           }catch(err){ console.warn('[bn-editor] 自動影子合成失敗', err); prod.src = src; }
         }
         window._bnProducts.push(prod);
-        broadcast({type:'bn-product-add',id:id,src:prod.src,ratio:prod.ratio||1,name:item.name,index:i,sizeScale:sizeScale,position:pos,layoutById:item.layouts||null,layout:item.layout||null});
+        broadcast({type:'bn-product-add',id:id,src:prod.src,ratio:prod.ratio||1,name:item.name,index:i,sizeScale:sizeScale,position:pos,zOrder:i,layoutById:item.layouts||null,layout:item.layout||null});
         await new Promise(function(r){setTimeout(r,50);});
       }
       renderProdList();
+      /* ★ 上傳後一定要補送一次 z-index 順序。bn-product-add 本身不設 z-index，
+         畫布上會變成「後加的蓋前面的」（右配在最上層），但左邊工具列是依 zOrder
+         （主品 0 在最上層）排序，兩邊就對不起來；要等使用者按一次 ▲▼ 觸發
+         broadcastZOrder 才會一致。這裡直接同步，上傳完就跟工具列相同。 */
+      broadcastZOrder();
       markStateDirty();
     }
 

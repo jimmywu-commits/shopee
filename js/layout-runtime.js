@@ -1492,6 +1492,12 @@
           box.dataset.manualLayout = '1';
         }
       }
+      /* 先依傳來的 zOrder 給一個暫時的 z-index（zOrder 小 = 上層），讓新加入的商品
+         在 bn-product-zorder 送到之前就跟工具列的上下順序一致，不會先以 DOM 順序
+         （後加的蓋前面的）閃一下；之後 bn-product-zorder 會再統一覆寫。 */
+      if(e.data.zOrder !== undefined && e.data.zOrder !== null){
+        box.style.zIndex = String(Math.max(11, 200 - (parseInt(e.data.zOrder, 10) || 0)));
+      }
       var pimg = document.createElement('img'); pimg.src = e.data.src;
       pimg.style.cssText = 'width:100%;height:100%;object-fit:contain;pointer-events:none;display:block;';
       box.appendChild(pimg);
