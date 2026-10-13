@@ -1114,7 +1114,7 @@
            這裡也要清掉 BODA 共用的文字／背景色鍵值；它們不以 bn 開頭，
            若不清除，頁面 reload 後仍會把舊文案或舊背景色重新套回來。 */
         var preservedLayoutKey = 'bn-layouts';
-        var preservedExternalKeys = { 'bn_feedback_draft_v2': true };
+        var preservedExternalKeys = {};
         Object.keys(localStorage).forEach(function(k){
           var isBnState = k.indexOf('bn') === 0 && k !== preservedLayoutKey && !preservedExternalKeys[k];
           var isSharedBnInput = k === 'wo_shared_exposure_text_v1' || k === 'wo_shared_canvas_bg_v1';

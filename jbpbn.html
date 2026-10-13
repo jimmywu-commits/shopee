@@ -437,9 +437,9 @@ html[data-host="boda"] #lv-wrap { display:block; }
     </div>
     <div class="card" id="help-links-admin-card" style="display:none">
       <h3>🔗 全站支援按鈕連結</h3>
-      <p style="font-size:12px;color:var(--text2);margin-bottom:12px;line-height:1.7">會套用到首頁、工單生成器、匯入工單、曝光資源、吸底與維修頁右下角的浮動按鈕。<br>這裡可先預覽；要讓 GitHub 部署後的所有設備共用，請下載 <code>config.json</code>、覆蓋專案根目錄同名檔案後 commit / push。使用反饋表連結留白時，維持 Firebase 浮動反饋表。</p>
+      <p style="font-size:12px;color:var(--text2);margin-bottom:12px;line-height:1.7">會套用到首頁、工單生成器、匯入工單、曝光資源、吸底與維修頁右下角的浮動按鈕。<br>這裡可先預覽；要讓 GitHub 部署後的所有設備共用，請下載 <code>config.json</code>、覆蓋專案根目錄同名檔案後 commit / push。使用反饋表連結留白時，使用預設的 Google 反饋表單。</p>
       <label style="display:block;font-size:12px;font-weight:700;color:var(--text2);margin-bottom:5px" for="help-feedback-url">使用反饋表連結（選填）</label>
-      <input id="help-feedback-url" type="url" placeholder="https://…（留白＝使用 Firebase 浮動反饋表）" style="width:100%;margin-bottom:12px">
+      <input id="help-feedback-url" type="url" placeholder="https://…（留白＝預設 Google 反饋表單）" style="width:100%;margin-bottom:12px">
       <label style="display:block;font-size:12px;font-weight:700;color:var(--text2);margin-bottom:5px" for="help-manual-url">使用說明書連結（選填）</label>
       <input id="help-manual-url" type="url" placeholder="https://…（留白＝專案內建說明書）" style="width:100%;margin-bottom:12px">
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><button class="btn btn-primary" type="button" id="help-links-save">套用目前頁面預覽</button><button class="btn" type="button" id="help-links-download-config">⬇ 下載 GitHub 設定檔</button><span id="help-links-status" style="font-size:11px;color:var(--text3)"></span></div>
@@ -3155,6 +3155,11 @@ document.addEventListener("DOMContentLoaded",function(){
  document.addEventListener("keydown",function(e){
    if(e.key==="Escape"&&m.classList.contains("show"))closeManual();
  });
+ /* 使用反饋表：直接開 Google 表單（BODA 模式若在後台另填連結，
+    help-settings.js 會在 capture 階段攔截並改開該連結）。 */
+ document.getElementById("feedback-btn").onclick=function(){
+   window.open("https://docs.google.com/forms/d/e/1FAIpQLSfVK0PlrMGPRyZ6pExKWlZKjlzXzCm_M2x9C9OfikHZXu-Qxg/viewform?usp=dialog","_blank","noopener");
+ };
 });
 </script>
 
@@ -3181,7 +3186,7 @@ if (location.hash) {
 }
 </script>
 
-<!-- 全站使用說明／反饋按鈕共用設定（BODA 模式）與 Firebase 使用反饋。 -->
+<!-- 全站使用說明／反饋按鈕共用設定（BODA 模式）。 -->
 <script>
 if(IS_BODA){
   var _hs=document.createElement('script');
@@ -3190,8 +3195,6 @@ if(IS_BODA){
   document.head.appendChild(_hs);
 }
 </script>
-<script src="js/feedback-config.js"></script>
-<script src="js/feedback-plugin.js"></script>
 
 <script>
 if(IS_BODA) document.addEventListener('DOMContentLoaded',function(){
