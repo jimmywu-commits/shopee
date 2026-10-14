@@ -1484,7 +1484,13 @@
       }
       pzone.style.overflow = 'visible'; pzone.style.position = 'relative';
       var box = document.createElement('div');
-      box.className = 'bn-prod-box'; box.dataset.id = e.data.id; box.dataset.ratio = e.data.ratio||1;
+      box.className = 'bn-prod-box'; box.dataset.id = e.data.id;
+      /* 若有 productRect（商品本身不含影子），用它計算框的比例；否則用完整圖片的比例 */
+      var productRect = e.data.productRect;
+      var boxRatio = productRect ? (productRect.w / Math.max(1, productRect.h)) : (e.data.ratio||1);
+      box.dataset.ratio = boxRatio;
+      box.dataset.productRect = productRect ? JSON.stringify(productRect) : '';
+      box.dataset.imageRatio = e.data.ratio||1; /* 完整圖片的比例（含影子）*/
       box.dataset.sizeScale = e.data.sizeScale||1;
       box.dataset.position  = e.data.position !== undefined ? e.data.position : e.data.index || 0;
       if(e.data.layoutById || e.data.layout){
@@ -1503,6 +1509,18 @@
       }
       var pimg = document.createElement('img'); pimg.src = e.data.src;
       pimg.style.cssText = 'width:100%;height:100%;object-fit:contain;pointer-events:none;display:block;';
+      /* 如果有 productRect，計算圖片在框內的正確對齐位置 */
+      if(productRect){
+        pimg.onload = function(){
+          var imgW = pimg.naturalWidth || pimg.width || 1;
+          var imgH = pimg.naturalHeight || pimg.height || 1;
+          /* 商品在完整圖片中的相對位置（百分比） */
+          var relX = productRect.x / Math.max(1, imgW);
+          var relY = productRect.y / Math.max(1, imgH);
+          /* object-position：當 object-fit:contain 時，用百分比表示對齐點在圖片中的位置 */
+          pimg.style.objectPosition = (relX*100)+'% '+(relY*100)+'%';
+        };
+      }
       box.appendChild(pimg);
       box.dataset.rotate = String(Number(e.data.rotate) || 0);
       /* 旋轉把手：框正上方一條短桿接一顆圓鈕，拖曳繞框中心旋轉（Canva／Figma 慣例）。
@@ -1562,6 +1580,12 @@
       var boxU = pzoneU.querySelector('.bn-prod-box[data-id="'+e.data.id+'"]');
       if(boxU){
         if(e.data.rotate !== undefined && e.data.rotate !== null) boxU.dataset.rotate = String(Number(e.data.rotate) || 0);
+        /* 更新 productRect（商品範圍不含影子）和 imageRatio（完整圖片含影子） */
+        if(e.data.productRect){
+          boxU.dataset.productRect = JSON.stringify(e.data.productRect);
+          boxU.dataset.ratio = String(e.data.productRect.w / Math.max(1, e.data.productRect.h));
+        }
+        if(e.data.ratio !== undefined) boxU.dataset.imageRatio = String(e.data.ratio);
         var imgU = boxU.querySelector('img');
         if(imgU && e.data.src){
           if(e.data.keepScale && imgU.naturalWidth && imgU.naturalHeight){
@@ -1593,6 +1617,15 @@
                 boxU.dataset.ratio = String(rN);
               }else if(e.data.ratio){ boxU.dataset.ratio = e.data.ratio; }
               imgU.style.transform = '';
+              /* 如果有 productRect，計算新的 object-position */
+              var prectU = e.data.productRect;
+              if(prectU && tmpU.naturalWidth && tmpU.naturalHeight){
+                var relXU = prectU.x / Math.max(1, tmpU.naturalWidth);
+                var relYU = prectU.y / Math.max(1, tmpU.naturalHeight);
+                imgU.style.objectPosition = (relXU*100)+'% '+(relYU*100)+'%';
+              }else{
+                imgU.style.objectPosition = '';
+              }
               imgU.src = newSrcU;
               postProductLayout(boxU);
             };
@@ -1601,6 +1634,17 @@
           }else{
             if(e.data.ratio) boxU.dataset.ratio = e.data.ratio;
             imgU.style.transform = '';
+            /* 設定新圖片時，也要更新 object-position */
+            imgU.onload = function(){
+              var prectU = e.data.productRect;
+              if(prectU && imgU.naturalWidth && imgU.naturalHeight){
+                var relXU = prectU.x / Math.max(1, imgU.naturalWidth);
+                var relYU = prectU.y / Math.max(1, imgU.naturalHeight);
+                imgU.style.objectPosition = (relXU*100)+'% '+(relYU*100)+'%';
+              }else{
+                imgU.style.objectPosition = '';
+              }
+            };
             imgU.src = e.data.src;
           }
         }

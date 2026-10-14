@@ -222,8 +222,9 @@
       p.meta.baseSrc = base;
       p.meta.groundShadow = cfg;
       p.meta.rotate = rot;
+      p.meta.productRect = r.productRect; /* 商品本身的範圍（不含影子）*/
       p.src = r.src;
-      p.ratio = r.ratio;
+      p.ratio = r.ratio; /* 包含影子的比例 */
       return p;
     });
   }

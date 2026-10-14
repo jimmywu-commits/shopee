@@ -2594,7 +2594,7 @@
       window._bnGroundShadow.openEditor(p, function(){
         markStateDirty();
         renderProdList();
-        broadcast({type:'bn-product-update-image', id:p.id, src:p.src, ratio:p.ratio});
+        broadcast({type:'bn-product-update-image', id:p.id, src:p.src, ratio:p.ratio, productRect:p.meta && p.meta.productRect});
       });
     }
 
@@ -2624,11 +2624,11 @@
         if(_rotateJobs[pid] !== seq) return; /* 拖曳中連續送出時只採用最後一次 */
         markStateDirty();
         renderProdList();
-        broadcast({type:'bn-product-update-image', id:p.id, src:p.src, ratio:p.ratio, keepScale:true, rotate:p.meta.rotate});
+        broadcast({type:'bn-product-update-image', id:p.id, src:p.src, ratio:p.ratio, keepScale:true, rotate:p.meta.rotate, productRect:p.meta && p.meta.productRect});
       })['catch'](function(err){
         console.warn('[bn-editor] 旋轉重算失敗', err);
         /* 失敗時把畫布上暫時的 CSS 旋轉還原 */
-        broadcast({type:'bn-product-update-image', id:p.id, src:p.src, ratio:p.ratio, rotate:p.meta.rotate});
+        broadcast({type:'bn-product-update-image', id:p.id, src:p.src, ratio:p.ratio, rotate:p.meta.rotate, productRect:p.meta && p.meta.productRect});
       }).then(function(){ if(done) done(); });
     }
     /* 畫布把手送來的是「這次拖曳的增量」，總角度以 _bnProducts 為準，
@@ -2720,7 +2720,7 @@
             }).then(function(){
               markStateDirty();
               renderProdList();
-              broadcast({type:'bn-product-update-image', id:p.id, src:p.src, ratio:p.ratio});
+              broadcast({type:'bn-product-update-image', id:p.id, src:p.src, ratio:p.ratio, productRect:p.meta && p.meta.productRect});
             });
             return;
           }
@@ -2766,7 +2766,7 @@
              跟著重新計算、畫面跳一下，re-add 再套用回原本位置又是一次跳動，
              兩段式的閃爍感很明顯。改成單一則「就地換圖」訊息，完全不影響
              目前的位置/大小/其他商品排版。 */
-          broadcast({type:'bn-product-update-image', id:p.id, src:p.src, ratio:p.ratio});
+          broadcast({type:'bn-product-update-image', id:p.id, src:p.src, ratio:p.ratio, productRect:p.meta && p.meta.productRect});
         }
       });
       observer.observe(img,{attributes:true,attributeFilter:['src']});
