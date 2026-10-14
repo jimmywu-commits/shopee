@@ -3123,10 +3123,9 @@
          - 品質梯度更細致，以線性插值預測逼近目標 KB
          - 背景層品質可降至 0.75，前景保持高質量
       */
-      /* JPEG 品質下限：低於這個值畫面會有明顯色塊／馬賽克，寧可小幅超標也不要壓過頭。 */
-      var BN_JPEG_MIN_QUALITY = 0.6;
-      /* keepSize 時的品質下限（不縮圖，重點在品質）。 */
-      var BN_JPEG_MIN_QUALITY_KEEP_SIZE = 0.75;
+      /* JPEG 品質下限：0.75 起，低於這個值畫面會有明顯色塊／馬賽克，寧可小幅超標也不要壓過頭。
+         所有版位統一使用，只有 KB 上限與 keepSize 差異。 */
+      var BN_JPEG_MIN_QUALITY = 0.75;
       /* 分層壓縮時背景最多軟化到幾成；再低背景就糊得太明顯。 */
       var BN_BG_MIN_SCALE = 0.55;
 
@@ -3236,8 +3235,8 @@
             }
 
             function tryQuality(canvas){
-              /* keepSize 時用更高的下限（0.75 而非 0.6），避免糊化 */
-              var minQ = keepSize ? BN_JPEG_MIN_QUALITY_KEEP_SIZE : BN_JPEG_MIN_QUALITY;
+              /* 所有版位統一品質下限 0.75 */
+              var minQ = BN_JPEG_MIN_QUALITY;
               var low = minQ, high = 0.95;
               var samplePoints = [];
               var localBest = null;
@@ -3294,8 +3293,7 @@
             }
 
             /* 到品質下限（或 keepSize 不縮圖）仍超標：輸出下限品質的 JPG，寧可略超 KB 也不壓爛畫面。 */
-            var minQ = keepSize ? BN_JPEG_MIN_QUALITY_KEEP_SIZE : BN_JPEG_MIN_QUALITY;
-            var fallback = best || canvasToJpegDataUrl(drawCanvas(), minQ);
+            var fallback = best || canvasToJpegDataUrl(drawCanvas(), BN_JPEG_MIN_QUALITY);
             cb(fallback || dataUrl, !!fallback);
           }catch(e){ cb(dataUrl, false); }
         };
