@@ -1592,6 +1592,10 @@
       var boxU = pzoneU.querySelector('.bn-prod-box[data-id="'+e.data.id+'"]');
       if(boxU){
         if(e.data.rotate !== undefined && e.data.rotate !== null) boxU.dataset.rotate = String(Number(e.data.rotate) || 0);
+        /* 先保存舊的商品範圍，用來換算目前的顯示倍率（覆寫前要先取） */
+        var oldPRU = null;
+        try{ oldPRU = JSON.parse(boxU.dataset.productRect || 'null'); }catch(_){ oldPRU = null; }
+        var prectU0 = e.data.productRect || null;
         /* 更新 productRect（商品範圍不含影子）和 imageRatio（完整圖片含影子） */
         if(e.data.productRect){
           boxU.dataset.productRect = JSON.stringify(e.data.productRect);
@@ -1608,11 +1612,14 @@
             var bwU = parseFloat(boxU.style.width) || boxU.offsetWidth || 1;
             var bhU = parseFloat(boxU.style.height) || boxU.offsetHeight || 1;
             var blU = parseFloat(boxU.style.left) || 0, btU = parseFloat(boxU.style.top) || 0;
-            var sU = Math.min(bwU/owU, bhU/ohU);
+            /* 框 = 商品本體，所以倍率以舊商品範圍換算（框寬 ÷ 舊商品寬），新框尺寸 = 新商品範圍 × 倍率 */
+            var sU = oldPRU && oldPRU.w ? bwU / oldPRU.w : Math.min(bwU/owU, bhU/ohU);
             var newSrcU = e.data.src;
             var tmpU = new Image();
             tmpU.onload = function(){
-              var nw = tmpU.naturalWidth * sU, nh = tmpU.naturalHeight * sU;
+              var prNew = e.data.productRect;
+              var nw = prNew ? prNew.w * sU : tmpU.naturalWidth * sU;
+              var nh = prNew ? prNew.h * sU : tmpU.naturalHeight * sU;
               if(nw > 0 && nh > 0){
                 var csU = window.getComputedStyle(pzoneU);
                 var zwU = parseFloat(csU.width) || pzoneU.offsetWidth || 1;
@@ -1641,6 +1648,11 @@
             tmpU.src = newSrcU;
           }else{
             if(e.data.ratio) boxU.dataset.ratio = e.data.ratio;
+            /* 商品範圍比例變了（例如去背後），框寬不動、高度依新比例重算，避免圖片變形 */
+            if(prectU0 && prectU0.w && prectU0.h){
+              var bwK = parseFloat(boxU.style.width) || boxU.offsetWidth || 1;
+              boxU.style.height = (bwK * prectU0.h / prectU0.w) + 'px';
+            }
             imgU.style.transform = '';
             /* 設定新圖片時，依 productRect 對齊商品本體 */
             imgU.onload = function(){
@@ -2712,7 +2724,11 @@
         total = normDeg(total);
         rot.delta = normDeg(total - rot.base);
         var img = box.querySelector('img');
-        if(img){ img.style.transformOrigin = '50% 50%'; img.style.transform = 'rotate(' + rot.delta + 'deg)'; }
+        /* 旋轉中心 = 商品框中心（框即商品本體）。圖片含影子時比框大，要換算成圖片內的座標 */
+        if(img){
+          img.style.transformOrigin = (box.offsetWidth/2 - img.offsetLeft) + 'px ' + (box.offsetHeight/2 - img.offsetTop) + 'px';
+          img.style.transform = 'rotate(' + rot.delta + 'deg)';
+        }
         if(rotBadge) rotBadge.textContent = fmtDeg(total);
       });
       function rotEnd(){
