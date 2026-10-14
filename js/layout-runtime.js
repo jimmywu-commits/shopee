@@ -998,6 +998,38 @@
       box._bnRO.observe(box);
     }
   }
+  /* 沒有 productRect 時回到 object-fit:contain 模式 */
+  function bnResetProductImg(img){
+    img._bnFit = null;
+    img.style.position = ''; img.style.left = ''; img.style.top = '';
+    img.style.width = '100%'; img.style.height = '100%';
+    img.style.objectFit = 'contain'; img.style.clipPath = '';
+  }
+  /* 圖片載入完成的唯一處理：永遠讀「框上目前的 productRect」，不用閉包鎖住舊值。
+     （之前旋轉換圖後，新增時留下的 onload 還拿著舊範圍去算新圖，圖片就爆大。） */
+  function bnProductImgLoaded(img){
+    var box = img.parentNode; if(!box) return;
+    var pr = null;
+    try{ pr = JSON.parse(box.dataset.productRect || 'null'); }catch(_){ pr = null; }
+    if(pr && pr.w && pr.h){
+      bnFitProductImg(img, pr, img.naturalWidth || img.width || 1, img.naturalHeight || img.height || 1);
+    }else{
+      bnResetProductImg(img);
+    }
+  }
+  /* 框的高度永遠由寬度與商品範圍比例決定；沒有 productRect 時回傳 null（沿用原高）。 */
+  function bnBoxHeightFor(box, w){
+    var pr = null;
+    try{ pr = JSON.parse(box.dataset.productRect || 'null'); }catch(_){ pr = null; }
+    if(pr && pr.w && pr.h) return w * pr.h / pr.w;
+    return null;
+  }
+  /* 程式改完框尺寸後立刻重排圖片，不只靠 ResizeObserver（它要等下一次 render，
+     畫面被隱藏或緊接著截圖時可能來不及）。 */
+  function bnRelayoutProductBox(box){
+    var img = box && box.querySelector('img');
+    if(img && img._bnFit) bnLayoutProductImg(img);
+  }
   window.addEventListener('message', function(e) {
     if (!e.data) return;
 
@@ -1539,14 +1571,9 @@
       }
       var pimg = document.createElement('img'); pimg.src = e.data.src;
       pimg.style.cssText = 'width:100%;height:100%;object-fit:contain;pointer-events:none;display:block;';
-      /* 如果有 productRect，用 clip-path 只顯示商品部分（遮擋影子） */
-      if(productRect){
-        pimg.onload = function(){
-          bnFitProductImg(pimg, productRect,
-            pimg.naturalWidth || pimg.width || 1,
-            pimg.naturalHeight || pimg.height || 1);
-        };
-      }
+      /* 載入後依框上的 productRect 把商品本體對齊框（影子露在框外）；
+         之後換圖也走同一個 handler，不會拿到舊範圍。 */
+      pimg.onload = function(){ bnProductImgLoaded(pimg); };
       box.appendChild(pimg);
       box.dataset.rotate = String(Number(e.data.rotate) || 0);
       /* 旋轉把手：框正上方一條短桿接一顆圓鈕，拖曳繞框中心旋轉（Canva／Figma 慣例）。
@@ -1580,7 +1607,7 @@
     if (e.data.type === 'bn-product-remove') {
       var pzone = getProductZone(); if(!pzone) return;
       var el = pzone.querySelector('.bn-prod-box[data-id="'+e.data.id+'"]');
-      if(el) el.remove();
+      if(el){ if(el._bnRO){ try{ el._bnRO.disconnect(); }catch(_){ } } el.remove(); }
       var remaining = pzone.querySelectorAll('.bn-prod-box');
       /* 商品全部移除時，只有「人物圖也沒有」才把提示色還原成預設淡紅；
          如果還有人物圖存在，代表這個範圍其實還有內容，不能還原成淡紅提示色。 */
@@ -1626,12 +1653,13 @@
             var bwU = parseFloat(boxU.style.width) || boxU.offsetWidth || 1;
             var bhU = parseFloat(boxU.style.height) || boxU.offsetHeight || 1;
             var blU = parseFloat(boxU.style.left) || 0, btU = parseFloat(boxU.style.top) || 0;
-            /* 框 = 商品本體，所以倍率以舊商品範圍換算（框寬 ÷ 舊商品寬），新框尺寸 = 新商品範圍 × 倍率 */
-            /* 目前的顯示倍率 = 圖片目前的寬度（px）÷ 原圖寬度（px）。直接取圖片本身，
-               不靠 productRect 或框寬，旋轉前後商品大小才會一致。 */
-            var imgKU = parseFloat(imgU.style.width);
-            var sU = (imgKU > 0 && owU > 0) ? imgKU / owU
-              : (oldPRU && oldPRU.w ? bwU / oldPRU.w : Math.min(bwU/owU, bhU/ohU));
+            /* 目前的顯示倍率（畫面 px ÷ 圖片 px）：
+               框 = 商品本體時，框寬 = 舊商品寬 × 倍率，所以倍率 = 框寬 ÷ 舊商品寬；
+               舊商品寬取「圖片目前實際套用的範圍」，不受 dataset 更新時序影響。
+               沒有 productRect（contain 模式）才退回 min(框/圖)。 */
+            var fitOld = imgU._bnFit && imgU._bnFit.pr;
+            var prOldW = (fitOld && fitOld.w) || (oldPRU && oldPRU.w) || 0;
+            var sU = (imgU._bnFit && prOldW > 0) ? bwU / prOldW : Math.min(bwU/owU, bhU/ohU);
             var newSrcU = e.data.src;
             var tmpU = new Image();
             tmpU.onload = function(){
@@ -1652,20 +1680,27 @@
                 boxU.style.left = lU + 'px'; boxU.style.top = tU + 'px';
                 boxU.style.width = nw + 'px'; boxU.style.height = nh + 'px';
                 boxU.dataset.ratio = String(rN);
-              }else if(e.data.ratio){ boxU.dataset.ratio = e.data.ratio; }
+              }else if(e.data.ratio && !prNew){ boxU.dataset.ratio = e.data.ratio; }
               imgU.style.transform = '';
-              /* 有 productRect 時，完整圖片依商品本體對齊框 */
+              /* 有 productRect 時，先用新圖尺寸把商品本體對齊框（換圖瞬間不閃）；
+                 沒有就回到 contain 模式。onload 一定要換成讀取目前範圍的版本，
+                 否則新增時留下的舊 onload 會用舊範圍重算新圖。 */
               var prectU = e.data.productRect;
               if(prectU && tmpU.naturalWidth && tmpU.naturalHeight){
                 bnFitProductImg(imgU, prectU, tmpU.naturalWidth, tmpU.naturalHeight);
+              }else{
+                bnResetProductImg(imgU);
               }
+              imgU.onload = function(){ bnProductImgLoaded(imgU); };
               imgU.src = newSrcU;
               postProductLayout(boxU);
             };
-            tmpU.onerror = function(){ imgU.style.transform = ''; imgU.src = newSrcU; };
+            tmpU.onerror = function(){ imgU.style.transform = ''; imgU.onload = function(){ bnProductImgLoaded(imgU); }; imgU.src = newSrcU; };
             tmpU.src = newSrcU;
           }else{
-            if(e.data.ratio) boxU.dataset.ratio = e.data.ratio;
+            /* 框比例以商品範圍為準（上面已設）；只有沒有 productRect 時才退回完整圖片比例，
+               否則角落縮放／滾輪會用含影子的比例算框高，框比商品高、下方空一截。 */
+            if(e.data.ratio && !prectU0) boxU.dataset.ratio = e.data.ratio;
             /* 商品範圍比例變了（例如去背後），框寬不動、高度依新比例重算，避免圖片變形 */
             if(prectU0 && prectU0.w && prectU0.h){
               var bwK = parseFloat(boxU.style.width) || boxU.offsetWidth || 1;
@@ -1673,12 +1708,7 @@
             }
             imgU.style.transform = '';
             /* 設定新圖片時，依 productRect 對齊商品本體 */
-            imgU.onload = function(){
-              var prectU = e.data.productRect;
-              if(prectU && imgU.naturalWidth && imgU.naturalHeight){
-                bnFitProductImg(imgU, prectU, imgU.naturalWidth, imgU.naturalHeight);
-              }
-            };
+            imgU.onload = function(){ bnProductImgLoaded(imgU); };
             imgU.src = e.data.src;
           }
         }
@@ -1973,7 +2003,14 @@
         var h = lay.heightPct !== undefined ? lay.heightPct * zhApply : lay.height;
         if(isFinite(l) && isFinite(t) && isFinite(w) && isFinite(h) && w > 0 && h > 0){
           w = Math.max(1, Math.min(w, zwApply));
-          h = Math.max(1, Math.min(h, zhApply));
+          /* 框高由框寬 × 商品範圍比例決定（同 layoutProducts） */
+          var hFit = bnBoxHeightFor(boxApply, w);
+          if(hFit){
+            h = hFit;
+            if(h > zhApply){ w = Math.max(1, w * zhApply / h); h = zhApply; }
+          }else{
+            h = Math.max(1, Math.min(h, zhApply));
+          }
           l = Math.max(0, Math.min(zwApply - w, l));
           t = Math.max(0, Math.min(zhApply - h, t));
           boxApply.dataset.manualLayout = '1';
@@ -1981,6 +2018,7 @@
           boxApply.style.top = t + 'px';
           boxApply.style.width = w + 'px';
           boxApply.style.height = h + 'px';
+          bnRelayoutProductBox(boxApply);
         }
       }
       return;
@@ -2268,6 +2306,10 @@
       function _bnFixObjectFitForCapture(selector){
         document.querySelectorAll(selector).forEach(function(img){
           if(!img || img.tagName !== 'IMG') return;
+          /* 商品圖已用 productRect 以絕對 px 定位（影子露在框外），不是 contain 模式；
+             這裡若再按 contain 重算，會把含影子的整張圖縮回框內，下載的商品就變小。
+             只確保定位是最新的，然後跳過。 */
+          if(img._bnFit){ bnLayoutProductImg(img); return; }
           var box = img.parentElement;
           if(!box) return;
           var bw = box.clientWidth, bh = box.clientHeight;
@@ -2516,6 +2558,13 @@
         var sw = saved.widthPct !== undefined ? saved.widthPct * zw : saved.width;
         var sh = saved.heightPct !== undefined ? saved.heightPct * zh : saved.height;
         if(isFinite(sx) && isFinite(sy) && isFinite(sw) && isFinite(sh) && sw > 0 && sh > 0){
+          /* 框高一律由框寬 × 商品範圍比例決定；舊版儲存的高度（含影子的框）不再沿用，
+             否則框會比商品高。 */
+          var shFit = bnBoxHeightFor(p.box, sw);
+          if(shFit){
+            sh = shFit;
+            if(sh > zh){ sw = sw * zh / sh; sh = zh; }
+          }
           p.x = Math.max(0, Math.min(zw - sw, sx));
           p.y = Math.max(0, Math.min(zh - sh, sy));
           p.w = Math.max(1, sw);
@@ -2531,6 +2580,7 @@
         'outline:2px solid transparent;',
         'z-index:'+(15-i)+';',
       ].join('');
+      bnRelayoutProductBox(p.box);
     });
     setTimeout(postAllProductLayouts, 0);
   }
@@ -2799,6 +2849,7 @@
         l=Math.max(0,Math.min(drag.zw-w,l)); t=Math.max(0,Math.min(drag.zh-bh,t));
         box.dataset.manualLayout = '1';
         box.style.left=l+'px'; box.style.top=t+'px'; box.style.width=w+'px'; box.style.height=bh+'px';
+        bnRelayoutProductBox(box);
         scheduleProductLayoutPost(box);
       });
       h.addEventListener('pointerup',function(){ postProductLayout(box); drag=null; });
@@ -2826,6 +2877,7 @@
       box.style.left=Math.max(0,Math.min(cx-w/2,zr.width-w))+'px';
       box.style.top =Math.max(0,Math.min(cy-bh/2,zr.height-bh))+'px';
       box.style.width=w+'px'; box.style.height=bh+'px';
+      bnRelayoutProductBox(box);
       postProductLayout(box);
     },{passive:false});
   }
