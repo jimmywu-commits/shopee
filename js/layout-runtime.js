@@ -974,15 +974,29 @@
 
   /* 商品框 = 商品本體（不含影子）的範圍。完整圖片（含影子）以百分比定位放大，
      讓商品本體剛好對齊框；框外的影子因 overflow:visible 仍會顯示，圖片不被裁切。 */
-  function bnFitProductImg(img, pr, nw, nh){
-    var pw = pr.w || nw, ph = pr.h || nh;
+  /* 只依框的寬度算一個倍率，寬高都用同一倍率的像素值，圖片比例永遠不會被拉伸。 */
+  function bnLayoutProductImg(img){
+    var f = img._bnFit, box = img.parentNode;
+    if(!f || !box) return;
+    var pw = f.pr.w || f.nw;
+    var bw = box.offsetWidth || parseFloat(box.style.width) || 1;
+    var k = bw / pw;
     img.style.position = 'absolute';
-    img.style.width = (nw / pw * 100) + '%';
-    img.style.height = (nh / ph * 100) + '%';
-    img.style.left = (-(pr.x || 0) / pw * 100) + '%';
-    img.style.top = (-(pr.y || 0) / ph * 100) + '%';
+    img.style.width = (f.nw * k) + 'px';
+    img.style.height = (f.nh * k) + 'px';
+    img.style.left = (-(f.pr.x || 0) * k) + 'px';
+    img.style.top = (-(f.pr.y || 0) * k) + 'px';
     img.style.objectFit = 'fill';
     img.style.clipPath = '';
+  }
+  function bnFitProductImg(img, pr, nw, nh){
+    img._bnFit = {pr: pr, nw: nw, nh: nh};
+    bnLayoutProductImg(img);
+    var box = img.parentNode;
+    if(box && window.ResizeObserver && !box._bnRO){
+      box._bnRO = new ResizeObserver(function(){ bnLayoutProductImg(img); });
+      box._bnRO.observe(box);
+    }
   }
   window.addEventListener('message', function(e) {
     if (!e.data) return;
