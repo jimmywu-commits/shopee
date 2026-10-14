@@ -203,7 +203,9 @@
       ctx.translate(bw / 2, bh / 2);
       ctx.rotate(rad);
       ctx.drawImage(img, -W / 2, -H / 2, W, H);
-      return c.toDataURL('image/png');
+      /* 外接矩形四角是透明的，裁到實際商品內容，商品範圍（productRect）才會貼住商品本身 */
+      var tc = trimCanvas(c);
+      return tc.toDataURL('image/png');
     });
   }
 
