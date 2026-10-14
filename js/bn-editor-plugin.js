@@ -3048,6 +3048,11 @@
          原始像素尺寸；只有在原始尺寸、高品質 JPEG 仍塞不進目標 KB 時，
          才逐步降低背景層解析度，最後才退回整張一起壓。
          → 小幅超標時不會先把整張畫布縮小，降低預覽與下載的解析度落差。 */
+      /* JPEG 品質下限：低於這個值畫面會有明顯色塊／馬賽克，寧可小幅超標也不要壓過頭。 */
+      var BN_JPEG_MIN_QUALITY = 0.6;
+      /* 分層壓縮時背景最多軟化到幾成；再低背景就糊得太明顯。 */
+      var BN_BG_MIN_SCALE = 0.55;
+
       function compressSelectiveBgFirst(layers, targetKb, cb){
         var maxBytes = targetKb * 1024;
         var bgImg = new Image(), fgImg = new Image();
@@ -3058,7 +3063,8 @@
           try{
             var W = bgImg.naturalWidth, H = bgImg.naturalHeight;
             if(!W || !H || fgImg.naturalWidth !== W || fgImg.naturalHeight !== H){ cb(null); return; }
-            var BG_SCALES = [1, 0.95, 0.9, 0.85, 0.75, 0.65, 0.55, 0.45, 0.35, 0.3];
+            var BG_SCALES = [1, 0.95, 0.9, 0.85, 0.75, 0.65, 0.55, 0.45, 0.35, 0.3]
+              .filter(function(s){ return s >= BN_BG_MIN_SCALE; });
             var QUALITY_STEPS = [0.98, 0.96, 0.94, 0.92, 0.90];
             for(var i = 0; i < BG_SCALES.length; i++){
               var sc = BG_SCALES[i];
@@ -3129,7 +3135,7 @@
             }
 
             function tryQuality(canvas){
-              var low = 0.05, high = 0.95;
+              var low = BN_JPEG_MIN_QUALITY, high = 0.95;
               var localBest = canvasToJpegDataUrl(canvas, low);
               if(localBest && dataUrlByteSize(localBest) <= maxBytes) best = localBest;
 
@@ -3157,10 +3163,11 @@
               var canvas = drawCanvas();
               var out = tryQuality(canvas);
               if(out && dataUrlByteSize(out) <= maxBytes){ cb(out, true); return; }
-              scale *= 0.95;
+              if(!keepSize) scale *= 0.95;
             }
 
-            var fallback = best || canvasToJpegDataUrl(drawCanvas(), 0.05);
+            /* 到品質下限（或 keepSize 不縮圖）仍超標：輸出下限品質的 JPG，寧可略超 KB 也不壓爛畫面。 */
+            var fallback = best || canvasToJpegDataUrl(drawCanvas(), BN_JPEG_MIN_QUALITY);
             cb(fallback || dataUrl, !!fallback);
           }catch(e){ cb(dataUrl, false); }
         };
