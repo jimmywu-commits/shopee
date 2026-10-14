@@ -1513,16 +1513,30 @@
       }
       var pimg = document.createElement('img'); pimg.src = e.data.src;
       pimg.style.cssText = 'width:100%;height:100%;object-fit:contain;pointer-events:none;display:block;';
-      /* 如果有 productRect，計算圖片在框內的正確對齐位置 */
+      /* 如果有 productRect，用 clip-path 只顯示商品部分（遮擋影子） */
       if(productRect){
         pimg.onload = function(){
           var imgW = pimg.naturalWidth || pimg.width || 1;
           var imgH = pimg.naturalHeight || pimg.height || 1;
-          /* 商品在完整圖片中的相對位置（百分比） */
-          var relX = productRect.x / Math.max(1, imgW);
-          var relY = productRect.y / Math.max(1, imgH);
-          /* object-position：當 object-fit:contain 時，用百分比表示對齐點在圖片中的位置 */
-          pimg.style.objectPosition = (relX*100)+'% '+(relY*100)+'%';
+          var boxW = box.offsetWidth || 1;
+          var boxH = box.offsetHeight || 1;
+          /* 計算 object-fit:contain 的縮放因子 */
+          var scale = Math.min(boxW / imgW, boxH / imgH);
+          var prodX = productRect.x || 0;
+          var prodY = productRect.y || 0;
+          var prodW = productRect.w || imgW;
+          var prodH = productRect.h || imgH;
+          /* 圖片在框內的顯示位移（object-fit:contain 時居中） */
+          var imgDisplayW = imgW * scale;
+          var imgDisplayH = imgH * scale;
+          var offsetX = (boxW - imgDisplayW) / 2;
+          var offsetY = (boxH - imgDisplayH) / 2;
+          /* clip-path：只顯示商品部分 */
+          var clipX = Math.max(0, prodX * scale + offsetX);
+          var clipY = Math.max(0, prodY * scale + offsetY);
+          var clipRight = Math.min(boxW, (prodX + prodW) * scale + offsetX);
+          var clipBottom = Math.min(boxH, (prodY + prodH) * scale + offsetY);
+          pimg.style.clipPath = 'inset('+clipY+'px '+(boxW-clipRight)+'px '+(boxH-clipBottom)+'px '+clipX+'px)';
         };
       }
       box.appendChild(pimg);
@@ -1621,14 +1635,23 @@
                 boxU.dataset.ratio = String(rN);
               }else if(e.data.ratio){ boxU.dataset.ratio = e.data.ratio; }
               imgU.style.transform = '';
-              /* 如果有 productRect，計算新的 object-position */
+              /* 如果有 productRect，計算新的 clip-path */
               var prectU = e.data.productRect;
               if(prectU && tmpU.naturalWidth && tmpU.naturalHeight){
-                var relXU = prectU.x / Math.max(1, tmpU.naturalWidth);
-                var relYU = prectU.y / Math.max(1, tmpU.naturalHeight);
-                imgU.style.objectPosition = (relXU*100)+'% '+(relYU*100)+'%';
+                var imgWU2 = tmpU.naturalWidth;
+                var imgHU2 = tmpU.naturalHeight;
+                var bwU3 = boxU.offsetWidth || 1;
+                var bhU3 = boxU.offsetHeight || 1;
+                var scaleU2 = Math.min(bwU3 / imgWU2, bhU3 / imgHU2);
+                var offsetXU2 = (bwU3 - imgWU2 * scaleU2) / 2;
+                var offsetYU2 = (bhU3 - imgHU2 * scaleU2) / 2;
+                var clipXU2 = Math.max(0, prectU.x * scaleU2 + offsetXU2);
+                var clipYU2 = Math.max(0, prectU.y * scaleU2 + offsetYU2);
+                var clipRU2 = Math.min(bwU3, (prectU.x + prectU.w) * scaleU2 + offsetXU2);
+                var clipBU2 = Math.min(bhU3, (prectU.y + prectU.h) * scaleU2 + offsetYU2);
+                imgU.style.clipPath = 'inset('+clipYU2+'px '+(bwU3-clipRU2)+'px '+(bhU3-clipBU2)+'px '+clipXU2+'px)';
               }else{
-                imgU.style.objectPosition = '';
+                imgU.style.clipPath = '';
               }
               imgU.src = newSrcU;
               postProductLayout(boxU);
@@ -1638,15 +1661,24 @@
           }else{
             if(e.data.ratio) boxU.dataset.ratio = e.data.ratio;
             imgU.style.transform = '';
-            /* 設定新圖片時，也要更新 object-position */
+            /* 設定新圖片時，也要更新 clip-path */
             imgU.onload = function(){
               var prectU = e.data.productRect;
               if(prectU && imgU.naturalWidth && imgU.naturalHeight){
-                var relXU = prectU.x / Math.max(1, imgU.naturalWidth);
-                var relYU = prectU.y / Math.max(1, imgU.naturalHeight);
-                imgU.style.objectPosition = (relXU*100)+'% '+(relYU*100)+'%';
+                var imgWU = imgU.naturalWidth;
+                var imgHU = imgU.naturalHeight;
+                var bwU2 = boxU.offsetWidth || 1;
+                var bhU2 = boxU.offsetHeight || 1;
+                var scaleU = Math.min(bwU2 / imgWU, bhU2 / imgHU);
+                var offsetXU = (bwU2 - imgWU * scaleU) / 2;
+                var offsetYU = (bhU2 - imgHU * scaleU) / 2;
+                var clipXU = Math.max(0, prectU.x * scaleU + offsetXU);
+                var clipYU = Math.max(0, prectU.y * scaleU + offsetYU);
+                var clipRU = Math.min(bwU2, (prectU.x + prectU.w) * scaleU + offsetXU);
+                var clipBU = Math.min(bhU2, (prectU.y + prectU.h) * scaleU + offsetYU);
+                imgU.style.clipPath = 'inset('+clipYU+'px '+(bwU2-clipRU)+'px '+(bhU2-clipBU)+'px '+clipXU+'px)';
               }else{
-                imgU.style.objectPosition = '';
+                imgU.style.clipPath = '';
               }
             };
             imgU.src = e.data.src;
