@@ -167,8 +167,19 @@
     });
   }
 
+  /* 先裁掉商品原圖的透明邊，讓商品範圍（productRect）在任何角度都貼住商品本身 */
+  function trimDataUrl(src){
+    return loadImg(src).then(function(img){
+      var W = img.naturalWidth || img.width, H = img.naturalHeight || img.height;
+      if(!W || !H) return src;
+      var c = document.createElement('canvas'); c.width = W; c.height = H;
+      c.getContext('2d').drawImage(img, 0, 0);
+      return trimCanvas(c).toDataURL('image/png');
+    });
+  }
+
   function compose(baseSrc, cfg){
-    return loadImg(baseSrc).then(function(img){
+    return trimDataUrl(baseSrc).then(loadImg).then(function(img){
       return composeCanvas(img, cfg).then(function(c){
         return { src: c.toDataURL('image/png'), ratio: c.width/Math.max(1,c.height), w:c.width, h:c.height, productRect:c._productRect };
       });
