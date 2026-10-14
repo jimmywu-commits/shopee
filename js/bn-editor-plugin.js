@@ -2990,19 +2990,26 @@
         {keys:['hbn'], kb:145},
         {keys:['fb','facebook'], kb:450},
         {keys:['ig','instagram'], kb:450},
-        {keys:['scbn'], kb:60}
+        {keys:['scbn'], kb:60},
+        /* SBA：200KB 上限，但 keepSize 鎖定畫素尺寸，只靠 JPEG 品質壓縮、不縮圖，維持原解析度。 */
+        {keys:['sba'], kb:200, keepSize:true}
       ];
 
-      function getDownloadKbLimitByName(name){
+      function getDownloadLimitItemByName(name){
         var n = String(name||'').toLowerCase().replace(/\s+/g,'');
         for(var i=0;i<BN_DOWNLOAD_KB_LIMITS.length;i++){
           var item = BN_DOWNLOAD_KB_LIMITS[i];
           for(var j=0;j<item.keys.length;j++){
             var k = String(item.keys[j]).toLowerCase().replace(/\s+/g,'');
-            if(k && n.indexOf(k) !== -1) return item.kb;
+            if(k && n.indexOf(k) !== -1) return item;
           }
         }
         return null;
+      }
+
+      function getDownloadKbLimitByName(name){
+        var item = getDownloadLimitItemByName(name);
+        return item ? item.kb : null;
       }
 
       function dataUrlByteSize(dataUrl){
@@ -3085,10 +3092,11 @@
         bgImg.src = layers.bgUrl; fgImg.src = layers.fgUrl;
       }
 
-      function compressDataUrlToTargetKb(dataUrl, targetKb, cb, layers){
+      function compressDataUrlToTargetKb(dataUrl, targetKb, cb, layers, opts){
         targetKb = parseInt(targetKb,10) || 0;
         if(!targetKb || !dataUrl){ cb(dataUrl); return; }
         var maxBytes = targetKb * 1024;
+        var keepSize = !!(opts && opts.keepSize);
 
         /* 原始 PNG 已經符合容量時，完全保留原始輸出，不重新編碼成 JPG。 */
         if(dataUrlByteSize(dataUrl) <= maxBytes){ cb(dataUrl, false); return; }
@@ -3096,7 +3104,7 @@
         if(layers && layers.bgUrl && layers.fgUrl){
           compressSelectiveBgFirst(layers, targetKb, function(selUrl, selCompressed){
             if(selUrl){ cb(selUrl, !!selCompressed); return; }
-            compressDataUrlToTargetKb(dataUrl, targetKb, cb); /* 退回整張壓縮 */
+            compressDataUrlToTargetKb(dataUrl, targetKb, cb, null, opts); /* 退回整張壓縮 */
           });
           return;
         }
@@ -3142,8 +3150,10 @@
             }
 
             /* 品質不夠時才縮尺寸；每次只降 5%，避免原本 10% 一跳造成
-               下載圖尺寸與編輯畫布出現明顯落差。 */
-            for(var step=0; step<25; step++){
+               下載圖尺寸與編輯畫布出現明顯落差。
+               keepSize（例如 SBA）：完全不縮圖，只跑一次品質搜尋，維持原始畫素尺寸。 */
+            var maxSteps = keepSize ? 1 : 25;
+            for(var step=0; step<maxSteps; step++){
               var canvas = drawCanvas();
               var out = tryQuality(canvas);
               if(out && dataUrlByteSize(out) <= maxBytes){ cb(out, true); return; }
@@ -3295,7 +3305,9 @@
         var baseName=safeName(blockEl ? ((blockEl.querySelector('.pname')||{}).textContent||'layout') : 'layout');
 
         var isSearchIcon0 = /SearchICON/i.test(iframe.src || '');
-        var kbLimit0 = isSearchIcon0 ? null : getDownloadKbLimitByName(baseName);
+        var limitItem0 = isSearchIcon0 ? null : getDownloadLimitItemByName(baseName);
+        var kbLimit0 = limitItem0 ? limitItem0.kb : null;
+        var keepSize0 = !!(limitItem0 && limitItem0.keepSize);
         syncIframeForExport(iframe, function(){
           captureOne(iframe, baseName+'.png', function(res){
             var dataUrl = res && res.dataUrl || null;
@@ -3353,7 +3365,7 @@
                 setProgress('壓縮 '+baseName+' 至 '+kbLimit+'KB 以下…');
                 compressDataUrlToTargetKb(dataUrl, kbLimit, function(jpgUrl, didCompress){
                   afterMainReady(jpgUrl, baseName + (didCompress ? '.jpg' : '.png'));
-                }, {bgUrl: res && res.bgUrl, fgUrl: res && res.fgUrl});
+                }, {bgUrl: res && res.bgUrl, fgUrl: res && res.fgUrl}, {keepSize: keepSize0});
               }else{
                 afterMainReady(dataUrl, outName);
               }
