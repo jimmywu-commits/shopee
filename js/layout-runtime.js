@@ -1504,6 +1504,19 @@
       var pimg = document.createElement('img'); pimg.src = e.data.src;
       pimg.style.cssText = 'width:100%;height:100%;object-fit:contain;pointer-events:none;display:block;';
       box.appendChild(pimg);
+      box.dataset.rotate = String(Number(e.data.rotate) || 0);
+      /* 旋轉把手：框正上方一條短桿接一顆圓鈕，拖曳繞框中心旋轉（Canva／Figma 慣例）。
+         角度不在這裡烘進圖片，只做即時 CSS 預覽；放開後把增量送回父頁，由父頁
+         走 baseSrc → 旋轉 → 影子 的管線重算，再用 bn-product-update-image 換圖。 */
+      var rh = document.createElement('div'); rh.dataset.rotateHandle = '1';
+      rh.title = '拖曳旋轉（Shift：每 15°；雙擊：回到 0°）';
+      rh.style.cssText = 'position:absolute;left:50%;top:-34px;width:20px;height:34px;margin-left:-10px;z-index:6;cursor:grab;touch-action:none;';
+      rh.innerHTML = '<div style="position:absolute;left:50%;top:18px;width:2px;height:16px;margin-left:-1px;background:#4a90e2;"></div>'
+        + '<div style="position:absolute;left:50%;top:0;width:18px;height:18px;margin-left:-9px;border-radius:50%;background:#fff;border:2px solid #4a90e2;box-sizing:border-box;color:#4a90e2;font:bold 11px/14px sans-serif;text-align:center;">&#8635;</div>';
+      box.appendChild(rh);
+      var rb = document.createElement('div'); rb.dataset.rotateBadge = '1';
+      rb.style.cssText = 'position:absolute;left:50%;top:-58px;transform:translateX(-50%);display:none;padding:2px 7px;border-radius:10px;background:rgba(20,24,33,.9);color:#fff;font:600 11px/16px sans-serif;white-space:nowrap;pointer-events:none;z-index:7;';
+      box.appendChild(rb);
       ['nw','ne','sw','se'].forEach(function(c){
         var h = document.createElement('div'); h.dataset.corner = c;
         h.style.cssText = 'position:absolute;width:14px;height:14px;border-radius:50%;background:#4a90e2;border:2px solid #fff;z-index:5;'
@@ -1548,9 +1561,49 @@
       var pzoneU = getProductZone(); if(!pzoneU) return;
       var boxU = pzoneU.querySelector('.bn-prod-box[data-id="'+e.data.id+'"]');
       if(boxU){
-        if(e.data.ratio) boxU.dataset.ratio = e.data.ratio;
+        if(e.data.rotate !== undefined && e.data.rotate !== null) boxU.dataset.rotate = String(Number(e.data.rotate) || 0);
         var imgU = boxU.querySelector('img');
-        if(imgU && e.data.src) imgU.src = e.data.src;
+        if(imgU && e.data.src){
+          if(e.data.keepScale && imgU.naturalWidth && imgU.naturalHeight){
+            /* 旋轉後換圖：新圖外接矩形變大，若框維持原尺寸、object-fit:contain 會把商品
+               看起來縮小。這裡以「舊圖實際顯示倍率」等比換算新框，並以原中心點定位，
+               商品視覺大小不變，只是框跟著外接矩形長大／縮小。 */
+            var owU = imgU.naturalWidth, ohU = imgU.naturalHeight;
+            var bwU = parseFloat(boxU.style.width) || boxU.offsetWidth || 1;
+            var bhU = parseFloat(boxU.style.height) || boxU.offsetHeight || 1;
+            var blU = parseFloat(boxU.style.left) || 0, btU = parseFloat(boxU.style.top) || 0;
+            var sU = Math.min(bwU/owU, bhU/ohU);
+            var newSrcU = e.data.src;
+            var tmpU = new Image();
+            tmpU.onload = function(){
+              var nw = tmpU.naturalWidth * sU, nh = tmpU.naturalHeight * sU;
+              if(nw > 0 && nh > 0){
+                var csU = window.getComputedStyle(pzoneU);
+                var zwU = parseFloat(csU.width) || pzoneU.offsetWidth || 1;
+                var zhU = parseFloat(csU.height) || pzoneU.offsetHeight || 1;
+                var rN = nw / nh;
+                if(nw > zwU){ nw = zwU; nh = nw / rN; }
+                if(nh > zhU){ nh = zhU; nw = nh * rN; }
+                var cxU = blU + bwU/2, cyU = btU + bhU/2;
+                var lU = Math.max(0, Math.min(zwU - nw, cxU - nw/2));
+                var tU = Math.max(0, Math.min(zhU - nh, cyU - nh/2));
+                boxU.dataset.manualLayout = '1';
+                boxU.style.left = lU + 'px'; boxU.style.top = tU + 'px';
+                boxU.style.width = nw + 'px'; boxU.style.height = nh + 'px';
+                boxU.dataset.ratio = String(rN);
+              }else if(e.data.ratio){ boxU.dataset.ratio = e.data.ratio; }
+              imgU.style.transform = '';
+              imgU.src = newSrcU;
+              postProductLayout(boxU);
+            };
+            tmpU.onerror = function(){ imgU.style.transform = ''; imgU.src = newSrcU; };
+            tmpU.src = newSrcU;
+          }else{
+            if(e.data.ratio) boxU.dataset.ratio = e.data.ratio;
+            imgU.style.transform = '';
+            imgU.src = e.data.src;
+          }
+        }
       }
     }
 
@@ -1886,7 +1939,7 @@
       /* 隱藏所有編輯用控制元素（縮放點等），截完再還原 */
       var _editEls = [];
       if(_cv){
-        _cv.querySelectorAll('[data-corner]').forEach(function(h){
+        _cv.querySelectorAll('[data-corner],[data-rotate-handle],[data-rotate-badge]').forEach(function(h){
           _editEls.push({el:h, disp:h.style.display});
           h.style.display = 'none';
         });
@@ -2575,8 +2628,70 @@
 
   function setupProdDrag(box,zone){
     var drag=null;
+    var rotHandle = box.querySelector('[data-rotate-handle]');
+    var rotBadge = box.querySelector('[data-rotate-badge]');
+    if(rotHandle){
+      var rot = null;
+      function fmtDeg(d){ return (Math.round(d*10)/10).toFixed(d % 1 ? 1 : 0).replace(/\.0$/,'') + '°'; }
+      function normDeg(d){ d = ((d % 360) + 360) % 360; return d > 180 ? d - 360 : d; }
+      rotHandle.addEventListener('pointerdown', function(e){
+        if(e.button !== 0) return;
+        e.stopPropagation(); e.preventDefault();
+        var br = box.getBoundingClientRect();
+        var cx = br.left + br.width/2, cy = br.top + br.height/2;
+        rot = {
+          cx:cx, cy:cy,
+          start: Math.atan2(e.clientY - cy, e.clientX - cx),
+          base: parseFloat(box.dataset.rotate) || 0,
+          delta: 0
+        };
+        rotHandle.setPointerCapture(e.pointerId);
+        rotHandle.style.cursor = 'grabbing';
+        box.style.outline = '2px solid #4a90e2';
+        if(rotBadge){ rotBadge.textContent = fmtDeg(rot.base); rotBadge.style.display = 'block'; }
+      });
+      rotHandle.addEventListener('pointermove', function(e){
+        if(!rot) return;
+        var a = Math.atan2(e.clientY - rot.cy, e.clientX - rot.cx);
+        var delta = (a - rot.start) * 180 / Math.PI;
+        var total = normDeg(rot.base + delta);
+        if(e.shiftKey){ total = Math.round(total / 15) * 15; }
+        else{
+          /* 接近 0／90／180／270 時自動吸附，方便擺正 */
+          var near = Math.round(total / 90) * 90;
+          if(Math.abs(total - near) < 3) total = near;
+        }
+        total = normDeg(total);
+        rot.delta = normDeg(total - rot.base);
+        var img = box.querySelector('img');
+        if(img){ img.style.transformOrigin = '50% 50%'; img.style.transform = 'rotate(' + rot.delta + 'deg)'; }
+        if(rotBadge) rotBadge.textContent = fmtDeg(total);
+      });
+      function rotEnd(){
+        if(!rot) return;
+        var delta = rot.delta; rot = null;
+        rotHandle.style.cursor = 'grab';
+        box.style.outline = '2px solid transparent';
+        if(rotBadge) rotBadge.style.display = 'none';
+        var img = box.querySelector('img');
+        if(Math.abs(delta) < 0.5){ if(img) img.style.transform = ''; return; }
+        /* CSS 預覽先留著，等父頁重算完以 bn-product-update-image 換圖時一併清掉，畫面不會閃回 */
+        try{
+          window.parent && window.parent.postMessage({type:'bn-product-rotate', bnid:getCurrentBnId(), id:box.dataset.id, delta:delta}, '*');
+        }catch(_){ if(img) img.style.transform = ''; }
+      }
+      rotHandle.addEventListener('pointerup', rotEnd);
+      rotHandle.addEventListener('pointercancel', rotEnd);
+      rotHandle.addEventListener('lostpointercapture', rotEnd);
+      rotHandle.addEventListener('dblclick', function(e){
+        e.stopPropagation(); e.preventDefault();
+        if(!(parseFloat(box.dataset.rotate) || 0)) return;
+        try{ window.parent && window.parent.postMessage({type:'bn-product-rotate', bnid:getCurrentBnId(), id:box.dataset.id, rotate:0, absolute:true}, '*'); }catch(_){ }
+      });
+    }
     box.addEventListener('pointerdown',function(e){
       if(e.target.dataset.corner) return;
+      if(e.target.closest && e.target.closest('[data-rotate-handle]')) return;
       e.stopPropagation();
       var zr=zone.getBoundingClientRect(),br=box.getBoundingClientRect();
       drag={type:'move',sx:e.clientX,sy:e.clientY,l:br.left-zr.left,t:br.top-zr.top,w:br.width,h:br.height,zw:zr.width,zh:zr.height};

@@ -5,6 +5,7 @@
  *   p.baseSrc = 去背/裁切後的商品原圖（沒有陰影）
  *   p.src     = 原圖 + 陰影 合成後的 PNG（版位、下載、存檔全部直接用這張）
  *   p.meta.groundShadow = {enabled, angle, offsetX, offsetY, scaleX, scaleY, color}
+ *   p.meta.rotate       = 旋轉角度（度，-180～180）；管線固定是 baseSrc → 旋轉 → 影子 → p.src
  * 這樣 layout-runtime / 下載 / 狀態存檔完全不用改，陰影自然跟著商品走。
  *
  * 對外：
@@ -174,16 +175,53 @@
     });
   }
 
-  /* 套到 _bnProducts 的一筆商品：以 p.baseSrc（沒有陰影的原圖）為基底重新合成 */
+  /* 旋轉：把「沒有影子的原圖」轉成指定角度，輸出外接矩形大小的透明 PNG。
+     角度永遠從 baseSrc 重算（不是在已經轉過的圖上再轉），所以反覆調整不會累積模糊。
+     影子一定要在旋轉之後才合成，貼地陰影才會貼在旋轉後的新底邊，空間感才正確。 */
+  function normRotate(deg){
+    deg = Number(deg) || 0;
+    if(!isFinite(deg)) return 0;
+    deg = ((deg % 360) + 360) % 360;
+    if(deg > 180) deg -= 360;
+    return Math.round(deg * 10) / 10;
+  }
+  function rotateImage(src, deg){
+    deg = normRotate(deg);
+    if(!deg) return Promise.resolve(src);
+    return loadImg(src).then(function(img){
+      var W = img.naturalWidth || img.width, H = img.naturalHeight || img.height;
+      if(!W || !H) return src;
+      var rad = deg * Math.PI / 180;
+      var cos = Math.abs(Math.cos(rad)), sin = Math.abs(Math.sin(rad));
+      var bw = Math.max(1, Math.ceil(W * cos + H * sin));
+      var bh = Math.max(1, Math.ceil(W * sin + H * cos));
+      var c = document.createElement('canvas');
+      c.width = bw; c.height = bh;
+      var ctx = c.getContext('2d');
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.translate(bw / 2, bh / 2);
+      ctx.rotate(rad);
+      ctx.drawImage(img, -W / 2, -H / 2, W, H);
+      return c.toDataURL('image/png');
+    });
+  }
+
+  /* 套到 _bnProducts 的一筆商品：以 p.baseSrc（沒有陰影的原圖）為基底，
+     先依 p.meta.rotate 旋轉，再重新合成影子。 */
   function applyToProduct(p, cfg){
     if(!p) return Promise.resolve(p);
     cfg = normCfg(cfg);
     var base = p.baseSrc || (p.meta && p.meta.baseSrc) || p.src;
-    return compose(base, cfg).then(function(r){
+    var rot = normRotate(p.meta && p.meta.rotate);
+    return rotateImage(base, rot).then(function(rotated){
+      return compose(rotated, cfg);
+    }).then(function(r){
       p.baseSrc = base;
       p.meta = p.meta || {};
       p.meta.baseSrc = base;
       p.meta.groundShadow = cfg;
+      p.meta.rotate = rot;
       p.src = r.src;
       p.ratio = r.ratio;
       return p;
@@ -341,6 +379,8 @@
     normalize: normCfg,
     ensureEngine: ensureEngine,
     compose: compose,
+    rotateImage: rotateImage,
+    normalizeRotate: normRotate,
     applyToProduct: applyToProduct,
     openEditor: openEditor,
     close: close

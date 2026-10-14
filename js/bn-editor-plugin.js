@@ -2204,7 +2204,7 @@
           }catch(err){ console.warn('[bn-editor] 自動影子合成失敗', err); prod.src = src; }
         }
         window._bnProducts.push(prod);
-        broadcast({type:'bn-product-add',id:id,src:prod.src,ratio:prod.ratio||1,name:item.name,index:i,sizeScale:sizeScale,position:pos,zOrder:i,layoutById:item.layouts||null,layout:item.layout||null});
+        broadcast({type:'bn-product-add',id:id,src:prod.src,ratio:prod.ratio||1,name:item.name,index:i,sizeScale:sizeScale,position:pos,zOrder:i,layoutById:item.layouts||null,layout:item.layout||null,rotate:(prod.meta&&prod.meta.rotate)||0});
         await new Promise(function(r){setTimeout(r,50);});
       }
       renderProdList();
@@ -2338,6 +2338,27 @@
           openGroundShadowEditor(pid);
         };})(p.id));
 
+        /* 旋轉角度：數字輸入，畫布上也有旋轉把手可以直接拖 */
+        var rotWrap=document.createElement('label');
+        rotWrap.title='旋轉角度（-180～180°）。也可以直接拖畫布上商品上方的旋轉把手，按住 Shift 以 15° 為單位。';
+        rotWrap.style.cssText='display:inline-flex;align-items:center;gap:2px;font-size:10px;color:#8b949e;';
+        var rotInp=document.createElement('input');
+        rotInp.type='number'; rotInp.min='-180'; rotInp.max='180'; rotInp.step='1';
+        rotInp.value=String(Math.round(Number(p.meta && p.meta.rotate) || 0));
+        rotInp.style.cssText='width:46px;padding:2px 4px;font-size:11px;background:#0d1117;color:#e6e8ef;border:1px solid #30363d;border-radius:4px;';
+        var rotUnit=document.createElement('span'); rotUnit.textContent='°';
+        rotWrap.appendChild(rotInp); rotWrap.appendChild(rotUnit);
+        var rotTimer=null;
+        rotInp.addEventListener('input',(function(pid){return function(){
+          var v=Number(rotInp.value);
+          if(!isFinite(v)) return;
+          clearTimeout(rotTimer);
+          rotTimer=setTimeout(function(){
+            rotInp.disabled=true;
+            setProductRotation(pid, v, function(){ rotInp.disabled=false; });
+          },250);
+        };})(p.id));
+
         var rmBtn=document.createElement('button');rmBtn.textContent='移除';rmBtn.className='rm';
         rmBtn.addEventListener('click',function(){
           window._bnProducts=window._bnProducts.filter(function(x){return x.id!==p.id;});
@@ -2413,7 +2434,7 @@
         moveWrap.appendChild(upBtn);
         moveWrap.appendChild(downBtn);
 
-        row.appendChild(img);row.appendChild(infoWrap);row.appendChild(moveWrap);row.appendChild(editBtn);row.appendChild(shadowBtn);row.appendChild(rmBtn);
+        row.appendChild(img);row.appendChild(infoWrap);row.appendChild(moveWrap);row.appendChild(editBtn);row.appendChild(shadowBtn);row.appendChild(rotWrap);row.appendChild(rmBtn);
         return row;
     }
 
@@ -2526,7 +2547,7 @@
           });
           window._bnProducts.forEach(function(product, index){
             broadcast({
-              type:'bn-product-add', id:product.id, src:product.src,
+              type:'bn-product-add', id:product.id, src:product.src, rotate:(product.meta&&product.meta.rotate)||0,
               ratio:product.ratio, name:product.name, index:index,
               sizeScale:product.sizeScale, position:product.position, zOrder:product.zOrder
             });
@@ -2577,6 +2598,52 @@
       });
     }
 
+    /* ══ 商品旋轉 ══
+       角度存在 p.meta.rotate，實際圖片走 bn-shadow-plugin 的管線：
+       baseSrc（無影子原圖）→ 旋轉 → 合成影子 → p.src。
+       畫布上的旋轉把手（layout-runtime）放開時送 bn-product-rotate，這裡重算後
+       用 bn-product-update-image（keepScale）就地換圖，框的大小依新圖外接矩形等比調整。 */
+    var _rotateJobs = {};
+    function setProductRotation(pid, deg, done){
+      var p=window._bnProducts.find(function(x){return x.id===pid;});
+      if(!p){ if(done) done(); return; }
+      if(!window._bnGroundShadow){
+        loadScriptOnce('js/bn-shadow-plugin.js').then(function(){ setProductRotation(pid, deg, done); })['catch'](function(){
+          alert('bn-shadow-plugin.js 載入失敗');
+          if(done) done();
+        });
+        return;
+      }
+      var rot = window._bnGroundShadow.normalizeRotate(deg);
+      p.meta = p.meta || {};
+      if(!p.baseSrc){ p.baseSrc = p.meta.baseSrc || p.src; p.meta.baseSrc = p.baseSrc; }
+      p.meta.rotate = rot;
+      var cfg = p.meta.groundShadow || {enabled:false};
+      var seq = (_rotateJobs[pid] = (_rotateJobs[pid] || 0) + 1);
+      window._bnGroundShadow.applyToProduct(p, cfg).then(function(){
+        if(_rotateJobs[pid] !== seq) return; /* 拖曳中連續送出時只採用最後一次 */
+        markStateDirty();
+        renderProdList();
+        broadcast({type:'bn-product-update-image', id:p.id, src:p.src, ratio:p.ratio, keepScale:true, rotate:p.meta.rotate});
+      })['catch'](function(err){
+        console.warn('[bn-editor] 旋轉重算失敗', err);
+        /* 失敗時把畫布上暫時的 CSS 旋轉還原 */
+        broadcast({type:'bn-product-update-image', id:p.id, src:p.src, ratio:p.ratio, rotate:p.meta.rotate});
+      }).then(function(){ if(done) done(); });
+    }
+    /* 畫布把手送來的是「這次拖曳的增量」，總角度以 _bnProducts 為準，
+       這樣就算 iframe 重新載入、沒拿到目前角度也不會歸零。 */
+    window.addEventListener('message', function(ev){
+      var d = ev.data || {};
+      if(d.type !== 'bn-product-rotate' || !d.id) return;
+      if(window._bnExporting) return;
+      var p=window._bnProducts.find(function(x){return x.id===d.id;});
+      if(!p) return;
+      var cur = Number(p.meta && p.meta.rotate) || 0;
+      var total = d.absolute ? Number(d.rotate)||0 : cur + (Number(d.delta)||0);
+      setProductRotation(d.id, total);
+    });
+
     /* 攔截 editor-plugin 舊的「加 / 編輯影子」按鈕：改開新的貼地陰影編輯器。
        capture 階段攔下，editor-plugin 自己的 delegated click 就不會跑到 setShadowMode。 */
     var _editingShadowPid = null;
@@ -2622,9 +2689,12 @@
       }
       box.style.cssText='position:relative;width:400px;height:400px;';
       var img=document.createElement('img');
-      /* 有貼地陰影時，裁切/去背/擦除要在「沒有影子的原圖」上做，做完再重新合成影子 */
+      /* 有貼地陰影或有旋轉時，裁切/去背/擦除要在「沒有影子、沒有旋轉的原圖」上做，
+         做完再重新跑 旋轉 → 影子 的管線 */
       var gsCfg = (editMeta.groundShadow && editMeta.groundShadow.enabled) ? editMeta.groundShadow : null;
-      var openSrc = gsCfg ? baseSrc : p.src;
+      var hasRotate = !!(Number(editMeta.rotate) || 0);
+      var needRebake = !!(gsCfg || hasRotate);
+      var openSrc = needRebake ? baseSrc : p.src;
       img.src=openSrc;
       img.style.cssText='width:100%;height:100%;object-fit:contain;display:block;';
       box.appendChild(img);
@@ -2636,14 +2706,14 @@
         if(img.src && img.src!==openSrc && img.src.startsWith('data:')){
           observer.disconnect();
           _editingShadowPid = null;
-          /* 有貼地陰影：編輯結果當新的 baseSrc，重新合成影子後再就地更新 */
-          if(gsCfg && window._bnGroundShadow){
+          /* 有貼地陰影或旋轉：編輯結果當新的 baseSrc，重新跑 旋轉 → 影子 後再就地更新 */
+          if(needRebake && window._bnGroundShadow){
             var newBase = img.src;
             p.baseSrc = newBase;
             p.meta = p.meta || {};
             p.meta.baseSrc = newBase;
             p.meta.shadow = {enabled:false};
-            window._bnGroundShadow.applyToProduct(p, gsCfg)['catch'](function(err){
+            window._bnGroundShadow.applyToProduct(p, gsCfg || {enabled:false})['catch'](function(err){
               console.warn('[bn-editor] 影子重新合成失敗', err);
               p.src = newBase;
               p.ratio = img.naturalWidth && img.naturalHeight ? img.naturalWidth/img.naturalHeight : p.ratio;
@@ -2888,7 +2958,7 @@
 
         exportProducts.forEach(function(p, idx){
           sendToIframe(iframeEl, {
-            type:'bn-product-add', id:p.id, src:p.src, ratio:p.ratio, name:p.name,
+            type:'bn-product-add', id:p.id, src:p.src, ratio:p.ratio, name:p.name, rotate:(p.meta&&p.meta.rotate)||0,
             index:idx, sizeScale:p.sizeScale||1, position:p.position||0, zOrder:p.zOrder||0,
             layoutById:p.layouts||null, layout:p.layout||null
           });
@@ -3409,7 +3479,7 @@
           broadcastTo(id,{type:'bn-logo',dataUrl:window._bnLogoDataUrl});
         }
         /* 先送 product-add，再送 zorder */
-        window._bnProducts.forEach(function(p,idx){broadcastTo(id,{type:'bn-product-add',id:p.id,src:p.src,ratio:p.ratio,name:p.name,index:idx,sizeScale:p.sizeScale,position:p.position||0,zOrder:p.zOrder||0,layoutById:p.layouts||null,layout:p.layout||null});});
+        window._bnProducts.forEach(function(p,idx){broadcastTo(id,{type:'bn-product-add',id:p.id,src:p.src,ratio:p.ratio,name:p.name,index:idx,sizeScale:p.sizeScale,position:p.position||0,zOrder:p.zOrder||0,layoutById:p.layouts||null,layout:p.layout||null,rotate:(p.meta&&p.meta.rotate)||0});});
         setTimeout(function(){
           var order=window._bnProducts.slice().sort(function(a,b){return (a.zOrder||0)-(b.zOrder||0);}).map(function(p){return p.id;});
           broadcastTo(id,{type:'bn-product-zorder',order:order});
@@ -3482,7 +3552,7 @@
       });
       setTimeout(function(){
         reordered.forEach(function(p, idx){
-          broadcast({type:'bn-product-add', id:p.id, src:p.src, ratio:p.ratio,
+          broadcast({type:'bn-product-add', id:p.id, src:p.src, ratio:p.ratio, rotate:(p.meta&&p.meta.rotate)||0,
             name:p.name, index:idx, sizeScale:p.sizeScale||1,
             position:p.position||0, zOrder:p.zOrder||0, layoutById:p.layouts||null, layout:p.layout||null});
         });
