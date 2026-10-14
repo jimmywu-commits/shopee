@@ -653,6 +653,19 @@ const _isBodaHost = (new URLSearchParams(location.search)).get('host') === 'boda
 let _bodaLinked = true;
 let _settingBgFromParent = false;
 window._colorToolSetBg = function(h) { const v = validHex(h); if (v) { _settingBgFromParent = true; setSimBg(v); _settingBgFromParent = false; } };
+/* 共用 CTA 底色：BODA 推來 #rrggbb＝手動覆寫 CTA 底色；''＝清除覆寫、回到建議色。 */
+let _settingCtaFromParent = false;
+let _pendingCtaFromParent;
+function _applyCtaFromParent(h) {
+  if (!simState) { _pendingCtaFromParent = h; return; }
+  const v = validHex(h || '');
+  _settingCtaFromParent = true;
+  try {
+    if (v) simState.ov.ctabg = hexToRgb(v); else delete simState.ov.ctabg;
+    renderSim();
+  } finally { _settingCtaFromParent = false; }
+}
+window._colorToolSetCtaBg = _applyCtaFromParent;
 window._colorToolGetCsvString = function() { if (!simState || !simState.res) return ''; return '﻿' + toCsv(buildSheet()); };
 window._colorToolGetResult = function() { return simState && simState.res ? simState.res : null; };
 window._colorToolIsLinked = function() { return _bodaLinked; };
@@ -694,11 +707,30 @@ if (_isBodaHost) {
       const v = validHex(e.data.hex);
       if (v) { _settingBgFromParent = true; setSimBg(v); _settingBgFromParent = false; }
     }
+    if (e.data.type === 'wo-color-tool-set-cta') {
+      if (!_bodaLinked) return;
+      _applyCtaFromParent(e.data.hex);
+    }
   });
+  /* CTA 底色的手動覆寫／還原 → 通知 BODA（匯入工單／曝光資源跟著走）。
+     BODA 推來的設定不回報；底色由 BODA 推來時 runSim 會清掉覆寫，也不回報（BODA 會再補推共用值）。 */
+  let _lastPostedCta = null;
+  const _origRenderSim = renderSim;
+  renderSim = function() {
+    _origRenderSim();
+    if (!simState || window.parent === window) return;
+    const manual = !!simState.ov.ctabg;
+    const cta = manual ? hex(simState.ov.ctabg) : '';
+    if (cta === _lastPostedCta) return;
+    _lastPostedCta = cta;
+    if (_settingCtaFromParent || _settingBgFromParent) return;
+    window.parent.postMessage({ type: 'wo-color-tool-cta', ctaBg: cta, manual: manual, linked: _bodaLinked }, '*');
+  };
   let _lastPostedBg = '';
   const _origRunSim = runSim;
   runSim = function() {
     _origRunSim();
+    if (_pendingCtaFromParent !== undefined) { const p = _pendingCtaFromParent; _pendingCtaFromParent = undefined; _applyCtaFromParent(p); }
     if (simState && simState.res && window.parent !== window && !_settingBgFromParent) {
       const bg = hex(simState.res.bg);
       if (bg !== _lastPostedBg) {

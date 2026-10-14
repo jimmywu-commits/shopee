@@ -835,6 +835,11 @@
       if(typeof global.bnFixEatenColors==='function'){
         try{ global.bnFixEatenColors(global.colorState); }catch(_){ }
       }
+      /* 回灌後再套一次頁面層級的共用規則（例如與 BODA 共用的 CTA 底色），
+         避免舊暫存把跨頁一致的設定蓋掉。 */
+      if(typeof global._bnNormalizeColorStateRules==='function'){
+        try{ global._bnNormalizeColorStateRules(); }catch(_){ }
+      }
       global._bnLastUserColorState = clone(global.colorState);
       if(typeof global.renderColorPickers==='function') global.renderColorPickers();
       if(typeof global.broadcastColors==='function') global.broadcastColors();
