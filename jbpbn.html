@@ -1607,7 +1607,11 @@ function broadcastColors() {
           mainText: data.mainText,
           subText: data.subText,
           dateText: data.dateText,
-          brandText: data.brandText
+          brandText: data.brandText,
+          /* CTA 字色也一起送出：匯入工單畫布與背景色工具的 CTA 文字跟這裡同色。 */
+          ctaBg: data.ctaBg,
+          ctaText: data.ctaText,
+          ctaTextAuto: data.ctaTextAuto !== false
         }
       }, '*');
     }
@@ -1863,8 +1867,65 @@ function applySharedCtaBg(v, silent){
   broadcastColors();
   try { document.dispatchEvent(new CustomEvent('bn-state-dirty')); } catch(_) {}
 }
-/* bn-state-plugin 回灌本機暫存的顏色後呼叫：共用 CTA 底色優先；
-   共用值還沒建立時，把自己既有的手動 CTA 底色發佈出去。 */
+/* ── 共用 CTA 字色（匯入工單／背景色工具／曝光資源三處連動）──
+   localStorage 值 #rrggbb＝手動指定、''＝自動（白字；CTA 底偏淺時改深色字）。
+   自動色以這裡算出的 colorState.ctaText 為準，透過 broadcastColors 的
+   wo-exposure-palette 送給 BODA。 */
+var BODA_SHARED_CTA_TEXT_KEY = 'wo_shared_cta_text_v1';
+function readSharedCtaText(){
+  try {
+    var v = localStorage.getItem(BODA_SHARED_CTA_TEXT_KEY);
+    if (v == null) return null;
+    return isHexCanvasBg(v) ? String(v).toLowerCase() : '';
+  } catch(_) { return null; }
+}
+function writeSharedCtaText(v){
+  var next = isHexCanvasBg(v) ? String(v).toLowerCase() : '';
+  try { localStorage.setItem(BODA_SHARED_CTA_TEXT_KEY, next); } catch(_) {}
+  return next;
+}
+function postSharedCtaTextToParent(v){
+  if(!(window.parent && window.parent !== window)) return;
+  var next = isHexCanvasBg(v) ? String(v).toLowerCase() : '';
+  try { window.parent.postMessage({ type:'wo-cta-text', color:next, manual:!!next }, '*'); } catch(_) {}
+}
+/* 只改 colorState（不廣播）；回傳實際採用的值（''＝自動）。 */
+function applySharedCtaTextToState(v){
+  if(!colorState) return '';
+  if(isHexCanvasBg(v)){
+    colorState.ctaText = String(v).toLowerCase();
+    colorState.ctaTextAuto = false;
+    /* 與 CTA 底相同會吃色：先在這裡改成安全色，回傳給呼叫端寫回共用值。 */
+    if(typeof bnFixEatenColors === 'function' && bnRestrictedColorRgb(colorState.canvasBg)){
+      var probe = Object.assign({}, colorState);
+      var eaten = bnFixEatenColors(probe);
+      if(eaten.indexOf('ctaText') >= 0 && isHexCanvasBg(probe.ctaText)) colorState.ctaText = String(probe.ctaText).toLowerCase();
+    }
+    return String(colorState.ctaText).toLowerCase();
+  }
+  colorState.ctaTextAuto = true;
+  colorState.ctaText = bnCtaForegroundForBg(colorState.ctaBg, colorState.mainText, colorState.canvasBg);
+  return '';
+}
+function applySharedCtaText(v, silent){
+  if(!colorState) return;
+  var requested = isHexCanvasBg(v) ? String(v).toLowerCase() : '';
+  var before = { ctaText: colorState.ctaText, auto: colorState.ctaTextAuto !== false };
+  var used = applySharedCtaTextToState(requested);
+  writeSharedCtaText(used);
+  if(!silent || used !== requested) postSharedCtaTextToParent(used);
+  var changed = before.ctaText !== colorState.ctaText || before.auto !== (colorState.ctaTextAuto !== false);
+  if(!changed) return;
+  var dot = document.getElementById('dot-ctaText');
+  if(dot && colorState.ctaText) dot.style.background = colorState.ctaText;
+  bnRunSilentSharedBg(rememberCurrentColorState);
+  broadcastColors();
+  try { document.dispatchEvent(new CustomEvent('bn-state-dirty')); } catch(_) {}
+}
+window._bnApplySharedCtaText = applySharedCtaText;
+
+/* bn-state-plugin 回灌本機暫存的顏色後呼叫：共用 CTA 底色／字色優先；
+   共用值還沒建立時，把自己既有的手動 CTA 底色／字色發佈出去。 */
 window._bnNormalizeColorStateRules = function(){
   if(!colorState) return;
   var shared = readSharedCtaBg();
@@ -1875,11 +1936,20 @@ window._bnNormalizeColorStateRules = function(){
       writeSharedCtaBg(usedShared);
       postSharedCtaBgToParent(usedShared);
     }
-    return;
-  }
-  if(colorState.ctaBgAuto === false && isHexCanvasBg(colorState.ctaBg)){
+  } else if(colorState.ctaBgAuto === false && isHexCanvasBg(colorState.ctaBg)){
     writeSharedCtaBg(colorState.ctaBg);
     postSharedCtaBgToParent(colorState.ctaBg);
+  }
+  var sharedText = readSharedCtaText();
+  if(sharedText != null){
+    var usedText = applySharedCtaTextToState(sharedText);
+    if(sharedText && usedText !== sharedText){
+      writeSharedCtaText(usedText);
+      postSharedCtaTextToParent(usedText);
+    }
+  } else if(colorState.ctaTextAuto === false && isHexCanvasBg(colorState.ctaText)){
+    writeSharedCtaText(colorState.ctaText);
+    postSharedCtaTextToParent(colorState.ctaText);
   }
 };
 
@@ -2761,6 +2831,11 @@ function applyColor(color) {
     writeSharedCtaBg(colorState.ctaBg);
     postSharedCtaBgToParent(colorState.ctaBg);
   }
+  /* 手動改 CTA 字色 → 同樣寫入共用值並通知 BODA。 */
+  if (cpActiveKey === 'ctaText' && /^#[0-9a-fA-F]{6}$/.test(colorState.ctaText || '')) {
+    writeSharedCtaText(colorState.ctaText);
+    postSharedCtaTextToParent(colorState.ctaText);
+  }
   rememberCurrentColorState();
 
   /* 更新圓點（sidebar 和 inline 共用同一個 id） */
@@ -3360,6 +3435,9 @@ window.addEventListener('message', function (e) {
   if (e.data.type === 'wo-cta-bg') {
     applySharedCtaBg(e.data.manual ? e.data.color : '', true);
   }
+  if (e.data.type === 'wo-cta-text') {
+    applySharedCtaText(e.data.manual ? e.data.color : '', true);
+  }
   if (e.data.type === 'wo-level-ask' && window.parent && window.parent !== window) {
     var lvId = typeof window._bnGetCurrentLevelId === 'function' ? window._bnGetCurrentLevelId() : null;
     if (lvId) try { window.parent.postMessage({ type: 'wo-level', level: lvId }, '*'); } catch (err) {}
@@ -3370,14 +3448,17 @@ window.addEventListener('storage', function (e) {
   if (e.key === 'wo_level_v1' && e.newValue && typeof window._bnApplyLevel === 'function') window._bnApplyLevel(null, false);
   if (e.key === BODA_SHARED_CANVAS_BG_KEY && isHexCanvasBg(e.newValue)) applySharedCanvasBg(e.newValue, true);
   if (e.key === BODA_SHARED_CTA_BG_KEY && e.newValue != null) applySharedCtaBg(e.newValue, true);
+  if (e.key === BODA_SHARED_CTA_TEXT_KEY && e.newValue != null) applySharedCtaText(e.newValue, true);
 });
-/* 啟動時讀取共用背景色與共用 CTA 底色 */
+/* 啟動時讀取共用背景色與共用 CTA 底色／字色 */
 (function(){
   var sharedBg = readSharedCanvasBg();
   var sharedCta = readSharedCtaBg();
+  var sharedCtaText = readSharedCtaText();
   function applyStartup(){
     if (sharedBg && typeof applySharedCanvasBg === 'function') applySharedCanvasBg(sharedBg, true);
     if (sharedCta && typeof applySharedCtaBg === 'function') applySharedCtaBg(sharedCta, true);
+    if (sharedCtaText && typeof applySharedCtaText === 'function') applySharedCtaText(sharedCtaText, true);
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', applyStartup);
   else applyStartup();

@@ -489,6 +489,8 @@ function suggest(bgHex,brandHex){
   return {bg,light,H,S,L,main:main.rgb,mainOk:main.ok,options:ordered,pick,brand:hexToRgb(brandHex)};
 }
 
+/* BODA 推來的自動 CTA 字色（rgb 陣列）；獨立使用時為 null，走自己的規則 */
+var _linkedCtaTxt=null;
 function finish(sg,subRgb,ov={}){
   const bg=sg.bg, brand=sg.brand, main=ov.main||sg.main; subRgb=ov.sub||subRgb;
   const crS=contrast(subRgb,bg);
@@ -517,6 +519,8 @@ function finish(sg,subRgb,ov={}){
   if(contrast(btnHoverTxt,btnNormal)<3){ const mh=rgbToHsl(main); btnNormalTxt=fitL(mh[0],mh[1],mh[2],light?-1:+1,btnNormal,3).rgb; btnNormalTxtSrc='滑過字會被吃色，改主標色'; }
   const btnActive=light?hslToRgb([H,tintS,96]):hslToRgb([H,tintS,10]);   // 按下：近白（深底則近黑）
   const btnActiveTxt=fitL(H,clamp(Math.max(S,45),0,90),light?62:55,light?-1:+1,btnActive,3).rgb;   // 同色系中間色
+  // 嵌在 BODA 裡且連動時，CTA 文字直接採用曝光資源／匯入工單目前的自動 CTA 字色（三處同色）
+  if(!ov.ctatxt && _linkedCtaTxt){ ctatxt=_linkedCtaTxt; ctaTxtSrc='跟曝光資源'; }
   const out={bg,main,sub:subRgb,warn,warnSrc,ctatxt,ctaTxtSrc,ctabg,ctaSrc,
     ref:{priceBg,grey,priceNew,menuBg,btnNormal,btnNormalTxt,btnHover,btnHoverTxt,btnActive,btnActiveTxt},btnNormalTxtSrc};
   // 手動覆寫（葉節點角色）
@@ -666,6 +670,21 @@ function _applyCtaFromParent(h) {
   } finally { _settingCtaFromParent = false; }
 }
 window._colorToolSetCtaBg = _applyCtaFromParent;
+/* 共用 CTA 字色：manual=true 的 #rrggbb＝手動覆寫 CTA 文字（顯示「手動」可還原）；
+   manual=false 的 #rrggbb＝曝光資源目前的自動字色（模擬畫布直接採用）；''＝清除。 */
+let _settingCtaTextFromParent = false;
+let _pendingCtaTextFromParent;
+function _applyCtaTextFromParent(h, manual) {
+  if (!simState) { _pendingCtaTextFromParent = [h, manual]; return; }
+  const v = validHex(h || '');
+  _settingCtaTextFromParent = true;
+  try {
+    if (v && manual) { simState.ov.ctatxt = hexToRgb(v); }
+    else { delete simState.ov.ctatxt; _linkedCtaTxt = v ? hexToRgb(v) : null; }
+    renderSim();
+  } finally { _settingCtaTextFromParent = false; }
+}
+window._colorToolSetCtaText = _applyCtaTextFromParent;
 window._colorToolGetCsvString = function() { if (!simState || !simState.res) return ''; return '﻿' + toCsv(buildSheet()); };
 window._colorToolGetResult = function() { return simState && simState.res ? simState.res : null; };
 window._colorToolIsLinked = function() { return _bodaLinked; };
@@ -711,26 +730,43 @@ if (_isBodaHost) {
       if (!_bodaLinked) return;
       _applyCtaFromParent(e.data.hex);
     }
+    if (e.data.type === 'wo-color-tool-set-cta-text') {
+      if (!_bodaLinked) return;
+      _applyCtaTextFromParent(e.data.hex, !!e.data.manual);
+    }
   });
   /* CTA 底色的手動覆寫／還原 → 通知 BODA（匯入工單／曝光資源跟著走）。
      BODA 推來的設定不回報；底色由 BODA 推來時 runSim 會清掉覆寫，也不回報（BODA 會再補推共用值）。 */
   let _lastPostedCta = null;
+  let _lastPostedCtaText = null;
   const _origRenderSim = renderSim;
   renderSim = function() {
     _origRenderSim();
     if (!simState || window.parent === window) return;
     const manual = !!simState.ov.ctabg;
     const cta = manual ? hex(simState.ov.ctabg) : '';
-    if (cta === _lastPostedCta) return;
-    _lastPostedCta = cta;
-    if (_settingCtaFromParent || _settingBgFromParent) return;
-    window.parent.postMessage({ type: 'wo-color-tool-cta', ctaBg: cta, manual: manual, linked: _bodaLinked }, '*');
+    if (cta !== _lastPostedCta) {
+      _lastPostedCta = cta;
+      if (!_settingCtaFromParent && !_settingBgFromParent) {
+        window.parent.postMessage({ type: 'wo-color-tool-cta', ctaBg: cta, manual: manual, linked: _bodaLinked }, '*');
+      }
+    }
+    /* CTA 文字色的手動覆寫／還原 → 同樣通知 BODA。 */
+    const manualText = !!simState.ov.ctatxt;
+    const ctaText = manualText ? hex(simState.ov.ctatxt) : '';
+    if (ctaText !== _lastPostedCtaText) {
+      _lastPostedCtaText = ctaText;
+      if (!_settingCtaTextFromParent && !_settingCtaFromParent && !_settingBgFromParent) {
+        window.parent.postMessage({ type: 'wo-color-tool-cta-text', ctaText: ctaText, manual: manualText, linked: _bodaLinked }, '*');
+      }
+    }
   };
   let _lastPostedBg = '';
   const _origRunSim = runSim;
   runSim = function() {
     _origRunSim();
     if (_pendingCtaFromParent !== undefined) { const p = _pendingCtaFromParent; _pendingCtaFromParent = undefined; _applyCtaFromParent(p); }
+    if (_pendingCtaTextFromParent !== undefined) { const pt = _pendingCtaTextFromParent; _pendingCtaTextFromParent = undefined; _applyCtaTextFromParent(pt[0], pt[1]); }
     if (simState && simState.res && window.parent !== window && !_settingBgFromParent) {
       const bg = hex(simState.res.bg);
       if (bg !== _lastPostedBg) {
