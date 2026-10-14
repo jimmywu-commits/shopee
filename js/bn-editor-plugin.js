@@ -3054,14 +3054,14 @@
       }
 
       /* 下載 JPG KB 限制：依版位名稱自動套用目標大小。
-         先用 JPEG quality 二分搜尋；若最低 quality 仍超過目標，才逐步縮小尺寸，確保檔案真的低於指定 KB。 */
+         所有版位 keepSize=true：鎖定畫素尺寸，只靠 JPEG 品質壓縮、不縮圖，維持原解析度。
+         先用 JPEG quality 二分搜尋（0.75～0.95）+ 線性插值預測精確逼近目標 KB。 */
       var BN_DOWNLOAD_KB_LIMITS = [
-        {keys:['dd card','ddcard','dd card','dd-card'], kb:245},
-        {keys:['hbn'], kb:145},
-        {keys:['fb','facebook'], kb:450},
-        {keys:['ig','instagram'], kb:450},
-        {keys:['scbn'], kb:60},
-        /* SBA：200KB 上限，但 keepSize 鎖定畫素尺寸，只靠 JPEG 品質壓縮、不縮圖，維持原解析度。 */
+        {keys:['dd card','ddcard','dd card','dd-card'], kb:245, keepSize:true},
+        {keys:['hbn'], kb:145, keepSize:true},
+        {keys:['fb','facebook'], kb:450, keepSize:true},
+        {keys:['ig','instagram'], kb:450, keepSize:true},
+        {keys:['scbn'], kb:60, keepSize:true},
         {keys:['sba'], kb:200, keepSize:true}
       ];
 
