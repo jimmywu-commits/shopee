@@ -3117,11 +3117,28 @@
          策略：先只處理背景層（照片最吃體積），商品圖/logo/文字維持
          原始像素尺寸；只有在原始尺寸、高品質 JPEG 仍塞不進目標 KB 時，
          才逐步降低背景層解析度，最後才退回整張一起壓。
-         → 小幅超標時不會先把整張畫布縮小，降低預覽與下載的解析度落差。 */
+         → 小幅超標時不會先把整張畫布縮小，降低預覽與下載的解析度落差。
+
+         改進（2026-10）：
+         - 品質梯度更細致，以線性插值預測逼近目標 KB
+         - 背景層品質可降至 0.75，前景保持高質量
+      */
       /* JPEG 品質下限：低於這個值畫面會有明顯色塊／馬賽克，寧可小幅超標也不要壓過頭。 */
       var BN_JPEG_MIN_QUALITY = 0.6;
+      /* keepSize 時的品質下限（不縮圖，重點在品質）。 */
+      var BN_JPEG_MIN_QUALITY_KEEP_SIZE = 0.75;
       /* 分層壓縮時背景最多軟化到幾成；再低背景就糊得太明顯。 */
       var BN_BG_MIN_SCALE = 0.55;
+
+      /* 用 2 個數據點做線性預測，找出逼近目標 KB 的品質值。 */
+      function predictQualityByLinear(point1, point2, targetBytes){
+        var q1 = point1.q, s1 = point1.size;
+        var q2 = point2.q, s2 = point2.size;
+        if(s1 === s2) return (q1 + q2) / 2;
+        /* 線性插值：(q - q1) / (q2 - q1) = (targetBytes - s1) / (s2 - s1) */
+        var predictQ = q1 + (targetBytes - s1) * (q2 - q1) / (s2 - s1);
+        return Math.max(0.1, Math.min(0.99, predictQ));
+      }
 
       function compressSelectiveBgFirst(layers, targetKb, cb){
         var maxBytes = targetKb * 1024;
@@ -3135,7 +3152,10 @@
             if(!W || !H || fgImg.naturalWidth !== W || fgImg.naturalHeight !== H){ cb(null); return; }
             var BG_SCALES = [1, 0.95, 0.9, 0.85, 0.75, 0.65, 0.55, 0.45, 0.35, 0.3]
               .filter(function(s){ return s >= BN_BG_MIN_SCALE; });
-            var QUALITY_STEPS = [0.98, 0.96, 0.94, 0.92, 0.90];
+            /* 更細致的品質梯度：背景層可降至 0.75，步長 0.02 */
+            var QUALITY_STEPS = [];
+            for(var q = 0.98; q >= 0.75; q -= 0.02) QUALITY_STEPS.push(Math.round(q * 100) / 100);
+
             for(var i = 0; i < BG_SCALES.length; i++){
               var sc = BG_SCALES[i];
               var c = document.createElement('canvas');
@@ -3155,9 +3175,20 @@
                 ctx.drawImage(bgImg, 0, 0);
               }
               ctx.drawImage(fgImg, 0, 0); /* 前景原解析度疊上 */
+
+              /* 用線性插值逼近目標 */
+              var samplePoints = [];
               for(var q = 0; q < QUALITY_STEPS.length; q++){
                 var out = canvasToJpegDataUrl(c, QUALITY_STEPS[q]);
-                if(out && dataUrlByteSize(out) <= maxBytes){ cb(out, true); return; }
+                if(!out) continue;
+                var size = dataUrlByteSize(out);
+                if(size <= maxBytes){ cb(out, true); return; }
+                samplePoints.push({q: QUALITY_STEPS[q], size: size, out: out});
+                if(samplePoints.length >= 2){
+                  var predictQ = predictQualityByLinear(samplePoints[samplePoints.length - 2], samplePoints[samplePoints.length - 1], maxBytes);
+                  var predictOut = canvasToJpegDataUrl(c, predictQ);
+                  if(predictOut && dataUrlByteSize(predictOut) <= maxBytes){ cb(predictOut, true); return; }
+                }
               }
             }
             cb(null, false); /* 背景壓到底仍超標 → 交回整張壓縮 */
@@ -3205,19 +3236,45 @@
             }
 
             function tryQuality(canvas){
-              var low = BN_JPEG_MIN_QUALITY, high = 0.95;
-              var localBest = canvasToJpegDataUrl(canvas, low);
-              if(localBest && dataUrlByteSize(localBest) <= maxBytes) best = localBest;
+              /* keepSize 時用更高的下限（0.75 而非 0.6），避免糊化 */
+              var minQ = keepSize ? BN_JPEG_MIN_QUALITY_KEEP_SIZE : BN_JPEG_MIN_QUALITY;
+              var low = minQ, high = 0.95;
+              var samplePoints = [];
+              var localBest = null;
 
-              for(var i=0;i<9;i++){
+              /* 先試下限 */
+              var lowOut = canvasToJpegDataUrl(canvas, low);
+              if(lowOut){
+                var lowSize = dataUrlByteSize(lowOut);
+                if(lowSize <= maxBytes){ best = lowOut; return lowOut; }
+                samplePoints.push({q: low, size: lowSize, out: lowOut});
+              }
+
+              /* 二分搜尋 + 線性插值預測 */
+              for(var i = 0; i < 9; i++){
                 var q = (low + high) / 2;
                 var out = canvasToJpegDataUrl(canvas, q);
                 if(!out){ high = q; continue; }
                 var size = dataUrlByteSize(out);
+                samplePoints.push({q: q, size: size, out: out});
+
                 if(size <= maxBytes){
                   best = out;
                   localBest = out;
                   low = q;
+                  /* 收集了 2+ 個點後，用線性插值預測逼近目標 */
+                  if(samplePoints.length >= 2){
+                    var idx1 = samplePoints.length - 2, idx2 = samplePoints.length - 1;
+                    var predictQ = predictQualityByLinear(samplePoints[idx1], samplePoints[idx2], maxBytes);
+                    var predictOut = canvasToJpegDataUrl(canvas, predictQ);
+                    if(predictOut){
+                      var predictSize = dataUrlByteSize(predictOut);
+                      if(predictSize <= maxBytes && predictSize > (localBest ? dataUrlByteSize(localBest) : 0)){
+                        best = predictOut;
+                        localBest = predictOut;
+                      }
+                    }
+                  }
                 }else{
                   high = q;
                 }
@@ -3237,7 +3294,8 @@
             }
 
             /* 到品質下限（或 keepSize 不縮圖）仍超標：輸出下限品質的 JPG，寧可略超 KB 也不壓爛畫面。 */
-            var fallback = best || canvasToJpegDataUrl(drawCanvas(), BN_JPEG_MIN_QUALITY);
+            var minQ = keepSize ? BN_JPEG_MIN_QUALITY_KEEP_SIZE : BN_JPEG_MIN_QUALITY;
+            var fallback = best || canvasToJpegDataUrl(drawCanvas(), minQ);
             cb(fallback || dataUrl, !!fallback);
           }catch(e){ cb(dataUrl, false); }
         };
