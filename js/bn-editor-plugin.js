@@ -2204,7 +2204,7 @@
           }catch(err){ console.warn('[bn-editor] 自動影子合成失敗', err); prod.src = src; }
         }
         window._bnProducts.push(prod);
-        broadcast({type:'bn-product-add',id:id,src:prod.src,ratio:prod.ratio||1,name:item.name,index:i,sizeScale:sizeScale,position:pos,zOrder:i,layoutById:item.layouts||null,layout:item.layout||null,rotate:(prod.meta&&prod.meta.rotate)||0});
+        broadcast({type:'bn-product-add',id:id,src:prod.src,ratio:prod.ratio||1,name:item.name,index:i,sizeScale:sizeScale,position:pos,zOrder:i,layoutById:item.layouts||null,layout:item.layout||null,rotate:(prod.meta&&prod.meta.rotate)||0,productRect:prod.meta&&prod.meta.productRect});
         await new Promise(function(r){setTimeout(r,50);});
       }
       renderProdList();
@@ -2549,7 +2549,8 @@
             broadcast({
               type:'bn-product-add', id:product.id, src:product.src, rotate:(product.meta&&product.meta.rotate)||0,
               ratio:product.ratio, name:product.name, index:index,
-              sizeScale:product.sizeScale, position:product.position, zOrder:product.zOrder
+              sizeScale:product.sizeScale, position:product.position, zOrder:product.zOrder,
+              productRect:product.meta && product.meta.productRect
             });
           });
           broadcastZOrder();
@@ -2960,7 +2961,7 @@
           sendToIframe(iframeEl, {
             type:'bn-product-add', id:p.id, src:p.src, ratio:p.ratio, name:p.name, rotate:(p.meta&&p.meta.rotate)||0,
             index:idx, sizeScale:p.sizeScale||1, position:p.position||0, zOrder:p.zOrder||0,
-            layoutById:p.layouts||null, layout:p.layout||null
+            layoutById:p.layouts||null, layout:p.layout||null, productRect:p.meta&&p.meta.productRect
           });
         });
         if(exportZOrder.length) sendToIframe(iframeEl, {type:'bn-product-zorder', order:exportZOrder});
@@ -3535,7 +3536,7 @@
           broadcastTo(id,{type:'bn-logo',dataUrl:window._bnLogoDataUrl});
         }
         /* 先送 product-add，再送 zorder */
-        window._bnProducts.forEach(function(p,idx){broadcastTo(id,{type:'bn-product-add',id:p.id,src:p.src,ratio:p.ratio,name:p.name,index:idx,sizeScale:p.sizeScale,position:p.position||0,zOrder:p.zOrder||0,layoutById:p.layouts||null,layout:p.layout||null,rotate:(p.meta&&p.meta.rotate)||0});});
+        window._bnProducts.forEach(function(p,idx){broadcastTo(id,{type:'bn-product-add',id:p.id,src:p.src,ratio:p.ratio,name:p.name,index:idx,sizeScale:p.sizeScale,position:p.position||0,zOrder:p.zOrder||0,layoutById:p.layouts||null,layout:p.layout||null,rotate:(p.meta&&p.meta.rotate)||0,productRect:p.meta&&p.meta.productRect});});
         setTimeout(function(){
           var order=window._bnProducts.slice().sort(function(a,b){return (a.zOrder||0)-(b.zOrder||0);}).map(function(p){return p.id;});
           broadcastTo(id,{type:'bn-product-zorder',order:order});
@@ -3610,7 +3611,7 @@
         reordered.forEach(function(p, idx){
           broadcast({type:'bn-product-add', id:p.id, src:p.src, ratio:p.ratio, rotate:(p.meta&&p.meta.rotate)||0,
             name:p.name, index:idx, sizeScale:p.sizeScale||1,
-            position:p.position||0, zOrder:p.zOrder||0, layoutById:p.layouts||null, layout:p.layout||null});
+            position:p.position||0, zOrder:p.zOrder||0, layoutById:p.layouts||null, layout:p.layout||null, productRect:p.meta&&p.meta.productRect});
         });
         /* z-index */
         var order = (window._bnProducts||[]).slice().sort(function(a,b){

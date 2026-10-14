@@ -1485,11 +1485,15 @@
       pzone.style.overflow = 'visible'; pzone.style.position = 'relative';
       var box = document.createElement('div');
       box.className = 'bn-prod-box'; box.dataset.id = e.data.id;
-      /* 若有 productRect（商品本身不含影子），用它計算框的比例；否則用完整圖片的比例 */
+      /* 若有 productRect（商品本身不含影子），用它計算框的比例；
+         否則建立一個臨時的（與完整圖片相同，稍後 update-image 會更新） */
       var productRect = e.data.productRect;
-      var boxRatio = productRect ? (productRect.w / Math.max(1, productRect.h)) : (e.data.ratio||1);
+      var boxRatio = e.data.ratio||1;
+      if(productRect){
+        boxRatio = productRect.w / Math.max(1, productRect.h);
+        box.dataset.productRect = JSON.stringify(productRect);
+      }
       box.dataset.ratio = boxRatio;
-      box.dataset.productRect = productRect ? JSON.stringify(productRect) : '';
       box.dataset.imageRatio = e.data.ratio||1; /* 完整圖片的比例（含影子）*/
       box.dataset.sizeScale = e.data.sizeScale||1;
       box.dataset.position  = e.data.position !== undefined ? e.data.position : e.data.index || 0;
