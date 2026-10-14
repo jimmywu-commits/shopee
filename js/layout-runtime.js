@@ -1627,7 +1627,11 @@
             var bhU = parseFloat(boxU.style.height) || boxU.offsetHeight || 1;
             var blU = parseFloat(boxU.style.left) || 0, btU = parseFloat(boxU.style.top) || 0;
             /* 框 = 商品本體，所以倍率以舊商品範圍換算（框寬 ÷ 舊商品寬），新框尺寸 = 新商品範圍 × 倍率 */
-            var sU = oldPRU && oldPRU.w ? bwU / oldPRU.w : Math.min(bwU/owU, bhU/ohU);
+            /* 目前的顯示倍率 = 圖片目前的寬度（px）÷ 原圖寬度（px）。直接取圖片本身，
+               不靠 productRect 或框寬，旋轉前後商品大小才會一致。 */
+            var imgKU = parseFloat(imgU.style.width);
+            var sU = (imgKU > 0 && owU > 0) ? imgKU / owU
+              : (oldPRU && oldPRU.w ? bwU / oldPRU.w : Math.min(bwU/owU, bhU/ohU));
             var newSrcU = e.data.src;
             var tmpU = new Image();
             tmpU.onload = function(){
