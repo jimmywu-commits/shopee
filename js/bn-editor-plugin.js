@@ -2507,7 +2507,14 @@
         });
       })) : Promise.resolve([]);
 
-      return productJobs.then(function(productResults){
+      /* LOGO 比例要量實際圖片：BODA 傳來的素材沒有 ratio，若直接用 1 會永遠判成方版。 */
+      var logoJobs = replaceLogos ? Promise.all(logos.map(function(item){
+        return item.ratio ? Promise.resolve(item.ratio) : workorderAssetRatio(item.src);
+      })) : Promise.resolve([]);
+
+      return Promise.all([productJobs, logoJobs]).then(function(jobResults){
+        var productResults = jobResults[0];
+        var logoRatios = jobResults[1];
         if(seq !== _bnWorkorderAssetApplySeq) return false;
 
         if(replaceLogos){
@@ -2517,7 +2524,7 @@
               src: item.src,
               baseSrc: item.baseSrc || item.src,
               name: item.name || '',
-              ratio: item.ratio || 1
+              ratio: logoRatios[index] || 1
             };
           });
           window._bnLogoDataUrl = window._bnLogos.length ? window._bnLogos[0].src : null;

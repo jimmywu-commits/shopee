@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "tp": {
+      "type": "http",
+      "url": "https://twtc.shopee.tw/mcp"
+    }
+  }
+}

@@ -46,6 +46,36 @@
   var searchQuery = '';
   var cards = [];
   var selected = null;
+  var lastJbpMode = null;
+  function isJbpMode(){
+    var s = String(location.hash || '').replace(/^#/,'').trim().toLowerCase();
+    return s === 'jbp' || s === 'jpb';
+  }
+  function activeFilterDefs(){
+    return isJbpMode()
+      ? FILTER_DEFS.filter(function(def){ return def.key === 'cat'; })
+      : FILTER_DEFS;
+  }
+  function syncJbpModeUI(){
+    var jbp = isJbpMode();
+    if(lastJbpMode !== jbp){
+      if(jbp){
+        filters.style = ALL_CAT;
+        filters.material = ALL_CAT;
+        filters.color = ALL_CAT;
+        searchQuery = '';
+        if(searchEl) searchEl.value = '';
+      }
+      lastJbpMode = jbp;
+    }
+    if(modal){
+      modal.classList.toggle('bn-bglib-jbp', jbp);
+      if(searchEl){
+        searchEl.style.display = jbp ? 'none' : '';
+        searchEl.setAttribute('aria-hidden', jbp ? 'true' : 'false');
+      }
+    }
+  }
   /* 風格／素材／顏色 三組篩選（來源：A+與A活動公版管理表.xlsx 的「#分類規則」頁籤，
      由 index.json 的 _rules 帶進來）。每組都是單選，預設「全部」；三組之間是 AND。 */
   var FILTER_DEFS = [
@@ -206,6 +236,7 @@
       '.bn-bglib-head{display:flex;align-items:center;gap:12px;padding:14px 18px;background:#161b22;border-bottom:1px solid #30363d}',
       '.bn-bglib-head h3{font-size:15px;margin:0;white-space:nowrap}',
       '.bn-bglib-search{flex:1;min-width:160px;background:#0d1117;border:1px solid #30363d;border-radius:8px;color:#e6edf3;padding:7px 10px;outline:none}',
+      '.bn-bglib-modal.bn-bglib-jbp .bn-bglib-search{display:none}',
       '.bn-bglib-close{background:#21262d;color:#e6edf3;border:1px solid #30363d;border-radius:8px;padding:6px 10px;cursor:pointer}',
       '.bn-bglib-tabs{display:flex;gap:8px;padding:12px 16px 0;background:#111827;flex-wrap:wrap}',
       '.bn-bglib-tab{background:#1c2333;color:#8b949e;border:1px solid #30363d;border-radius:999px;padding:6px 13px;font-size:12px;font-weight:700;cursor:pointer}',
@@ -316,6 +347,7 @@
     statusEl = modal.querySelector('.bn-bglib-status');
     selectedEl = modal.querySelector('.bn-bglib-hint');
     applyBtn = modal.querySelector('.bn-bglib-apply');
+    syncJbpModeUI();
 
     modal.querySelector('.bn-bglib-close').addEventListener('click', closeModal);
     modal.addEventListener('click', function(e){ if(e.target === modal) closeModal(); });
@@ -362,8 +394,9 @@
     return v === value;
   }
   function matchAllFilters(img, except){
-    for(var i = 0; i < FILTER_DEFS.length; i++){
-      var def = FILTER_DEFS[i];
+    var defs = activeFilterDefs();
+    for(var i = 0; i < defs.length; i++){
+      var def = defs[i];
       if(def.key === except) continue;
       if(!matchFilter(img, def, filters[def.key])) return false;
     }
@@ -372,9 +405,11 @@
   function hasAnyTag(img){ return !!(img.style || (img.materials && img.materials.length) || img.color); }
   function renderFilters(){
     if(!filtersEl) return;
+    syncJbpModeUI();
     var rules = getRules();
-    /* 四列永遠都畫出來（就算某列全部是 0 張），位置才會固定不跳動 */
-    filtersEl.innerHTML = FILTER_DEFS.map(function(def){
+    var defs = activeFilterDefs();
+    /* 一般模式顯示四列；#jbp 模式只顯示類別列。 */
+    filtersEl.innerHTML = defs.map(function(def){
       var opts = [ALL_CAT].concat(rules[def.key] || []);
       return '<div class="bn-bglib-frow"><span class="bn-bglib-flabel">'+esc(def.label)+'</span>'+
         opts.map(function(opt){
@@ -585,8 +620,10 @@
 
   function renderGrid(){
     if(!grid) return;
+    syncJbpModeUI();
     var q = String(searchQuery||'').trim().toLowerCase();
-    var filtering = FILTER_DEFS.some(function(def){ return filters[def.key] !== ALL_CAT; });
+    var defs = activeFilterDefs();
+    var filtering = defs.some(function(def){ return filters[def.key] !== ALL_CAT; });
     var list = cards.filter(function(img){
       /* 風格／素材／顏色：三組 AND。沒有標籤的舊分類圖（EL 等）只要有任一組
          不是「全部」就會被排除，因為它們沒有可比對的資料。 */
@@ -597,14 +634,14 @@
       return hay.indexOf(q) !== -1;
     });
     if(statusEl){
-      var cond = FILTER_DEFS.filter(function(def){ return filters[def.key] !== ALL_CAT; })
+      var cond = defs.filter(function(def){ return filters[def.key] !== ALL_CAT; })
         .map(function(def){ return def.label + '：' + filters[def.key]; }).join('，');
       statusEl.textContent = (cond || '全部') + '，共 ' + list.length + ' 張' +
         (list.some(function(x){return x.verticalSrc;}) ? '（含直式對應圖）' : '');
     }
     if(!list.length){
       grid.innerHTML = (filtering || q)
-        ? '<div class="bn-bglib-empty">這個條件下沒有符合的背景圖。<br>請換一個 風格／素材／顏色，或把篩選切回「全部」。</div>'
+        ? '<div class="bn-bglib-empty">這個條件下沒有符合的背景圖。<br>請更換篩選條件或切回「全部」。</div>'
         : '<div class="bn-bglib-empty">目前沒有載入背景圖。<br>請確認 <code>bgimg/index.json</code> 與圖片資料夾是否存在。</div>';
       if(applyBtn) applyBtn.disabled = true;
       return;
