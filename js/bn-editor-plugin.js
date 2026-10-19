@@ -281,6 +281,12 @@
     }
     function applyLogoLayoutVariant(mode){
       if(mode !== 'square' && mode !== 'horizontal') return false;
+      /* BODA 等級外掛會接管排版清單的 checked／userTouched 狀態；
+         優先走它的橋接 API，避免一般 Shopee 的 checked 更新在重繪時
+         被 BODA 的等級預設值覆蓋。獨立 Shopee 沒有此 API，才走下方原本流程。 */
+      if(typeof window.bnAutoSelectLogoVariant === 'function'){
+        return !!window.bnAutoSelectLogoVariant(mode, true);
+      }
       if(typeof window.loadLayouts !== 'function') return false;
       var layouts = window.loadLayouts() || [];
       var groups = {};
@@ -2457,9 +2463,16 @@
       var src = String(item.src || '');
       return String(item.name || '') + '|' + src.length + '|' + workorderAssetHash(src);
     }
-    function normalizeWorkorderAssets(items){
+    function isWorkorderLogoPlaceholder(item){
+      var name = String(item && (item.name || item.fileName || item.filename || '') || '')
+        .trim().toLowerCase().replace(/[\s_\-（）()]/g, '');
+      /* 空白工單的提示文字不是實際 Logo，不能讓它佔掉 Logo1～3。 */
+      return /^(?:xxx|xxx品牌|xxxbrand)$/.test(name);
+    }
+    function normalizeWorkorderAssets(items, kind){
       return (Array.isArray(items) ? items : []).filter(function(item){
-        return item && /^data:image\//i.test(String(item.src || ''));
+        return item && /^data:image\//i.test(String(item.src || '')) &&
+          !(kind === 'logo' && isWorkorderLogoPlaceholder(item));
       });
     }
     function workorderAssetSignature(payload){
@@ -2467,13 +2480,13 @@
       return JSON.stringify({
         replaceLogos: !!payload.replaceLogos,
         replaceProducts: !!payload.replaceProducts,
-        logos: normalizeWorkorderAssets(payload.logos).map(workorderAssetKey),
-        products: normalizeWorkorderAssets(payload.products).map(workorderAssetKey)
+        logos: normalizeWorkorderAssets(payload.logos, 'logo').map(workorderAssetKey),
+        products: normalizeWorkorderAssets(payload.products, 'product').map(workorderAssetKey)
       });
     }
-    function workorderAssetStateMatches(currentItems, expectedItems){
+    function workorderAssetStateMatches(currentItems, expectedItems, kind){
       var current = Array.isArray(currentItems) ? currentItems : [];
-      var expected = normalizeWorkorderAssets(expectedItems);
+      var expected = normalizeWorkorderAssets(expectedItems, kind);
       if(current.length !== expected.length) return false;
       for(var i=0;i<expected.length;i++){
         var actual = current[i] || {};
@@ -2489,8 +2502,8 @@
     }
     function applyBodaWorkorderAssets(payload){
       payload = payload || {};
-      var logos = normalizeWorkorderAssets(payload.logos);
-      var products = normalizeWorkorderAssets(payload.products);
+      var logos = normalizeWorkorderAssets(payload.logos, 'logo');
+      var products = normalizeWorkorderAssets(payload.products, 'product');
       var replaceLogos = payload.replaceLogos === true;
       var replaceProducts = payload.replaceProducts === true;
       if(!replaceLogos && !replaceProducts) return Promise.resolve(false);
@@ -3601,9 +3614,9 @@
          必須重新建回素材；只有目前狀態真的一致時才略過。 */
       var sameSignature = signature === _bnWorkorderAssetSignature;
       var logoStateSame = !payload || payload.replaceLogos !== true ||
-        workorderAssetStateMatches(window._bnLogos, payload.logos);
+        workorderAssetStateMatches(window._bnLogos, payload.logos, 'logo');
       var productStateSame = !payload || payload.replaceProducts !== true ||
-        workorderAssetStateMatches(window._bnProducts, payload.products);
+        workorderAssetStateMatches(window._bnProducts, payload.products, 'product');
       if(sameSignature && logoStateSame && productStateSame) return Promise.resolve(false);
       _bnWorkorderAssetSignature = signature;
       return applyBodaWorkorderAssets(payload);

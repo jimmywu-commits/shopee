@@ -47,6 +47,39 @@
   var cards = [];
   var selected = null;
   var lastJbpMode = null;
+  /* B／B+ 包套只提供「類別」與圖庫圖片；等級由 BODA 外掛透過
+     wo_level_v1／bn-level-change 同步進來。保留文字判斷作為新等級的備援。 */
+  var B_LEVEL_IDS = {
+    bod_a:true,
+    bod_a_zj:true,
+    bod_b_mega:true,
+    basic:true,
+    jbp_multi:true,
+    gold_mega:true
+  };
+  function currentBodaLevelId(){
+    var id = '';
+    try{
+      if(typeof window._bnGetCurrentLevelId === 'function') id = window._bnGetCurrentLevelId() || '';
+    }catch(_){ }
+    if(!id){
+      try{ id = localStorage.getItem('wo_level_v1') || ''; }catch(_){ }
+    }
+    return String(id || '').trim();
+  }
+  function isBLevel(id){
+    id = String(id || '').trim();
+    if(B_LEVEL_IDS[id]) return true;
+    var select = document.getElementById('lv-select');
+    var option = select && select.options && select.options[select.selectedIndex];
+    return !!(option && /^B(?:\+|\s)/i.test(String(option.textContent || '').trim()));
+  }
+  function applyBLevelLibraryMode(levelId){
+    var bMode = isBLevel(levelId || currentBodaLevelId());
+    if(modal) modal.classList.toggle('bn-bglib-b-level', bMode);
+    return bMode;
+  }
+  window._bnBgLibraryApplyLevelMode = applyBLevelLibraryMode;
   function isJbpMode(){
     var s = String(location.hash || '').replace(/^#/,'').trim().toLowerCase();
     return s === 'jbp' || s === 'jpb';
@@ -270,6 +303,17 @@
       '.bn-bglib-hint{font-size:12px;color:#8b949e;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
       '.bn-bglib-empty{border:1px dashed #30363d;border-radius:10px;padding:24px;text-align:center;color:#8b949e;line-height:1.7;grid-column:1/-1}',
       '.bn-bglib-actions{display:flex;gap:8px;align-items:center;flex-shrink:0}',
+      /* B／B+：保留類別列、圖片與套用；隱藏搜尋、自訂上傳與延伸篩選。 */
+      '.bn-bglib-overlay.bn-bglib-b-level .bn-bglib-search{display:none!important}',
+      '.bn-bglib-overlay.bn-bglib-b-level .bn-bglib-upload{display:none!important}',
+      '.bn-bglib-overlay.bn-bglib-b-level .bn-bglib-filter-style,'+
+        '.bn-bglib-overlay.bn-bglib-b-level .bn-bglib-filter-material,'+
+        '.bn-bglib-overlay.bn-bglib-b-level .bn-bglib-filter-color,'+
+        '.bn-bglib-overlay.bn-bglib-b-level .bn-bglib-filter-search,'+
+        '.bn-bglib-overlay.bn-bglib-b-level [data-bg-filter="style"],'+
+        '.bn-bglib-overlay.bn-bglib-b-level [data-bg-filter="material"],'+
+        '.bn-bglib-overlay.bn-bglib-b-level [data-bg-filter="color"],'+
+        '.bn-bglib-overlay.bn-bglib-b-level [data-bg-filter="search"]{display:none!important}',
       /* ── SLAB 商品對位視窗 ── */
       '.bn-fit-overlay{position:fixed;inset:0;background:rgba(0,0,0,.78);z-index:2147483001;display:none;align-items:center;justify-content:center;padding:20px}',
       '.bn-fit-overlay.open{display:flex}',
@@ -411,7 +455,7 @@
     /* 一般模式顯示四列；#jbp 模式只顯示類別列。 */
     filtersEl.innerHTML = defs.map(function(def){
       var opts = [ALL_CAT].concat(rules[def.key] || []);
-      return '<div class="bn-bglib-frow"><span class="bn-bglib-flabel">'+esc(def.label)+'</span>'+
+      return '<div class="bn-bglib-frow bn-bglib-filter-'+esc(def.key)+'" data-bg-filter="'+esc(def.key)+'"><span class="bn-bglib-flabel">'+esc(def.label)+'</span>'+
         opts.map(function(opt){
           var count = opt === ALL_CAT ? null : cards.filter(function(img){
             return matchFilter(img, def, opt) && matchAllFilters(img, def.key);
@@ -677,6 +721,7 @@
   function openModal(nativeTarget){
     pendingNativeTarget = nativeTarget || pendingNativeTarget || findNativeUploadTarget();
     ensureModal();
+    applyBLevelLibraryMode();
     modal.classList.add('open');
     if(statusEl) statusEl.textContent = '載入背景圖庫中…';
     loadImages().then(function(){ renderTabs(); buildCards(); renderFilters(); renderGrid(); }).catch(function(){
@@ -684,6 +729,15 @@
     });
   }
   function closeModal(){ if(modal) modal.classList.remove('open'); }
+
+  /* 主工具與曝光資源的等級下拉透過 wo-level 同步；圖庫已開啟時立即切換。 */
+  window.addEventListener('message', function(event){
+    var message = event && event.data;
+    if(message && message.type === 'wo-level' && message.level) applyBLevelLibraryMode(message.level);
+  });
+  window.addEventListener('bn-level-change', function(event){
+    applyBLevelLibraryMode(event && event.detail && event.detail.levelId);
+  });
 
   function findNativeUploadTarget(){
     return document.getElementById('bg-upload-input') ||
