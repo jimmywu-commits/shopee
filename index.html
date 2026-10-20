@@ -3359,7 +3359,7 @@ window.addEventListener('message',function(e){
 });
 </script>
 
-<div id="feedback-btn">📝 使用反饋表</div>
+<div id="feedback-btn">📝 填寫反饋</div>
 <div id="manual-btn">📖 使用說明書</div>
 <div id="manual-modal" role="dialog" aria-modal="true" aria-label="JBP 編輯器使用說明書">
   <div id="manual-box">
@@ -3381,7 +3381,7 @@ document.addEventListener("DOMContentLoaded",function(){
  /* 使用反饋表：直接開 Google 表單（BODA 模式若在後台另填連結，
     help-settings.js 會在 capture 階段攔截並改開該連結）。 */
  document.getElementById("feedback-btn").onclick=function(){
-   window.open("https://docs.google.com/forms/d/e/1FAIpQLSfVK0PlrMGPRyZ6pExKWlZKjlzXzCm_M2x9C9OfikHZXu-Qxg/viewform?usp=dialog","_blank","noopener");
+   window.open("https://docs.google.com/forms/d/e/1FAIpQLSfVK0PlrMGPRyZ6pExKWlZKjlzXzCm_M2x9C9OfikHZXu-Qxg/viewform?usp=header","_blank","noopener");
  };
 });
 </script>
