@@ -75,7 +75,15 @@
     return !!(option && /^B(?:\+|\s)/i.test(String(option.textContent || '').trim()));
   }
   function applyBLevelLibraryMode(levelId){
-    var bMode = isBLevel(levelId || currentBodaLevelId());
+    /*
+       B／B+ 的限制只適用於真正由 BODA 入口嵌入的頁面。
+       若單獨開啟 index.html，不能因為一般瀏覽器殘留的 wo_level_v1
+       （例如 basic、jbp_multi）就把完整圖庫的風格／素材／顏色／搜尋藏掉；
+       這也是一般模式看起來只有「類別」、無痕模式卻完整的原因。
+    */
+    var isBodaHosted = window.IS_BODA === true ||
+      (document.documentElement && document.documentElement.getAttribute('data-host') === 'boda');
+    var bMode = isBodaHosted && isBLevel(levelId || currentBodaLevelId());
     if(modal) modal.classList.toggle('bn-bglib-b-level', bMode);
     return bMode;
   }

@@ -38,6 +38,9 @@ html, body { height: 100%; background: var(--bg0); color: var(--text);
   background: var(--bg1); border-bottom: 1px solid var(--border);
   padding: 0 16px; height: 44px; flex-shrink: 0;
 }
+/* 正式入口不提供後台頁簽；排版清單由 js/index.js 自動載入。 */
+#tab-bar .tab[onclick*="switchTab('admin')"],
+#admin { display: none !important; }
 .tab {
   padding: 8px 18px; border-radius: var(--radius) var(--radius) 0 0;
   cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text2);
@@ -600,7 +603,7 @@ html[data-host="boda"] #lv-wrap { display:block; }
    資料層 — localStorage
 ════════════════════════════════════════ */
 /* 只升級「勾選結果」的格式，不會清除商品、人物、背景或文字暫存。 */
-var BN_LAYOUT_SELECTION_VERSION = '2026-10-20-1';
+var BN_LAYOUT_SELECTION_VERSION = '2026-10-20-2';
 var BN_LAYOUT_SELECTION_VERSION_KEY = 'bn-layout-selection-version';
 var STORE_KEY = 'bn-layouts';
 
@@ -616,11 +619,13 @@ function migrateLayoutSelectionState() {
   try {
     if (localStorage.getItem(BN_LAYOUT_SELECTION_VERSION_KEY) === BN_LAYOUT_SELECTION_VERSION) return;
 
-    /* 舊版曾把勾選結果混在 bn-layouts 與本機暫存裡，
-       造成一般模式沿用舊結果；只移除 checked，保留 enabled／id／尺寸。 */
+    /* 舊版曾把勾選結果與後台啟用狀態混在 bn-layouts 與本機暫存裡，
+       造成一般模式沿用舊結果；正式前台不再使用後台啟用開關，
+       只保留 id／檔名／尺寸。 */
     var layouts = loadLayouts();
     layouts.forEach(function(layout){
       if (layout && Object.prototype.hasOwnProperty.call(layout, 'checked')) delete layout.checked;
+      if (layout) layout.enabled = true;
     });
     saveLayouts(layouts);
     localStorage.setItem(BN_LAYOUT_SELECTION_VERSION_KEY, BN_LAYOUT_SELECTION_VERSION);
@@ -931,8 +936,8 @@ function renderChecks() {
   /* 從 URL hash 讀取過濾關鍵詞（如 #ddcard 或 #hbnddcard），並據此篩選版位 */
   var hashKeywords = parseHashKeywords(location.hash);
 
-  /* 若有 hash，則只顯示包含任一關鍵詞的版位（不分大小寫） */
-  var layouts = allLayouts.filter(function(l){ return l.enabled; });
+  /* 正式前台不再使用後台的 enabled 狀態，所有掃描到的版位都可用。 */
+  var layouts = allLayouts;
   if (hashKeywords.length) {
     layouts = allLayouts.filter(function(l) {
       return matchHashKeywords(l.file || l.name || '', hashKeywords);
@@ -944,7 +949,7 @@ function renderChecks() {
     if (hashKeywords.length) {
       wrap.innerHTML = '<div class="no-layouts">找不到符合「' + esc(hashKeywords.join(', ')) + '」的排版</div>';
     } else {
-      wrap.innerHTML = '<div class="no-layouts">後台尚未啟用任何排版</div>';
+      wrap.innerHTML = '<div class="no-layouts">尚未載入任何排版</div>';
     }
     return;
   }
@@ -1156,7 +1161,6 @@ function renderPreviews() {
   var layouts = allLayouts.filter(function(l){
     /* 有 hash：符合關鍵詞的版位一律顯示，不受舊 enabled／checked 狀態影響。 */
     if (_hashKw.length) return matchHashKeywords(l.file || l.name || '', _hashKw);
-    if (!l.enabled) return false;
     return getLayoutCheckedValue(l);
   });
   var area  = document.getElementById('preview-area');
