@@ -288,7 +288,9 @@
       '.bn-bglib-chip{background:#0d1117;color:#c9d3df;border:1px solid #30363d;border-radius:999px;padding:3px 10px;font-size:12px;cursor:pointer;line-height:16px}',
       '.bn-bglib-chip:hover{border-color:#58a6ff}',
       '.bn-bglib-chip.active{background:#238636;color:#fff;border-color:#2ea043}',
-      '.bn-bglib-chip.dim{opacity:.4}',
+      '.bn-bglib-chip.dim{opacity:.4;cursor:not-allowed}',
+      '.bn-bglib-chip.dim:hover{border-color:#30363d}',
+      '.bn-bglib-chip.dim:disabled{pointer-events:none}',
       '.bn-bglib-chip small{opacity:.7;margin-left:3px;font-size:10px}',
       '.bn-bglib-tags{padding:0 9px 7px;font-size:10px;color:#8b949e;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
       '.bn-bglib-body{padding:14px 16px 16px;overflow:auto;flex:1;min-height:0}',
@@ -469,13 +471,15 @@
             return matchFilter(img, def, opt) && matchAllFilters(img, def.key);
           }).length;
           var cls = 'bn-bglib-chip' + (filters[def.key] === opt ? ' active' : '') + (count === 0 ? ' dim' : '');
-          return '<button type="button" class="'+cls+'" data-key="'+esc(def.key)+'" data-val="'+esc(opt)+'">'+esc(opt)+
+          var disabledAttr = count === 0 ? ' disabled aria-disabled="true"' : '';
+          return '<button type="button" class="'+cls+'" data-key="'+esc(def.key)+'" data-val="'+esc(opt)+'"'+disabledAttr+'>'+esc(opt)+
             (count === null ? '' : '<small>'+count+'</small>')+'</button>';
         }).join('')+
       '</div>';
     }).join('');
     filtersEl.querySelectorAll('.bn-bglib-chip').forEach(function(chip){
       chip.addEventListener('click', function(){
+          if(chip.disabled) return;
         filters[chip.dataset.key] = chip.dataset.val;
         selected = null;
         if(applyBtn) applyBtn.disabled = true;
