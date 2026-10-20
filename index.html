@@ -9,6 +9,10 @@ if(window.parent!==window) document.documentElement.classList.add('boda-hosted')
 if(IS_BODA) document.documentElement.setAttribute('data-host','boda');
 </script>
 <meta charset="UTF-8">
+<!-- 編輯器入口不可使用舊版 HTML；JS／版位 iframe 另有時間戳防快取。 -->
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <title>BN 編輯器</title>
 <script>if(IS_BODA) document.title='曝光資源';</script>
 <style>
@@ -595,6 +599,9 @@ html[data-host="boda"] #lv-wrap { display:block; }
 /* ════════════════════════════════════════
    資料層 — localStorage
 ════════════════════════════════════════ */
+/* 只升級「勾選結果」的格式，不會清除商品、人物、背景或文字暫存。 */
+var BN_LAYOUT_SELECTION_VERSION = '2026-10-20-1';
+var BN_LAYOUT_SELECTION_VERSION_KEY = 'bn-layout-selection-version';
 var STORE_KEY = 'bn-layouts';
 
 function loadLayouts() {
@@ -603,6 +610,23 @@ function loadLayouts() {
 }
 function saveLayouts(arr) {
   localStorage.setItem(STORE_KEY, JSON.stringify(arr));
+}
+
+function migrateLayoutSelectionState() {
+  try {
+    if (localStorage.getItem(BN_LAYOUT_SELECTION_VERSION_KEY) === BN_LAYOUT_SELECTION_VERSION) return;
+
+    /* 舊版曾把勾選結果混在 bn-layouts 與本機暫存裡，
+       造成一般模式沿用舊結果；只移除 checked，保留 enabled／id／尺寸。 */
+    var layouts = loadLayouts();
+    layouts.forEach(function(layout){
+      if (layout && Object.prototype.hasOwnProperty.call(layout, 'checked')) delete layout.checked;
+    });
+    saveLayouts(layouts);
+    localStorage.setItem(BN_LAYOUT_SELECTION_VERSION_KEY, BN_LAYOUT_SELECTION_VERSION);
+  } catch (_) {
+    /* 無痕限制儲存時，仍可依預設值與 hash 正常顯示。 */
+  }
 }
 
 /* ════════════════════════════════════════
@@ -896,13 +920,19 @@ function matchHashKeywords(name, keywords){
 }
 
 function renderChecks() {
-  var allLayouts = loadLayouts().filter(function(l){ return l.enabled; });
+  /*
+     版位的「啟用／停用」是後台顯示設定；但網址 hash 是外部入口指定的
+     版位條件。舊版把 enabled 先套上，會讓一般瀏覽器裡曾被停用的版位
+     在 #ddcard、#hbn… 等入口完全消失；無痕模式因為沒有舊 localStorage
+     則看起來正常。先讀 hash，再決定是否套用 enabled。
+  */
+  var allLayouts = loadLayouts();
 
   /* 從 URL hash 讀取過濾關鍵詞（如 #ddcard 或 #hbnddcard），並據此篩選版位 */
   var hashKeywords = parseHashKeywords(location.hash);
 
   /* 若有 hash，則只顯示包含任一關鍵詞的版位（不分大小寫） */
-  var layouts = allLayouts;
+  var layouts = allLayouts.filter(function(l){ return l.enabled; });
   if (hashKeywords.length) {
     layouts = allLayouts.filter(function(l) {
       return matchHashKeywords(l.file || l.name || '', hashKeywords);
@@ -1122,10 +1152,11 @@ window.bnHideDownloadOverlay = bnHideDownloadOverlay;
 
 function renderPreviews() {
   var _hashKw = parseHashKeywords(location.hash);
-  var layouts = loadLayouts().filter(function(l){
-    if (!l.enabled) return false;
-    /* 有 hash：符合關鍵詞的版位一律顯示（與 renderChecks 的強制勾選一致） */
+  var allLayouts = loadLayouts();
+  var layouts = allLayouts.filter(function(l){
+    /* 有 hash：符合關鍵詞的版位一律顯示，不受舊 enabled／checked 狀態影響。 */
     if (_hashKw.length) return matchHashKeywords(l.file || l.name || '', _hashKw);
+    if (!l.enabled) return false;
     return getLayoutCheckedValue(l);
   });
   var area  = document.getElementById('preview-area');
@@ -1152,7 +1183,8 @@ function renderPreviews() {
       '</div>' +
       '<div class="preview-block-body" id="pbody-' + l.id + '" style="min-height:40px">' +
         '<iframe id="iframe-' + l.id + '"' +
-          ' src="html/' + l.file + '?bnid=' + l.id + '"' +
+          /* 每次重建 iframe 都帶時間戳，避免一般瀏覽器沿用舊版排版 HTML。 */
+          ' src="html/' + l.file + '?bnid=' + l.id + '&t=' + Date.now() + '"' +
           ' style="border:none;display:block;transform-origin:top left;visibility:hidden"' +
           ' onload="onIframeLoad(' + l.id + ')">' +
         '</iframe>' +
@@ -3098,6 +3130,7 @@ function esc(s) {
 /* ════════════════════════════════════════
    初始化
 ════════════════════════════════════════ */
+migrateLayoutSelectionState();
 renderAdmin();
 renderColorPickers();
 /* 切換到前台 */

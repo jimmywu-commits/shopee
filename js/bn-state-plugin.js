@@ -733,6 +733,9 @@
     return {
       version: 1,
       portableVersion: 1,
+      /* 勾選結果與版位入口的版本同步；舊本機暫存仍可還原其他編輯內容，
+         但不再把舊版的 checked 狀態覆蓋回目前頁面。 */
+      selectionVersion: global.BN_LAYOUT_SELECTION_VERSION || '',
       ts: Date.now(),
       layoutManifest: clone(layoutIndex.list),
       texts:{
@@ -886,7 +889,10 @@
     if(state.layouts && typeof global.setLayoutState==='function'){
       global.setLayoutState(state.layouts);
     }
-    if((state.checked || state.checkedByFile) && typeof global.saveChecked==='function'){
+    var selectionVersion = global.BN_LAYOUT_SELECTION_VERSION || '';
+    var canRestoreSelection = explicitUpload ||
+      (selectionVersion && state.selectionVersion === selectionVersion);
+    if((state.checked || state.checkedByFile) && typeof global.saveChecked==='function' && canRestoreSelection){
       if(state.checkedByFile && typeof global.saveCheckedByFile === 'function'){
         global.saveCheckedByFile(state.checkedByFile);
       }
