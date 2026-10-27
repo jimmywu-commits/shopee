@@ -2729,15 +2729,22 @@
        畫布上的旋轉把手（layout-runtime）放開時送 bn-product-rotate，這裡重算後
        用 bn-product-update-image（keepScale）就地換圖，框的大小依新圖外接矩形等比調整。 */
     var _rotateJobs = {};
+    var _rotatePromises = {};
     function setProductRotation(pid, deg, done, rotationAnchorMode){
       var p=window._bnProducts.find(function(x){return x.id===pid;});
-      if(!p){ if(done) done(); return; }
+      if(!p){ if(done) done(); return Promise.resolve(); }
       if(!window._bnGroundShadow){
-        loadScriptOnce('js/bn-shadow-plugin.js').then(function(){ setProductRotation(pid, deg, done, rotationAnchorMode); })['catch'](function(){
+        var loadJob = loadScriptOnce('js/bn-shadow-plugin.js').then(function(){ return setProductRotation(pid, deg, done, rotationAnchorMode); })['catch'](function(){
           alert('bn-shadow-plugin.js 載入失敗');
           if(done) done();
         });
-        return;
+        _rotatePromises[pid] = loadJob;
+        loadJob.then(function(){
+          if(_rotatePromises[pid] === loadJob) delete _rotatePromises[pid];
+        }, function(){
+          if(_rotatePromises[pid] === loadJob) delete _rotatePromises[pid];
+        });
+        return loadJob;
       }
       var rot = window._bnGroundShadow.normalizeRotate(deg);
       p.meta = p.meta || {};
@@ -2745,17 +2752,37 @@
       p.meta.rotate = rot;
       var cfg = p.meta.groundShadow || {enabled:false};
       var seq = (_rotateJobs[pid] = (_rotateJobs[pid] || 0) + 1);
-      window._bnGroundShadow.applyToProduct(p, cfg).then(function(){
+      var job = window._bnGroundShadow.applyToProduct(p, cfg).then(function(){
         if(_rotateJobs[pid] !== seq) return; /* 拖曳中連續送出時只採用最後一次 */
         markStateDirty();
         renderProdList();
-        broadcast({type:'bn-product-update-image', id:p.id, src:p.src, ratio:p.ratio, keepScale:true, rotate:p.meta.rotate, rotationAnchorMode:rotationAnchorMode || null, productRect:p.meta && p.meta.productRect});
+        /* 旋轉一律以中心點同步；rotationAnchorMode 保留在訊息格式中，
+           讓舊版 iframe 也能收到完整資料，但不再採用 bottom 錨點。 */
+        broadcast({type:'bn-product-update-image', id:p.id, src:p.src, ratio:p.ratio, keepScale:true, rotate:p.meta.rotate, rotationAnchorMode:'center', productRect:p.meta && p.meta.productRect});
       })['catch'](function(err){
         console.warn('[bn-editor] 旋轉重算失敗', err);
         /* 失敗時把畫布上暫時的 CSS 旋轉還原 */
         broadcast({type:'bn-product-update-image', id:p.id, src:p.src, ratio:p.ratio, rotate:p.meta.rotate, productRect:p.meta && p.meta.productRect});
       }).then(function(){ if(done) done(); });
+      _rotatePromises[pid] = job;
+      job.then(function(){
+        if(_rotatePromises[pid] === job) delete _rotatePromises[pid];
+      }, function(){
+        if(_rotatePromises[pid] === job) delete _rotatePromises[pid];
+      });
+      return job;
     }
+
+    /* 下載前等待旋轉圖片完成合成與廣播，避免父層已經拿到新角度，
+       但 iframe 還停在 CSS 即時預覽／舊圖片的中間狀態。 */
+    window._bnWaitForProductRotations = function(timeoutMs){
+      var jobs = Object.keys(_rotatePromises).map(function(id){ return _rotatePromises[id]; });
+      if(!jobs.length) return Promise.resolve();
+      var all = Promise.all(jobs.map(function(job){ return Promise.resolve(job)['catch'](function(){ }); }));
+      var waitMs = Math.max(1000, Number(timeoutMs) || 8000);
+      var timeout = new Promise(function(resolve){ setTimeout(resolve, waitMs); });
+      return Promise.race([all, timeout]);
+    };
     /* 畫布把手送來的是「這次拖曳的增量」，總角度以 _bnProducts 為準，
        這樣就算 iframe 重新載入、沒拿到目前角度也不會歸零。 */
     window.addEventListener('message', function(ev){
@@ -3031,7 +3058,12 @@
         var syncBtn=document.getElementById('bn-dl-all');
         if(syncBtn) syncBtn.disabled=true;
         setProgress('正在同步最新畫布位置…');
-        Promise.resolve(window._bnSyncLayoutSnapshot(900)).then(function(){
+        var waitRotation = (typeof window._bnWaitForProductRotations === 'function')
+          ? window._bnWaitForProductRotations(8000)
+          : Promise.resolve();
+        Promise.resolve(waitRotation).then(function(){
+          return window._bnSyncLayoutSnapshot(900);
+        }).then(function(){
           if(syncBtn) syncBtn.disabled=false;
           downloadAll(true);
         }).catch(function(){

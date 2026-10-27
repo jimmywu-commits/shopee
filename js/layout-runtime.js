@@ -1664,50 +1664,58 @@
             var fitOld = imgU._bnFit && imgU._bnFit.pr;
             var prOldW = (fitOld && fitOld.w) || (oldPRU && oldPRU.w) || 0;
             var sU = (imgU._bnFit && prOldW > 0) ? bwU / prOldW : Math.min(bwU/owU, bhU/ohU);
-            /* 旋轉後的圖片外接框通常會改變比例。預設以每個版位自己目前的
-               位置判斷錨點，父頁若由畫布旋轉送來則會明確帶入同一種錨點規則，
-               不把某一個版位的像素座標硬套到其他尺寸的版位。 */
-            var rotationAnchorMode = e.data.rotationAnchorMode === 'bottom' || e.data.rotationAnchorMode === 'center'
-              ? e.data.rotationAnchorMode : productRotationAnchorMode(boxU, pzoneU);
+            /* 旋轉只繞商品中心；不沿用舊版的 bottom 錨點，避免外接框高度
+               改變時整張商品在放開滑鼠的瞬間往上／往下跳。 */
             var anchorXU = blU + bwU / 2;
-            var anchorYU = rotationAnchorMode === 'bottom' ? btU + bhU : btU + bhU / 2;
+            var anchorYU = btU + bhU / 2;
             var newSrcU = e.data.src;
             var tmpU = new Image();
             tmpU.onload = function(){
               var prNew = e.data.productRect;
               var nw = prNew ? prNew.w * sU : tmpU.naturalWidth * sU;
               var nh = prNew ? prNew.h * sU : tmpU.naturalHeight * sU;
-              if(nw > 0 && nh > 0){
-                var csU = window.getComputedStyle(pzoneU);
-                var zwU = parseFloat(csU.width) || pzoneU.offsetWidth || 1;
-                var zhU = parseFloat(csU.height) || pzoneU.offsetHeight || 1;
-                var rN = nw / nh;
-                if(nw > zwU){ nw = zwU; nh = nw / rN; }
-                if(nh > zhU){ nh = zhU; nw = nh * rN; }
-                var lU = Math.max(0, Math.min(zwU - nw, anchorXU - nw/2));
-                var tU = rotationAnchorMode === 'bottom'
-                  ? Math.max(0, Math.min(zhU - nh, anchorYU - nh))
-                  : Math.max(0, Math.min(zhU - nh, anchorYU - nh/2));
-                boxU.dataset.manualLayout = '1';
-                boxU.style.left = lU + 'px'; boxU.style.top = tU + 'px';
-                boxU.style.width = nw + 'px'; boxU.style.height = nh + 'px';
-                boxU.dataset.ratio = String(rN);
-              }else if(e.data.ratio && !prNew){ boxU.dataset.ratio = e.data.ratio; }
-              imgU.style.transform = '';
-              /* 有 productRect 時，先用新圖尺寸把商品本體對齊框（換圖瞬間不閃）；
-                 沒有就回到 contain 模式。onload 一定要換成讀取目前範圍的版本，
-                 否則新增時留下的舊 onload 會用舊範圍重算新圖。 */
-              var prectU = e.data.productRect;
-              if(prectU && tmpU.naturalWidth && tmpU.naturalHeight){
-                bnFitProductImg(imgU, prectU, tmpU.naturalWidth, tmpU.naturalHeight);
-              }else{
-                bnResetProductImg(imgU);
-              }
+              /* 先預載新圖，再把框尺寸、圖片 fit、圖片來源與 CSS 預覽旋轉
+                 放在同一個畫面更新中。這樣不會先看到「舊圖＋新框」或「新圖＋
+                 舊旋轉」的一幀，放開滑鼠時就不會閃跳。 */
+              var applyRotatedFrame = function(){
+                if(nw > 0 && nh > 0){
+                  var csU = window.getComputedStyle(pzoneU);
+                  var zwU = parseFloat(csU.width) || pzoneU.offsetWidth || 1;
+                  var zhU = parseFloat(csU.height) || pzoneU.offsetHeight || 1;
+                  var rN = nw / nh;
+                  if(nw > zwU){ nw = zwU; nh = nw / rN; }
+                  if(nh > zhU){ nh = zhU; nw = nh * rN; }
+                  var lU = Math.max(0, Math.min(zwU - nw, anchorXU - nw/2));
+                  var tU = Math.max(0, Math.min(zhU - nh, anchorYU - nh/2));
+                  boxU.dataset.manualLayout = '1';
+                  boxU.style.left = lU + 'px'; boxU.style.top = tU + 'px';
+                  boxU.style.width = nw + 'px'; boxU.style.height = nh + 'px';
+                  boxU.dataset.ratio = String(rN);
+                }else if(e.data.ratio && !prNew){ boxU.dataset.ratio = e.data.ratio; }
+                /* 有 productRect 時，先用新圖尺寸把商品本體對齊框；
+                   沒有就回到 contain 模式。onload 一定要換成讀取目前範圍的版本，
+                   否則新增時留下的舊 onload 會用舊範圍重算新圖。 */
+                var prectU = e.data.productRect;
+                if(prectU && tmpU.naturalWidth && tmpU.naturalHeight){
+                  bnFitProductImg(imgU, prectU, tmpU.naturalWidth, tmpU.naturalHeight);
+                }else{
+                  bnResetProductImg(imgU);
+                }
+                imgU.onload = function(){ bnProductImgLoaded(imgU); };
+                imgU.src = newSrcU;
+                /* 最後才清掉 CSS 增量旋轉；所有前面的 style 已在同一個 task
+                   寫入，瀏覽器不會把中間狀態畫出來。 */
+                imgU.style.transform = '';
+                postProductLayout(boxU);
+              };
+              if(window.requestAnimationFrame) window.requestAnimationFrame(applyRotatedFrame);
+              else applyRotatedFrame();
+            };
+            tmpU.onerror = function(){
               imgU.onload = function(){ bnProductImgLoaded(imgU); };
               imgU.src = newSrcU;
-              postProductLayout(boxU);
+              imgU.style.transform = '';
             };
-            tmpU.onerror = function(){ imgU.style.transform = ''; imgU.onload = function(){ bnProductImgLoaded(imgU); }; imgU.src = newSrcU; };
             tmpU.src = newSrcU;
           }else{
             /* 框比例以商品範圍為準（上面已設）；只有沒有 productRect 時才退回完整圖片比例，
@@ -2420,13 +2428,21 @@
       var zone = getProductZone(); if(!zone || !box) return;
       var zr = zone.getBoundingClientRect();
       var br = box.getBoundingClientRect();
-      var zw = zr.width || parseFloat(window.getComputedStyle(zone).width) || 1;
-      var zh = zr.height || parseFloat(window.getComputedStyle(zone).height) || 1;
+      /* getBoundingClientRect() 取到的是目前畫面上的顯示像素；如果畫布／
+         iframe 正在縮放，直接把這些值存回父頁，下載重建時就會用另一套
+         原始設計尺寸而偏位。先除以 zone 的顯示倍率，統一回到版型設計座標。 */
+      var zcs = window.getComputedStyle(zone);
+      var zw = parseFloat(zcs.width) || zone.offsetWidth || zr.width || 1;
+      var zh = parseFloat(zcs.height) || zone.offsetHeight || zr.height || 1;
+      var scaleX = zr.width > 0 && zw > 0 ? zr.width / zw : 1;
+      var scaleY = zr.height > 0 && zh > 0 ? zr.height / zh : 1;
+      if(!isFinite(scaleX) || scaleX <= 0) scaleX = 1;
+      if(!isFinite(scaleY) || scaleY <= 0) scaleY = 1;
       var syncArea = getProductSyncArea(zone);
-      var left = br.left - zr.left;
-      var top = br.top - zr.top;
-      var width = br.width;
-      var height = br.height;
+      var left = (br.left - zr.left) / scaleX;
+      var top = (br.top - zr.top) / scaleY;
+      var width = br.width / scaleX;
+      var height = br.height / scaleY;
       var data = {
         type:'bn-product-layout-update',
         bnid:getCurrentBnId(),
@@ -2886,19 +2902,12 @@
     });
   }
 
-  /* 旋轉換圖時保留同一個視覺錨點：一般自由移動商品以中心點為準，
-     自動排版且貼近商品區／CTA 上緣的商品以底邊為準。這樣旋轉後外接框變寬高時，
-     不會因為重新計算框尺寸而看起來往上彈；SearchICON_PRODUCT 永遠以中心點為準。 */
+  /* 旋轉換圖時永遠保留商品框的中心點。
+     旋轉是繞商品本身的中心進行，不能因為某個版位剛好靠近 CTA／底邊，
+     就改用底部對齊；否則旋轉後外接框的高度一變，商品會在放開滑鼠時
+     產生可見的上下微跳。保留參數只是相容舊呼叫端，實際錨點固定為 center。 */
   function productRotationAnchorMode(box, zone){
-    if(_bnSearchIconProductTemplate) return 'center';
-    if(!box || !zone) return 'center';
-    var top = parseFloat(box.style.top);
-    var height = parseFloat(box.style.height);
-    if(!isFinite(top)) top = box.offsetTop || 0;
-    if(!isFinite(height)) height = box.offsetHeight || 0;
-    var area = getProductSyncArea(zone);
-    var bottom = top + height;
-    return bottom >= area.top + area.height - 10 ? 'bottom' : 'center';
+    return 'center';
   }
 
   function setupProdDrag(box,zone){
@@ -2941,7 +2950,16 @@
         var img = box.querySelector('img');
         /* 旋轉中心 = 商品框中心（框即商品本體）。圖片含影子時比框大，要換算成圖片內的座標 */
         if(img){
-          img.style.transformOrigin = (box.offsetWidth/2 - img.offsetLeft) + 'px ' + (box.offsetHeight/2 - img.offsetTop) + 'px';
+          /* offsetLeft/offsetTop 會四捨五入；商品影子或縮放造成的負座標若被
+             四捨五入，拖曳第一幀就會看到圖片繞錯一點點。改用實際 inline
+             left/top 的小數值，讓預覽旋轉中心與最終換圖的框中心完全一致。 */
+          var imgLeft = parseFloat(img.style.left);
+          var imgTop = parseFloat(img.style.top);
+          if(!isFinite(imgLeft)) imgLeft = img.offsetLeft || 0;
+          if(!isFinite(imgTop)) imgTop = img.offsetTop || 0;
+          var boxW = box.clientWidth || box.offsetWidth || 1;
+          var boxH = box.clientHeight || box.offsetHeight || 1;
+          img.style.transformOrigin = (boxW/2 - imgLeft) + 'px ' + (boxH/2 - imgTop) + 'px';
           img.style.transform = 'rotate(' + rot.delta + 'deg)';
         }
         if(rotBadge) rotBadge.textContent = fmtDeg(total);
@@ -3856,13 +3874,64 @@
     });
   }
 
+  /* 匯出前確保商品圖片已解碼，而且 productRect fit 已經套上。
+     下載流程會重新送一次 bn-product-add；若截圖早於 img.onload，瀏覽器預覽
+     已經是「商品範圍對齊」的畫面，但 html2canvas 會先抓到 object-fit:contain
+     的暫態，旋轉商品尤其容易因此出現位置／大小差異。 */
+  function waitForProductImages(done){
+    var imgs = Array.prototype.slice.call(document.querySelectorAll('.bn-prod-box img'));
+    if(!imgs.length){ done(); return; }
+    var waits = imgs.map(function(img){
+      function relayout(){
+        if(!img || !img.isConnected || !img.naturalWidth) return;
+        if(img._bnFit) bnLayoutProductImg(img);
+        else bnProductImgLoaded(img);
+      }
+      if(img.complete && img.naturalWidth){
+        relayout();
+        if(typeof img.decode === 'function'){
+          return img.decode().catch(function(){ });
+        }
+        return Promise.resolve();
+      }
+      return new Promise(function(resolve){
+        var settled = false;
+        var timer = setTimeout(finish, 5000);
+        function finish(){
+          if(settled) return;
+          settled = true;
+          clearTimeout(timer);
+          img.removeEventListener('load', onLoad);
+          img.removeEventListener('error', onLoad);
+          relayout();
+          resolve();
+        }
+        function onLoad(){
+          if(typeof img.decode === 'function'){
+            img.decode().catch(function(){ }).then(finish);
+          }else finish();
+        }
+        img.addEventListener('load', onLoad, {once:true});
+        img.addEventListener('error', onLoad, {once:true});
+        if(img.complete) onLoad();
+      });
+    });
+    Promise.all(waits).then(function(){
+      /* 讓 ResizeObserver／圖片 fit 的最後一輪 layout 先完成，再交給
+         html2canvas 複製 DOM。 */
+      requestAnimationFrame(function(){ requestAnimationFrame(done); });
+    });
+  }
+
   function captureCanvas(cb, wantLayers){
     function runAfterFonts(){
-      if(window.html2canvas){doCapture(cb, wantLayers);return;}
-      var s=document.createElement('script');
-      s.src='https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
-      s.onload=function(){doCapture(cb, wantLayers);}; s.onerror=function(){if(cb)cb(null);};
-      document.head.appendChild(s);
+      waitForProductImages(function(){
+        if(window.html2canvas){doCapture(cb, wantLayers);return;}
+        var s=document.createElement('script');
+        s.src='https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+        s.onload=function(){doCapture(cb, wantLayers);}; s.onerror=function(){if(cb)cb(null);};
+        document.head.appendChild(s);
+      });
     }
     if(document.fonts && document.fonts.ready){
       document.fonts.ready.then(runAfterFonts).catch(runAfterFonts);
