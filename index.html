@@ -253,6 +253,26 @@ html, body { height: 100%; background: var(--bg0); color: var(--text);
 }
 .preview-block-head .pname { font-weight: 700; flex: 1; }
 .preview-block-head .psize { color: var(--text3); font-size: 10px; font-family: monospace; }
+.bn-layout-lock {
+  flex: 0 0 auto; width: 26px; height: 24px; padding: 2px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid transparent; border-radius: 5px;
+  background: transparent; color: var(--accent2); cursor: pointer;
+  transition: .15s;
+}
+.bn-layout-lock:hover { background: rgba(56,139,253,.12); border-color: var(--accent2); }
+.bn-layout-lock-icon { position: relative; display: block; width: 19px; height: 16px; }
+.bn-layout-lock-icon::before,
+.bn-layout-lock-icon::after {
+  content: ''; position: absolute; width: 11px; height: 8px;
+  border: 2px solid currentColor; border-radius: 7px;
+  transform: rotate(-35deg); transition: .15s;
+}
+.bn-layout-lock.is-linked .bn-layout-lock-icon::before { left: 0; top: 3px; }
+.bn-layout-lock.is-linked .bn-layout-lock-icon::after  { right: 0; top: 3px; }
+.bn-layout-lock:not(.is-linked) { color: var(--text3); }
+.bn-layout-lock:not(.is-linked) .bn-layout-lock-icon::before { left: 0; top: 0; }
+.bn-layout-lock:not(.is-linked) .bn-layout-lock-icon::after  { right: 0; top: 7px; }
 .preview-block-body {
   position: relative; overflow: visible; /* 不裁切 */
 }
@@ -909,10 +929,14 @@ function isJbpModeHash(raw){
   var s = String(raw || '').replace(/^#/,'').trim().toLowerCase();
   return s === 'jbp' || s === 'jpb';
 }
+function isAllModeHash(raw){
+  var s = String(raw || '').replace(/^#/,'').trim().toLowerCase();
+  return s === 'all';
+}
 function parseHashKeywords(raw){
   var s = (raw || '').replace(/^#/,'').trim().toLowerCase();
   if(!s) return [];
-  if(isJbpModeHash(s)) return [];
+  if(isJbpModeHash(s) || isAllModeHash(s)) return [];
   var found = [];
   var sorted = _hashGroupKeys.slice().sort(function(a,b){ return b.length - a.length; });
   sorted.forEach(function(k){ if(s.indexOf(k) !== -1){ found.push(k); s = s.replace(k,''); } });
@@ -921,7 +945,13 @@ function parseHashKeywords(raw){
 }
 function matchHashKeywords(name, keywords){
   var n = (name || '').toLowerCase();
-  return keywords.some(function(k){ return n.indexOf(k) !== -1; });
+  return keywords.some(function(k){
+    if(k === 'ar'){
+      var base = n.replace(/\.html$/, '');
+      return base === 'ar' || base === 'ar_logo';
+    }
+    return n.indexOf(k) !== -1;
+  });
 }
 
 function renderChecks() {
@@ -953,8 +983,7 @@ function renderChecks() {
     }
     return;
   }
-  /* 網址帶 #版位 時，篩選出來的版位一律強制勾選並鎖定，
-     否則畫布會因為先前的勾選狀態（或外掛非同步取消勾選）而看不到。 */
+  /* 只有網址指定特定版位時才固定勾選；#all 比照無 hash，保留手動勾選能力。 */
   var forceChecked = hashKeywords.length > 0;
   wrap.innerHTML = layouts.map(function(l) {
     var isChecked = forceChecked ? true : getLayoutCheckedValue(l);
@@ -1155,6 +1184,35 @@ window.bnShowDownloadOverlay = bnShowDownloadOverlay;
 window.bnUpdateDownloadOverlay = bnUpdateDownloadOverlay;
 window.bnHideDownloadOverlay = bnHideDownloadOverlay;
 
+/* 商品版位連動鎖：預設全部鎖定；只有明確寫入 false 的版位才獨立編輯。 */
+window._bnProductLayoutLocks = window._bnProductLayoutLocks || {};
+function bnProductLayoutIsLinked(id) {
+  return !window._bnProductLayoutLocks || window._bnProductLayoutLocks[String(id)] !== false;
+}
+function bnProductLayoutSyncEligible(layout) {
+  var name = String((layout && (layout.file || layout.name)) || '');
+  return !/首頁logo牆/i.test(name) && !/searchicon_product/i.test(name);
+}
+function bnRefreshProductLayoutLockUI() {
+  document.querySelectorAll('.bn-layout-lock[data-layout-id]').forEach(function(btn){
+    var linked = bnProductLayoutIsLinked(btn.dataset.layoutId);
+    btn.classList.toggle('is-linked', linked);
+    btn.setAttribute('aria-pressed', linked ? 'true' : 'false');
+    btn.setAttribute('aria-label', linked ? '已連動，點擊解除此版位連動' : '未連動，點擊加入全部版位連動');
+    btn.title = linked ? '已連動：點擊後此版位獨立編輯' : '未連動：點擊後重新加入全部版位連動';
+  });
+}
+window._bnRefreshProductLayoutLockUI = bnRefreshProductLayoutLockUI;
+function bnToggleProductLayoutLock(id, ev) {
+  if(ev){ ev.preventDefault(); ev.stopPropagation(); }
+  var key = String(id);
+  var next = !bnProductLayoutIsLinked(key);
+  window._bnProductLayoutLocks[key] = next;
+  if(typeof window._bnSetProductLayoutLock === 'function') window._bnSetProductLayoutLock(key, next);
+  else bnRefreshProductLayoutLockUI();
+}
+window.bnToggleProductLayoutLock = bnToggleProductLayoutLock;
+
 function renderPreviews() {
   var _hashKw = parseHashKeywords(location.hash);
   var allLayouts = loadLayouts();
@@ -1194,8 +1252,19 @@ function renderPreviews() {
         '</iframe>' +
       '</div>';
 
+    if(bnProductLayoutSyncEligible(l)){
+      var lockButton = document.createElement('button');
+      lockButton.type = 'button';
+      lockButton.className = 'bn-layout-lock';
+      lockButton.dataset.layoutId = String(l.id);
+      lockButton.innerHTML = '<span class="bn-layout-lock-icon" aria-hidden="true"></span>';
+      lockButton.addEventListener('click', function(ev){ bnToggleProductLayoutLock(l.id, ev); });
+      block.querySelector('.preview-block-head').appendChild(lockButton);
+    }
+
     area.appendChild(block);
   });
+  bnRefreshProductLayoutLockUI();
 }
 
 /* iframe 載入完成：

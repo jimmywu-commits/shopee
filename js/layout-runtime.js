@@ -20,6 +20,10 @@
   var _bnSearchIconProductTemplate = /^searchicon_product$/i.test(fname || '');
   var _bnSingleProductForLogoWallTemplate = /首頁logo牆/i.test(fname || '');
   var _bnDdcardTemplate = /^ddcard/i.test(fname || '');
+  /* 這些版位的商品區橫向很寬、但高度較短；若直接把三品填滿整個商品區，
+     左中右的百分比位置會比 FB Post 拉得開。只縮「有效商品群」的寬度，
+     版位原本的 CSS 寬度、文字、背景與 CTA 位置都不改。 */
+  var _bnModerateProductSpacingTemplate = /^(?:Coin_pageBN_APP|HBN_|活動總覽|SBA_|AMS\s*BN-)/i.test(fname || '');
   /* SearchICON／首頁 LOGO 牆都不接受背景圖片；只有首頁 LOGO 牆固定白底（整張）。
      SearchICON_LOGO / PRODUCT / TEXT：圓底（.背景色）跟著父頁選取的背景色，
      但圓底之下的畫布（#canvas）固定白色，不跟著背景色跑。 */
@@ -1660,6 +1664,13 @@
             var fitOld = imgU._bnFit && imgU._bnFit.pr;
             var prOldW = (fitOld && fitOld.w) || (oldPRU && oldPRU.w) || 0;
             var sU = (imgU._bnFit && prOldW > 0) ? bwU / prOldW : Math.min(bwU/owU, bhU/ohU);
+            /* 旋轉後的圖片外接框通常會改變比例。預設以每個版位自己目前的
+               位置判斷錨點，父頁若由畫布旋轉送來則會明確帶入同一種錨點規則，
+               不把某一個版位的像素座標硬套到其他尺寸的版位。 */
+            var rotationAnchorMode = e.data.rotationAnchorMode === 'bottom' || e.data.rotationAnchorMode === 'center'
+              ? e.data.rotationAnchorMode : productRotationAnchorMode(boxU, pzoneU);
+            var anchorXU = blU + bwU / 2;
+            var anchorYU = rotationAnchorMode === 'bottom' ? btU + bhU : btU + bhU / 2;
             var newSrcU = e.data.src;
             var tmpU = new Image();
             tmpU.onload = function(){
@@ -1673,9 +1684,10 @@
                 var rN = nw / nh;
                 if(nw > zwU){ nw = zwU; nh = nw / rN; }
                 if(nh > zhU){ nh = zhU; nw = nh * rN; }
-                var cxU = blU + bwU/2, cyU = btU + bhU/2;
-                var lU = Math.max(0, Math.min(zwU - nw, cxU - nw/2));
-                var tU = Math.max(0, Math.min(zhU - nh, cyU - nh/2));
+                var lU = Math.max(0, Math.min(zwU - nw, anchorXU - nw/2));
+                var tU = rotationAnchorMode === 'bottom'
+                  ? Math.max(0, Math.min(zhU - nh, anchorYU - nh))
+                  : Math.max(0, Math.min(zhU - nh, anchorYU - nh/2));
                 boxU.dataset.manualLayout = '1';
                 boxU.style.left = lU + 'px'; boxU.style.top = tU + 'px';
                 boxU.style.width = nw + 'px'; boxU.style.height = nh + 'px';
@@ -1997,22 +2009,31 @@
         var csApply = window.getComputedStyle(pzoneApply);
         var zwApply = parseFloat(csApply.width) || pzoneApply.offsetWidth || 1;
         var zhApply = parseFloat(csApply.height) || pzoneApply.offsetHeight || 1;
-        var l = lay.leftPct !== undefined ? lay.leftPct * zwApply : lay.left;
-        var t = lay.topPct !== undefined ? lay.topPct * zhApply : lay.top;
-        var w = lay.widthPct !== undefined ? lay.widthPct * zwApply : lay.width;
-        var h = lay.heightPct !== undefined ? lay.heightPct * zhApply : lay.height;
+        var applyArea = (lay.syncAreaMode === 'cta-safe' && !isProductLayoutSyncExcluded())
+          ? getProductSyncArea(pzoneApply)
+          : {left:0, top:0, width:zwApply, height:zhApply};
+        var l = lay.leftPct !== undefined ? applyArea.left + lay.leftPct * applyArea.width : lay.left;
+        var t = lay.topPct !== undefined ? applyArea.top + lay.topPct * applyArea.height : lay.top;
+        var w = lay.widthPct !== undefined ? lay.widthPct * applyArea.width : lay.width;
+        var h = lay.heightPct !== undefined ? lay.heightPct * applyArea.height : lay.height;
         if(isFinite(l) && isFinite(t) && isFinite(w) && isFinite(h) && w > 0 && h > 0){
-          w = Math.max(1, Math.min(w, zwApply));
+          w = Math.max(1, Math.min(w, applyArea.width));
           /* 框高由框寬 × 商品範圍比例決定（同 layoutProducts） */
           var hFit = bnBoxHeightFor(boxApply, w);
           if(hFit){
             h = hFit;
-            if(h > zhApply){ w = Math.max(1, w * zhApply / h); h = zhApply; }
+            if(h > applyArea.height){ w = Math.max(1, w * applyArea.height / h); h = applyArea.height; }
           }else{
-            h = Math.max(1, Math.min(h, zhApply));
+            h = Math.max(1, Math.min(h, applyArea.height));
           }
-          l = Math.max(0, Math.min(zwApply - w, l));
-          t = Math.max(0, Math.min(zhApply - h, t));
+          var minApplyL = applyArea.left;
+          var maxApplyL = applyArea.left + applyArea.width - w;
+          var minApplyT = applyArea.top;
+          var maxApplyT = applyArea.top + applyArea.height - h;
+          if(maxApplyL < minApplyL) maxApplyL = minApplyL;
+          if(maxApplyT < minApplyT) maxApplyT = minApplyT;
+          l = Math.max(0, Math.min(zwApply - w, Math.max(minApplyL, Math.min(maxApplyL, l))));
+          t = Math.max(0, Math.min(zhApply - h, Math.max(minApplyT, Math.min(maxApplyT, t))));
           boxApply.dataset.manualLayout = '1';
           boxApply.style.left = l + 'px';
           boxApply.style.top = t + 'px';
@@ -2401,19 +2422,27 @@
       var br = box.getBoundingClientRect();
       var zw = zr.width || parseFloat(window.getComputedStyle(zone).width) || 1;
       var zh = zr.height || parseFloat(window.getComputedStyle(zone).height) || 1;
+      var syncArea = getProductSyncArea(zone);
+      var left = br.left - zr.left;
+      var top = br.top - zr.top;
+      var width = br.width;
+      var height = br.height;
       var data = {
         type:'bn-product-layout-update',
         bnid:getCurrentBnId(),
         id:box.dataset.id,
         layout:{
-          left: br.left - zr.left,
-          top: br.top - zr.top,
-          width: br.width,
-          height: br.height,
-          leftPct: (br.left - zr.left) / zw,
-          topPct: (br.top - zr.top) / zh,
-          widthPct: br.width / zw,
-          heightPct: br.height / zh
+          left: left,
+          top: top,
+          width: width,
+          height: height,
+          /* 連動用座標以「有效商品區」為基準；一般版位會扣除 CTA
+             下方安全區，SBA_PC 另使用置中的窄版有效寬度。 */
+          leftPct: (left - syncArea.left) / syncArea.width,
+          topPct: (top - syncArea.top) / syncArea.height,
+          widthPct: width / syncArea.width,
+          heightPct: height / syncArea.height,
+          syncAreaMode: syncArea.mode
         }
       };
       window.parent && window.parent.postMessage(data, '*');
@@ -2434,6 +2463,30 @@
     }catch(_){ }
   }
 
+  /* SearchICON_PRODUCT 的單品預設：置中，最長邊只佔商品範圍 80%，
+     讓白色圓底四周保留一圈內縮空間。已經有儲存／手動版面的商品不覆蓋。 */
+  function applySearchIconProductDefault(box, zone){
+    if(!_bnSearchIconProductTemplate || !box || !zone) return false;
+    var zw = zone.clientWidth || parseFloat(window.getComputedStyle(zone).width) || 120;
+    var zh = zone.clientHeight || parseFloat(window.getComputedStyle(zone).height) || 120;
+    var target = Math.round(Math.min(zw, zh) * 0.8);
+    var ratio = parseFloat(box.dataset.ratio) || 1;
+    var w = target, h = target;
+    if(ratio >= 1) h = Math.round(target / ratio);
+    else w = Math.round(target * ratio);
+    box.style.position = 'absolute';
+    box.style.cursor = 'move';
+    box.style.boxSizing = 'border-box';
+    box.style.outline = '2px solid transparent';
+    box.style.width = w + 'px';
+    box.style.height = h + 'px';
+    box.style.left = Math.round((zw - w) / 2) + 'px';
+    box.style.top = Math.round((zh - h) / 2) + 'px';
+    box.dataset.manualLayout = '1';
+    bnRelayoutProductBox(box);
+    return true;
+  }
+
   /* 正三角排品（仿 freelyapp 邏輯）
      主品（第0張）居中最大，左配品（第1張）次之，右配品（第2張）最小
      底部對齊，所有尺寸以商品範圍 px 為單位，不超出邊界 */
@@ -2450,6 +2503,23 @@
     var cs   = window.getComputedStyle(pzone);
     var zw   = parseFloat(cs.width)  || pzone.offsetWidth  || 400;
     var zh   = parseFloat(cs.height) || pzone.offsetHeight || 300;
+
+    /* SearchICON_PRODUCT 不是三角排版：它只顯示主品，而且主品要在圓底正中央。
+       這裡直接在通用排版入口鎖定預設尺寸，避免被後續的三角公式或非同步圖片
+       載入順序改回滿版。手動調過／已有儲存版面的商品則照原位置保留。 */
+    if(_bnSearchIconProductTemplate && n === 1 && !allBoxes[0].dataset.savedLayout){
+      if(allBoxes[0].dataset.manualLayout !== '1') applySearchIconProductDefault(allBoxes[0], pzone);
+      setTimeout(postAllProductLayouts, 0);
+      return;
+    }
+
+    var syncArea = getProductSyncArea(pzone);
+    /* 自動排版也使用同一個有效商品區，避免只有跨版位連動時安全、
+       第一次上傳時卻又把商品排回 CTA 下方。 */
+    var layoutLeft = syncArea.left;
+    var layoutTop = syncArea.top;
+    var layoutW = syncArea.width;
+    var layoutH = syncArea.height;
     var PAD = 6;
 
     /* 寬高比 */
@@ -2466,7 +2536,7 @@
     var ws2 = n>=3 ? wsMap[2] : 0;
 
     /* 主品最大高度：預設 88%，若版位有 .cta底 則不超過 CTA 頂部 */
-    var maxH0 = Math.floor(zh * 0.88);
+    var maxH0 = Math.floor(layoutH * 0.88);
     var ctaEl = document.querySelector('.cta底');
     if(ctaEl){
       var ctaTop    = parseFloat(window.getComputedStyle(ctaEl).top)   || 0;
@@ -2482,7 +2552,7 @@
     /* h0 = w0/r0；總寬 = w0 + w1 + w2 = w0(1 + ws1*r1/r0 + ws2*r2/r0) */
     var spanFactor = 1 + ws1*r1/r0 + ws2*r2/r0;
     var GAP = n > 1 ? 8 : 0;
-    var avail = zw - PAD*2 - GAP*(n-1);
+    var avail = layoutW - PAD*2 - GAP*(n-1);
     var w0 = Math.min(avail / spanFactor, maxH0 * r0);
     var h0 = w0 / r0;
     /* 再檢查高度上限 */
@@ -2496,7 +2566,7 @@
     w0 = Math.round(w0); h0 = Math.round(h0);
 
     /* 底部 y 位置：優先使用 CTA 頂部上方，否則用 zone 底部 */
-    var zoneBottom = zh - 4;
+    var zoneBottom = layoutTop + layoutH - 4;
     if(ctaEl){
       var ctaTop2   = parseFloat(window.getComputedStyle(ctaEl).top)  || 0;
       var pzoneTop2 = parseFloat(window.getComputedStyle(pzone).top)  || 0;
@@ -2506,7 +2576,7 @@
 
     /* 垂直置中：讓最高的商品（主品 h0）在商品範圍垂直置中
        配品底部跟主品底部對齊（維持底部齊） */
-    var zoneTop = 4; /* 上邊界留 4px */
+    var zoneTop = layoutTop + 4; /* 上邊界留 4px */
     var zoneH   = zoneBottom - zoneTop;
     /* 主品置中後的底部位置 */
     var centeredBot = zoneTop + Math.floor((zoneH + h0) / 2);
@@ -2517,7 +2587,7 @@
 
     /* 水平：主品居中，左品在左，右品在右 */
     var totalW = w0 + (n>=2 ? w1+GAP : 0) + (n>=3 ? w2+GAP : 0);
-    var startX = Math.max(PAD, Math.floor((zw - totalW) / 2));
+    var startX = layoutLeft + Math.max(PAD, Math.floor((layoutW - totalW) / 2));
 
     /* 排列順序：左品、主品、右品（視覺上中間最大） */
     var positions = [];
@@ -2553,20 +2623,33 @@
         }
       }
       if(saved){
-        var sx = saved.leftPct !== undefined ? saved.leftPct * zw : saved.left;
-        var sy = saved.topPct !== undefined ? saved.topPct * zh : saved.top;
-        var sw = saved.widthPct !== undefined ? saved.widthPct * zw : saved.width;
-        var sh = saved.heightPct !== undefined ? saved.heightPct * zh : saved.height;
+        var savedArea = saved.syncAreaMode === 'cta-safe'
+          ? syncArea : {left:0, top:0, width:zw, height:zh};
+        var sx = saved.leftPct !== undefined ? savedArea.left + saved.leftPct * savedArea.width : saved.left;
+        var sy = saved.topPct !== undefined ? savedArea.top + saved.topPct * savedArea.height : saved.top;
+        var sw = saved.widthPct !== undefined ? saved.widthPct * savedArea.width : saved.width;
+        var sh = saved.heightPct !== undefined ? saved.heightPct * savedArea.height : saved.height;
         if(isFinite(sx) && isFinite(sy) && isFinite(sw) && isFinite(sh) && sw > 0 && sh > 0){
           /* 框高一律由框寬 × 商品範圍比例決定；舊版儲存的高度（含影子的框）不再沿用，
              否則框會比商品高。 */
+          var maxSavedW = saved.syncAreaMode === 'cta-safe' ? syncArea.width : zw;
+          var maxSavedH = saved.syncAreaMode === 'cta-safe' ? syncArea.height : zh;
+          if(sw > maxSavedW){ sw = maxSavedW; }
           var shFit = bnBoxHeightFor(p.box, sw);
           if(shFit){
             sh = shFit;
-            if(sh > zh){ sw = sw * zh / sh; sh = zh; }
+            if(sh > maxSavedH){ sw = sw * maxSavedH / sh; sh = maxSavedH; }
+          }else if(sh > maxSavedH){
+            sh = maxSavedH;
           }
-          p.x = Math.max(0, Math.min(zw - sw, sx));
-          p.y = Math.max(0, Math.min(zh - sh, sy));
+          var minSavedX = saved.syncAreaMode === 'cta-safe' ? syncArea.left : 0;
+          var maxSavedX = saved.syncAreaMode === 'cta-safe' ? syncArea.left + syncArea.width - sw : zw - sw;
+          var minSavedY = saved.syncAreaMode === 'cta-safe' ? syncArea.top : 0;
+          var maxSavedY = saved.syncAreaMode === 'cta-safe' ? syncArea.top + syncArea.height - sh : zh - sh;
+          if(maxSavedX < minSavedX) maxSavedX = minSavedX;
+          if(maxSavedY < minSavedY) maxSavedY = minSavedY;
+          p.x = Math.max(0, Math.min(zw - sw, Math.max(minSavedX, Math.min(maxSavedX, sx))));
+          p.y = Math.max(0, Math.min(zh - sh, Math.max(minSavedY, Math.min(maxSavedY, sy))));
           p.w = Math.max(1, sw);
           p.h = Math.max(1, sh);
           p.box.dataset.manualLayout = '1';
@@ -2589,6 +2672,55 @@
     var names=['商品範圍','商品圖範圍'];
     for(var i=0;i<names.length;i++){ var z=document.querySelector('.'+names[i]); if(z)return z; }
     return null;
+  }
+
+  function isProductLayoutSyncExcluded(){
+    return !!(_bnHomepageLogoWallTemplate || _bnSearchIconProductTemplate);
+  }
+
+  /* 商品連動用的有效範圍：
+     - 一般版位：若 CTA 壓在商品區下方，扣除 CTA 上緣與 8px 安全距離。
+     - Coin／HBN／活動總覽／SBA／AMS：再把有效商品群限制在約 1.55:1，
+       置中保留左右空白，讓三品距離接近 FB Post；SBA_PC 也沿用同一套規則。
+     - 首頁 LOGO 牆／SearchICON_PRODUCT：完全不參與連動，維持原商品區。 */
+  function getProductSyncArea(zone){
+    var cs = zone ? window.getComputedStyle(zone) : null;
+    var zw = (cs && parseFloat(cs.width)) || (zone && zone.offsetWidth) || 1;
+    var zh = (cs && parseFloat(cs.height)) || (zone && zone.offsetHeight) || 1;
+    var area = {left:0, top:0, width:zw, height:zh, mode:'full'};
+    if(!zone || isProductLayoutSyncExcluded()) return area;
+
+    var zr = zone.getBoundingClientRect();
+    var scaleX = zw > 0 ? (zr.width || zw) / zw : 1;
+    var scaleY = zh > 0 ? (zr.height || zh) / zh : 1;
+    var ctaTop = Infinity;
+    var ctaEls = document.querySelectorAll('.cta底,.逛逛去底,.cta圓底');
+    Array.prototype.forEach.call(ctaEls, function(el){
+      var cr = el.getBoundingClientRect();
+      if(!cr.width || !cr.height) return;
+      var overlapX = Math.min(cr.right, zr.right) - Math.max(cr.left, zr.left);
+      if(overlapX <= 0) return;
+      var relTop = (cr.top - zr.top) / Math.max(scaleY, 0.0001);
+      var relBottom = (cr.bottom - zr.top) / Math.max(scaleY, 0.0001);
+      /* 只把下半部的 CTA 視為商品區底部保護區，避免誤扣中間裝飾。 */
+      if(relBottom > 0 && relTop < zh && relTop > zh * 0.45){
+        ctaTop = Math.min(ctaTop, relTop);
+      }
+    });
+    if(isFinite(ctaTop)){
+      area.height = Math.max(1, Math.min(zh, ctaTop - 8));
+    }
+
+    if(_bnModerateProductSpacingTemplate){
+      /* 1.55 是針對這批寬版商品區的折衷比例：比 FB Post 的視覺群組寬一些，
+         但不會讓 Coin／HBN／活動總覽／SBA／AMS 的三品被拉到左右兩端。 */
+      var moderateAspect = 1.55;
+      var narrowW = Math.min(area.width, area.height * moderateAspect);
+      area.left = area.left + Math.max(0, (area.width - narrowW) / 2);
+      area.width = Math.max(1, narrowW);
+    }
+    area.mode = 'cta-safe';
+    return area;
   }
 
   /* SLAB 底圖：DRED = 建議範圍框.PNG（1200x1200）內紅框的像素範圍，
@@ -2754,6 +2886,21 @@
     });
   }
 
+  /* 旋轉換圖時保留同一個視覺錨點：一般自由移動商品以中心點為準，
+     自動排版且貼近商品區／CTA 上緣的商品以底邊為準。這樣旋轉後外接框變寬高時，
+     不會因為重新計算框尺寸而看起來往上彈；SearchICON_PRODUCT 永遠以中心點為準。 */
+  function productRotationAnchorMode(box, zone){
+    if(_bnSearchIconProductTemplate) return 'center';
+    if(!box || !zone) return 'center';
+    var top = parseFloat(box.style.top);
+    var height = parseFloat(box.style.height);
+    if(!isFinite(top)) top = box.offsetTop || 0;
+    if(!isFinite(height)) height = box.offsetHeight || 0;
+    var area = getProductSyncArea(zone);
+    var bottom = top + height;
+    return bottom >= area.top + area.height - 10 ? 'bottom' : 'center';
+  }
+
   function setupProdDrag(box,zone){
     var drag=null;
     var rotHandle = box.querySelector('[data-rotate-handle]');
@@ -2802,6 +2949,7 @@
       function rotEnd(){
         if(!rot) return;
         var delta = rot.delta; rot = null;
+        var anchorMode = productRotationAnchorMode(box, zone);
         rotHandle.style.cursor = 'grab';
         box.style.outline = '2px solid transparent';
         if(rotBadge) rotBadge.style.display = 'none';
@@ -2809,7 +2957,7 @@
         if(Math.abs(delta) < 0.5){ if(img) img.style.transform = ''; return; }
         /* CSS 預覽先留著，等父頁重算完以 bn-product-update-image 換圖時一併清掉，畫面不會閃回 */
         try{
-          window.parent && window.parent.postMessage({type:'bn-product-rotate', bnid:getCurrentBnId(), id:box.dataset.id, delta:delta}, '*');
+          window.parent && window.parent.postMessage({type:'bn-product-rotate', bnid:getCurrentBnId(), id:box.dataset.id, delta:delta, rotationAnchorMode:anchorMode}, '*');
         }catch(_){ if(img) img.style.transform = ''; }
       }
       rotHandle.addEventListener('pointerup', rotEnd);
@@ -2818,7 +2966,7 @@
       rotHandle.addEventListener('dblclick', function(e){
         e.stopPropagation(); e.preventDefault();
         if(!(parseFloat(box.dataset.rotate) || 0)) return;
-        try{ window.parent && window.parent.postMessage({type:'bn-product-rotate', bnid:getCurrentBnId(), id:box.dataset.id, rotate:0, absolute:true}, '*'); }catch(_){ }
+        try{ window.parent && window.parent.postMessage({type:'bn-product-rotate', bnid:getCurrentBnId(), id:box.dataset.id, rotate:0, absolute:true, rotationAnchorMode:productRotationAnchorMode(box, zone)}, '*'); }catch(_){ }
       });
     }
     box.addEventListener('pointerdown',function(e){

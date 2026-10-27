@@ -123,6 +123,9 @@
     window._bnLogoLayouts = window._bnLogoLayouts || {};
     var MAX_LOGOS = 3;
     window._bnProducts    = window._bnProducts    || [];
+    /* 商品版位連動狀態：未記錄的版位預設為鎖定（全部連動），只有明確
+       設成 false 的版位才是單獨編輯。這個 map 會由 bn-state-plugin 一起保存。 */
+    window._bnProductLayoutLocks = window._bnProductLayoutLocks || {};
     var MAX_PROD = 3;
     /* 人物圖：現在最多可以上傳2張，各自可超出商品範圍/畫布。
        規則：0張人物 -> 商品最多顯示3張(原本三角排版全開)；
@@ -214,7 +217,8 @@
     }
     function markStateDirty(){ try{ document.dispatchEvent(new CustomEvent('bn-state-dirty')); }catch(_){ } }
 
-    /* 方版 / 橫版排品連動：同一版位只差「方 / 橫」時，共用商品位置比例。 */
+    /* 商品版位連動：所有已啟用版位共用商品框的百分比座標；單一版位解鎖後，
+       該版位仍保留自己的 layouts[id]，不再接收其他版位的更新。 */
     function normalizePairName(name){
       return String(name || '')
         .replace(/\.html$/i, '')
@@ -229,6 +233,12 @@
       var layouts = window.loadLayouts() || [];
       return layouts.find(function(l){ return String(l.id) === String(id); }) || null;
     }
+    function productLayoutSyncEligible(id){
+      var layout = getLayoutById(id) || {};
+      var name = String(layout.file || layout.name || '');
+      /* 這兩種版位的商品空間不加入跨版位商品位置連動。 */
+      return !/首頁logo牆/i.test(name) && !/searchicon_product/i.test(name);
+    }
     function getPairedLayoutIds(sourceId){
       if(typeof window.loadLayouts !== 'function') return [];
       var layouts = window.loadLayouts() || [];
@@ -240,16 +250,98 @@
         return l.enabled !== false && String(l.id) !== String(sourceId) && normalizePairName(l.name || l.file) === key;
       }).map(function(l){ return String(l.id); });
     }
-    function syncProductLayoutToPairs(product, sourceBnid, layout){
-      var pairIds = getPairedLayoutIds(sourceBnid);
-      if(!pairIds.length || !product || !layout) return;
+    function productLayoutIsLocked(id){
+      return !window._bnProductLayoutLocks || window._bnProductLayoutLocks[String(id)] !== false;
+    }
+    function productLayoutClone(layout){
+      try{ return JSON.parse(JSON.stringify(layout || {})); }
+      catch(_){ return {}; }
+    }
+    function getLayoutCanvasSize(id){
+      var l = getLayoutById(id) || {};
+      var w = Number(l.w || l.width || 0);
+      var h = Number(l.h || l.height || 0);
+      return {w:w > 0 ? w : 0, h:h > 0 ? h : 0};
+    }
+    function productLayoutWithPercent(layout, sourceBnid){
+      var out = productLayoutClone(layout);
+      var size = getLayoutCanvasSize(sourceBnid);
+      /* 新版 iframe 已直接傳百分比；舊版暫存／舊 iframe 沒有時才用版位尺寸補算。 */
+      if(out.leftPct === undefined && size.w > 0 && isFinite(Number(out.left))) out.leftPct = Number(out.left) / size.w;
+      if(out.topPct === undefined && size.h > 0 && isFinite(Number(out.top))) out.topPct = Number(out.top) / size.h;
+      if(out.widthPct === undefined && size.w > 0 && isFinite(Number(out.width))) out.widthPct = Number(out.width) / size.w;
+      if(out.heightPct === undefined && size.h > 0 && isFinite(Number(out.height))) out.heightPct = Number(out.height) / size.h;
+      return out;
+    }
+    function productLayoutForTarget(layout, sourceBnid, targetBnid){
+      var out = productLayoutWithPercent(layout, sourceBnid);
+      var targetSize = getLayoutCanvasSize(targetBnid);
+      /* 同時保存目標版位的 px 值與共用百分比：runtime 會優先用百分比，
+         之後的暫存／下載若只讀 px 也不會拿到來源版位的錯誤尺寸。 */
+      if(targetSize.w > 0 && isFinite(Number(out.leftPct))) out.left = Number(out.leftPct) * targetSize.w;
+      if(targetSize.h > 0 && isFinite(Number(out.topPct))) out.top = Number(out.topPct) * targetSize.h;
+      if(targetSize.w > 0 && isFinite(Number(out.widthPct))) out.width = Number(out.widthPct) * targetSize.w;
+      if(targetSize.h > 0 && isFinite(Number(out.heightPct))) out.height = Number(out.heightPct) * targetSize.h;
+      return out;
+    }
+    function getProductSyncLayoutIds(){
+      if(typeof window.loadLayouts !== 'function') return [];
+      return (window.loadLayouts() || []).filter(function(l){
+        return l && l.id !== undefined && l.id !== null && l.enabled !== false
+          && productLayoutSyncEligible(l.id);
+      }).map(function(l){ return String(l.id); });
+    }
+    function findLockedProductLayout(product, exceptBnid){
+      if(!product || !product.layouts) return null;
+      var ids = getProductSyncLayoutIds();
+      for(var i=0;i<ids.length;i++){
+        var id = ids[i];
+        if(String(id) === String(exceptBnid) || !productLayoutIsLocked(id)) continue;
+        if(product.layouts[id]) return {id:id, layout:product.layouts[id]};
+      }
+      return null;
+    }
+    function syncProductLayoutToLinkedLayouts(product, sourceBnid, layout){
+      if(!product || !layout || !productLayoutIsLocked(sourceBnid)) return;
       if(!product.layouts) product.layouts = {};
-      pairIds.forEach(function(tid){
-        var cloned = JSON.parse(JSON.stringify(layout));
+      var ids = getProductSyncLayoutIds();
+      ids.forEach(function(tid){
+        if(String(tid) === String(sourceBnid) || !productLayoutIsLocked(tid)) return;
+        var cloned = productLayoutForTarget(layout, sourceBnid, tid);
         product.layouts[tid] = cloned;
         broadcastTo(tid, {type:'bn-product-layout-apply', id:product.id, layout:cloned});
       });
     }
+    /* 舊函式名稱保留，避免其他既有流程引用時失效；商品現在改為全部鎖定版位連動。 */
+    function syncProductLayoutToPairs(product, sourceBnid, layout){
+      syncProductLayoutToLinkedLayouts(product, sourceBnid, layout);
+    }
+    function setProductLayoutLock(id, locked){
+      var key = String(id);
+      if(!window._bnProductLayoutLocks) window._bnProductLayoutLocks = {};
+      window._bnProductLayoutLocks[key] = locked !== false;
+      if(window._bnProductLayoutLocks[key]){
+        /* 重新鎖定時，優先把目前共同鎖定群組的狀態套回這一張；若尚未有
+           可參考版位，就保留它現有位置，之後會跟著共同編輯。 */
+        (window._bnProducts || []).forEach(function(product){
+          if(!product) return;
+          if(!product.layouts) product.layouts = {};
+          var ref = findLockedProductLayout(product, key);
+          var sourceId = ref ? ref.id : key;
+          var sourceLayout = ref ? ref.layout : product.layouts[key];
+          if(!sourceLayout) return;
+          var cloned = productLayoutForTarget(sourceLayout, sourceId, key);
+          product.layouts[key] = cloned;
+          broadcastTo(key, {type:'bn-product-layout-apply', id:product.id, layout:cloned});
+        });
+      }
+      if(typeof window._bnRefreshProductLayoutLockUI === 'function'){
+        window._bnRefreshProductLayoutLockUI();
+      }
+      markStateDirty();
+    }
+    window._bnIsProductLayoutLocked = productLayoutIsLocked;
+    window._bnSetProductLayoutLock = setProductLayoutLock;
     /* 人物圖比照商品：同一版位只差「方/橫」時，拖曳/縮放的位置大小會即時同步到配對版位。
        slotKey 指定是哪一個人物欄位('_bnCharacter' 或 '_bnCharacter2')。 */
     function syncCharacterLayoutToPairs(slotKey, sourceBnid, layout){
@@ -436,7 +528,7 @@
       if(!p.layouts) p.layouts = {};
       var key = d.bnid ? String(d.bnid) : 'default';
       p.layouts[key] = d.layout;
-      syncProductLayoutToPairs(p, key, d.layout);
+      if(productLayoutSyncEligible(key)) syncProductLayoutToPairs(p, key, d.layout);
       /* 也保留最後一次實際畫布座標，方便舊版 JSON 或單版位還原 */
       p.x = d.layout.left; p.y = d.layout.top; p.width = d.layout.width; p.height = d.layout.height;
       p.layout = d.layout;
@@ -2086,6 +2178,16 @@
       return ['left','hero','right'];
     }
 
+    /* 預設圖層順序：匯入後畫面上是左／中／右，
+       中間主品固定在最下面，左右配品疊在主品前面。
+       zOrder 越小代表越上層；因此主品（position=0）要放最後。 */
+    function defaultProductZOrder(position, count){
+      count = Math.max(1, Number(count) || 1);
+      position = Number(position);
+      if(!isFinite(position) || position < 0) position = 0;
+      return position === 0 ? Math.max(0, count - 1) : Math.max(0, position - 1);
+    }
+
     function initRankOrder(){
       var n = staged.length;
       var roles = rankRoleMap(n);
@@ -2106,7 +2208,7 @@
       if(!row)return;
       row.innerHTML='';
       var roles = rankRoleMap(rankOrder.length);
-      var roleLabels  = {hero:'最前面（中間）', left:'左側配品', right:'右側配品'};
+      var roleLabels  = {hero:'中間主品（最下面）', left:'左側配品', right:'右側配品'};
       var roleHeights = {hero:120, left:95, right:75};
       dragSrc=null;
 
@@ -2198,7 +2300,8 @@
         /* position: 0=主品(中), 1=左配, 2=右配 */
         var positionMap = [0, 1, 2];
         var pos = positionMap[i] !== undefined ? positionMap[i] : i;
-        var prod = {id:id,src:src,ratio:item.ratio||1,name:item.name,sizeScale:sizeScale,position:pos,zOrder:i};
+        var zOrder = defaultProductZOrder(pos, orderedItems.length);
+        var prod = {id:id,src:src,ratio:item.ratio||1,name:item.name,sizeScale:sizeScale,position:pos,zOrder:zOrder};
         if(item.baseSrc) prod.baseSrc = item.baseSrc;
         if(item.meta) prod.meta = JSON.parse(JSON.stringify(item.meta));
         /* 新上傳的商品：自動合成貼地陰影（bn-shadow-plugin.js）。
@@ -2210,14 +2313,12 @@
           }catch(err){ console.warn('[bn-editor] 自動影子合成失敗', err); prod.src = src; }
         }
         window._bnProducts.push(prod);
-        broadcast({type:'bn-product-add',id:id,src:prod.src,ratio:prod.ratio||1,name:item.name,index:i,sizeScale:sizeScale,position:pos,zOrder:i,layoutById:item.layouts||null,layout:item.layout||null,rotate:(prod.meta&&prod.meta.rotate)||0,productRect:prod.meta&&prod.meta.productRect});
+        broadcast({type:'bn-product-add',id:id,src:prod.src,ratio:prod.ratio||1,name:item.name,index:i,sizeScale:sizeScale,position:pos,zOrder:zOrder,layoutById:item.layouts||null,layout:item.layout||null,rotate:(prod.meta&&prod.meta.rotate)||0,productRect:prod.meta&&prod.meta.productRect});
         await new Promise(function(r){setTimeout(r,50);});
       }
       renderProdList();
       /* ★ 上傳後一定要補送一次 z-index 順序。bn-product-add 本身不設 z-index，
-         畫布上會變成「後加的蓋前面的」（右配在最上層），但左邊工具列是依 zOrder
-         （主品 0 在最上層）排序，兩邊就對不起來；要等使用者按一次 ▲▼ 觸發
-         broadcastZOrder 才會一致。這裡直接同步，上傳完就跟工具列相同。 */
+         這裡直接同步，確保畫布跟工具列都維持「中間主品在最下面」的預設。 */
       broadcastZOrder();
       markStateDirty();
     }
@@ -2248,9 +2349,12 @@
         var pb = b.position !== undefined ? b.position : 99;
         return pa - pb;
       });
-      /* 初始化 zOrder（若未設定，依目前 sorted 順序） */
+      /* 初始化舊資料沒有記錄的 zOrder；新的預設是中間主品在最下面。 */
       sorted.forEach(function(p, i){
-        if(p.zOrder === undefined) p.zOrder = i;
+        if(p.zOrder === undefined){
+          var position = p.position !== undefined ? p.position : i;
+          p.zOrder = defaultProductZOrder(position, sorted.length);
+        }
       });
       /* z-index 排序：zOrder 小的在上面（蓋住其他） */
       var zSorted = window._bnProducts.slice().sort(function(a,b){
@@ -2560,7 +2664,7 @@
               name: item.name || '',
               sizeScale: 1,
               position: index,
-              zOrder: index
+              zOrder: defaultProductZOrder(index, products.length)
             };
             if(result.meta) prod.meta = result.meta;
             return prod;
@@ -2625,11 +2729,11 @@
        畫布上的旋轉把手（layout-runtime）放開時送 bn-product-rotate，這裡重算後
        用 bn-product-update-image（keepScale）就地換圖，框的大小依新圖外接矩形等比調整。 */
     var _rotateJobs = {};
-    function setProductRotation(pid, deg, done){
+    function setProductRotation(pid, deg, done, rotationAnchorMode){
       var p=window._bnProducts.find(function(x){return x.id===pid;});
       if(!p){ if(done) done(); return; }
       if(!window._bnGroundShadow){
-        loadScriptOnce('js/bn-shadow-plugin.js').then(function(){ setProductRotation(pid, deg, done); })['catch'](function(){
+        loadScriptOnce('js/bn-shadow-plugin.js').then(function(){ setProductRotation(pid, deg, done, rotationAnchorMode); })['catch'](function(){
           alert('bn-shadow-plugin.js 載入失敗');
           if(done) done();
         });
@@ -2645,7 +2749,7 @@
         if(_rotateJobs[pid] !== seq) return; /* 拖曳中連續送出時只採用最後一次 */
         markStateDirty();
         renderProdList();
-        broadcast({type:'bn-product-update-image', id:p.id, src:p.src, ratio:p.ratio, keepScale:true, rotate:p.meta.rotate, productRect:p.meta && p.meta.productRect});
+        broadcast({type:'bn-product-update-image', id:p.id, src:p.src, ratio:p.ratio, keepScale:true, rotate:p.meta.rotate, rotationAnchorMode:rotationAnchorMode || null, productRect:p.meta && p.meta.productRect});
       })['catch'](function(err){
         console.warn('[bn-editor] 旋轉重算失敗', err);
         /* 失敗時把畫布上暫時的 CSS 旋轉還原 */
@@ -2662,7 +2766,7 @@
       if(!p) return;
       var cur = Number(p.meta && p.meta.rotate) || 0;
       var total = d.absolute ? Number(d.rotate)||0 : cur + (Number(d.delta)||0);
-      setProductRotation(d.id, total);
+      setProductRotation(d.id, total, null, d.rotationAnchorMode);
     });
 
     /* 攔截 editor-plugin 舊的「加 / 編輯影子」按鈕：改開新的貼地陰影編輯器。

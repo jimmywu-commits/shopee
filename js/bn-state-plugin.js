@@ -130,7 +130,7 @@
     var merged = clone(full);
     merged.ts = light.ts || merged.ts;
     ['portableVersion','layoutManifest','texts','colors','inputMeta','toolbar','layouts','bgCheckers',
-      'checked','checkedByFile','logoLayouts','logoLayoutsByFile'].forEach(function(k){
+      'checked','checkedByFile','logoLayouts','logoLayoutsByFile','productLayoutLocks'].forEach(function(k){
       if(light[k] !== undefined) merged[k] = clone(light[k]);
     });
 
@@ -761,6 +761,8 @@
           layouts:p.layouts ? clone(p.layouts) : undefined,
           crop:p.crop ? clone(p.crop) : undefined, meta:p.meta ? clone(p.meta) : undefined}, layoutIndex);
       }),
+      /* 只有 false 代表該版位解鎖；沒有記錄的版位預設全部連動。 */
+      productLayoutLocks: clone(global._bnProductLayoutLocks || {}),
       background:{
         activeId: activeBgId,
         activeFile: activeBgId !== null && activeBgId !== undefined ? (layoutIndex.byId[String(activeBgId)] || null) : null,
@@ -801,6 +803,14 @@
     global._bnLogoLayouts = mergeFileMapIntoIdMap(
       state.logoLayouts || {}, state.logoLayoutsByFile || {}, layoutIndex, state.layoutManifest
     );
+    if(state.productLayoutLocks && typeof state.productLayoutLocks === 'object'){
+      global._bnProductLayoutLocks = clone(state.productLayoutLocks);
+    }else{
+      global._bnProductLayoutLocks = {};
+    }
+    if(typeof global._bnRefreshProductLayoutLockUI === 'function'){
+      global._bnRefreshProductLayoutLockUI();
+    }
     if(state.texts){
       ['brand','main','sub','date','icon'].forEach(function(k){
         var el=document.getElementById('txt-'+k);
