@@ -184,6 +184,12 @@
         return id ? String(id) : '';
       }catch(_){ return ''; }
     }
+    /* 快照只讀每張畫板的現有位置，不是新的拖曳操作。記錄進行中的快照，
+       也保護尚未更新 runtime 的 iframe：它回傳的舊格式不能再觸發跨版位連動。 */
+    var _layoutSnapshotRequests = {};
+    function isLayoutSnapshotUpdate(data){
+      return !!(data && data.snapshotOnly) || Object.keys(_layoutSnapshotRequests).length > 0;
+    }
     /* 兩種下載共用：輸出前向每個 iframe 取回最後一刻的商品、人物與
        SearchICON_LOGO 位置。complete 回覆逾時時，仍保留既有即時資料繼續。 */
     function syncLayoutSnapshot(timeoutMs){
@@ -201,6 +207,7 @@
           settled = true;
           if(timer) clearTimeout(timer);
           window.removeEventListener('message', onComplete);
+          delete _layoutSnapshotRequests[requestId];
           resolve();
         }
         function onComplete(ev){
@@ -210,6 +217,7 @@
           if(!Object.keys(pending).length) finish();
         }
         if(!Object.keys(pending).length){ finish(); return; }
+        _layoutSnapshotRequests[requestId] = true;
         window.addEventListener('message', onComplete);
         timer = setTimeout(finish, Math.max(300, Number(timeoutMs) || 900));
         broadcast({type:'bn-layout-snapshot-request', requestId:requestId});
@@ -514,7 +522,7 @@
         if(!slot.layouts) slot.layouts = {};
         var ckey = d.bnid ? String(d.bnid) : 'default';
         slot.layouts[ckey] = d.layout;
-        syncCharacterLayoutToPairs(slotKey, ckey, d.layout);
+        if(!isLayoutSnapshotUpdate(d)) syncCharacterLayoutToPairs(slotKey, ckey, d.layout);
         markStateDirty();
         return;
       }
@@ -528,6 +536,9 @@
       if(!p.layouts) p.layouts = {};
       var key = d.bnid ? String(d.bnid) : 'default';
       p.layouts[key] = d.layout;
+      /* 匯出／下載暫存的快照必須保留每張畫板各自的 px 座標；不能把
+         最後回覆的一張再次當成連動來源，回頭擠壓其他已排好的商品。 */
+      if(isLayoutSnapshotUpdate(d)) return;
       if(productLayoutSyncEligible(key)) syncProductLayoutToPairs(p, key, d.layout);
       /* 也保留最後一次實際畫布座標，方便舊版 JSON 或單版位還原 */
       p.x = d.layout.left; p.y = d.layout.top; p.width = d.layout.width; p.height = d.layout.height;
@@ -3115,13 +3126,17 @@
 
         exportProducts.forEach(function(p, idx){
           sendToIframe(iframeEl, {
-            type:'bn-product-add', id:p.id, src:p.src, ratio:p.ratio, name:p.name, rotate:(p.meta&&p.meta.rotate)||0,
+            type:'bn-product-add', preserveExistingLayout:true,
+            id:p.id, src:p.src, ratio:p.ratio, name:p.name, rotate:(p.meta&&p.meta.rotate)||0,
             index:idx, sizeScale:p.sizeScale||1, position:p.position||0, zOrder:p.zOrder||0,
             layoutById:p.layouts||null, layout:p.layout||null, productRect:p.meta&&p.meta.productRect
           });
         });
         if(exportZOrder.length) sendToIframe(iframeEl, {type:'bn-product-zorder', order:exportZOrder});
 
+        /* 商品的 preserveExistingLayout 讓 runtime 直接保留已顯示的商品節點，
+           只有缺漏商品才補建。不能為了下載刪掉重建，因為 saved layout 的
+           CTA／窄版連動邊界會重新 clamp 手動位置，導致三件商品擠在一起。 */
         /* ★ 人物圖也要重新同步給這個 iframe，跟商品/LOGO/文案一樣——之前這裡完全
            沒有送 bn-character-*，下載時商品又是整批用 bn-product-add 重新建立
            （每次都是全新的 DOM 節點，不會留著先前 bn-character-visibility 隱藏

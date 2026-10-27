@@ -1537,7 +1537,17 @@
     if (e.data.type === 'bn-product-add') {
       var pzone = getProductZone(); if(!pzone) return;
       var oldBox = pzone.querySelector('.bn-prod-box[data-id="'+e.data.id+'"]');
-      if(oldBox) oldBox.remove();
+      /* 下載以畫布當下的排版為準：既有商品不能刪掉後再走 layoutProducts，
+         否則手動擺在有效連動範圍之外的商品會被重新 clamp 到窄區域內。
+         也保留同一個 img，避免三張商品在下載前一起閃爍。 */
+      if(oldBox && e.data.preserveExistingLayout === true){
+        bnRelayoutProductBox(oldBox);
+        return;
+      }
+      if(oldBox){
+        if(oldBox._bnRO){ try{ oldBox._bnRO.disconnect(); }catch(_){ } }
+        oldBox.remove();
+      }
       pzone.style.background = 'transparent'; pzone.style.backgroundColor = 'transparent'; pzone.style.opacity = '1';
       if(_bnSearchIconProductTemplate){
         /* 圓形商品圖遮色區維持白底，不透出 SearchICON 的背景色。 */
@@ -1990,7 +2000,7 @@
     }
 
     if (e.data.type === 'bn-layout-snapshot-request') {
-      postAllProductLayouts();
+      postAllProductLayouts({snapshotOnly:true, requestId:e.data.requestId});
       postAllCharacterLayouts();
       /* 讓同一頁其他專用 listener（例如 SearchICON_LOGO）先回傳自己的位置，
          再通知父層此 iframe 已完成快照。 */
@@ -2006,7 +2016,7 @@
     }
 
     if (e.data.type === 'bn-product-layout-request') {
-      postAllProductLayouts();
+      postAllProductLayouts({snapshotOnly:true});
     }
 
     if (e.data.type === 'bn-product-layout-apply') {
@@ -2423,7 +2433,7 @@
     catch(_){ return ''; }
   }
 
-  function postProductLayout(box){
+  function postProductLayout(box, options){
     try{
       var zone = getProductZone(); if(!zone || !box) return;
       var zr = zone.getBoundingClientRect();
@@ -2447,6 +2457,8 @@
         type:'bn-product-layout-update',
         bnid:getCurrentBnId(),
         id:box.dataset.id,
+        snapshotOnly:!!(options && options.snapshotOnly),
+        requestId:options && options.requestId,
         layout:{
           left: left,
           top: top,
@@ -2465,10 +2477,12 @@
     }catch(_){ }
   }
 
-  function postAllProductLayouts(){
+  function postAllProductLayouts(options){
     try{
       var zone = getProductZone(); if(!zone) return;
-      Array.from(zone.querySelectorAll('.bn-prod-box')).forEach(postProductLayout);
+      Array.from(zone.querySelectorAll('.bn-prod-box')).forEach(function(box){
+        postProductLayout(box, options);
+      });
     }catch(_){ }
   }
 
