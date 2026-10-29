@@ -890,6 +890,9 @@
 
   function shouldInterceptClick(el){
     if(!el || allowNativeUploadOnce) return false;
+    /* 教學卡片／步驟選單會提到「背景圖、選擇、上傳」，但不是上傳入口。
+       capture click 不可把導覽文字或選單當作入口，否則離開圖庫步驟後又會開啟。 */
+    if(el.closest && el.closest('#shopee-tour-root,#shopee-tour-waiting,#shopee-tour-launch')) return false;
     /* 背景圖庫用 capture click 攔截「上傳背景圖」入口；
        但雙欄背景視窗裡的橫式／直式 file input 必須放行。
        否則點直式 input 時，這裡會再次把背景圖庫打開，造成重複出現。 */
