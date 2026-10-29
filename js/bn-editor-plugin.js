@@ -342,6 +342,14 @@
           product.layouts[key] = cloned;
           broadcastTo(key, {type:'bn-product-layout-apply', id:product.id, layout:cloned});
         });
+        ['_bnCharacter','_bnCharacter2'].forEach(function(slotKey){
+          var slot=window[slotKey];if(!slot)return;
+          if(!slot.layouts)slot.layouts={};
+          var ref=findLockedProductLayout(slot,key),sourceId=ref?ref.id:key,layout=ref?ref.layout:slot.layouts[key];
+          if(!layout)return;
+          var cloned=productLayoutForTarget(layout,sourceId,key);slot.layouts[key]=cloned;
+          broadcastTo(key,{type:'bn-character-layout-apply',id:slot.id,layout:cloned});
+        });
       }
       if(typeof window._bnRefreshProductLayoutLockUI === 'function'){
         window._bnRefreshProductLayoutLockUI();
@@ -350,16 +358,16 @@
     }
     window._bnIsProductLayoutLocked = productLayoutIsLocked;
     window._bnSetProductLayoutLock = setProductLayoutLock;
-    /* 人物圖比照商品：同一版位只差「方/橫」時，拖曳/縮放的位置大小會即時同步到配對版位。
-       slotKey 指定是哪一個人物欄位('_bnCharacter' 或 '_bnCharacter2')。 */
+    /* 人物1、人物2共用畫布右上角的鎖鏈；只同步已鎖定且允許連動的版位。 */
     function syncCharacterLayoutToPairs(slotKey, sourceBnid, layout){
       var slot = window[slotKey];
-      if(!slot || !layout) return;
-      var pairIds = getPairedLayoutIds(sourceBnid);
+      if(!slot || !layout || !productLayoutSyncEligible(sourceBnid) || !productLayoutIsLocked(sourceBnid)) return;
+      var pairIds = getProductSyncLayoutIds();
       if(!pairIds.length) return;
       if(!slot.layouts) slot.layouts = {};
       pairIds.forEach(function(tid){
-        var cloned = JSON.parse(JSON.stringify(layout));
+        if(String(tid)===String(sourceBnid)||!productLayoutIsLocked(tid))return;
+        var cloned = productLayoutForTarget(layout,sourceBnid,tid);
         slot.layouts[tid] = cloned;
         broadcastTo(tid, {type:'bn-character-layout-apply', id:slot.id, layout:cloned});
       });
@@ -522,7 +530,8 @@
         if(!slot.layouts) slot.layouts = {};
         var ckey = d.bnid ? String(d.bnid) : 'default';
         slot.layouts[ckey] = d.layout;
-        if(!isLayoutSnapshotUpdate(d)) syncCharacterLayoutToPairs(slotKey, ckey, d.layout);
+        if(isLayoutSnapshotUpdate(d))return;
+        syncCharacterLayoutToPairs(slotKey, ckey, d.layout);
         markStateDirty();
         return;
       }
@@ -1229,7 +1238,9 @@
           if(!noImageBg && st.src && st.src !== '__BN_IDB__') hasSrc = true;
           out[id] = {
             src: (!noImageBg && st.src && st.src !== '__BN_IDB__') ? st.src : null,
-            fit: st.fit || 'cover',
+            fit: st.fit || 'auto',
+            sizeBasis: st.sizeBasis || 'width',
+            positionMode: st.positionMode || 'legacy',
             scale: st.scale !== undefined ? st.scale : 100,
             x: st.x !== undefined ? st.x : 50,
             y: st.y !== undefined ? st.y : 50,
@@ -1245,7 +1256,7 @@
             var id = getIfrBnid(ifrEl);
             if(!id) return;
             if(isNoImageBackgroundLayout(id, ifrEl)) return;
-            out[id] = out[id] || (function(){ var _dp=getDefaultBgParamsForLayout(id, ifrEl); return {fit:_dp.fit,scale:_dp.scale,x:_dp.x,y:_dp.y,_initialized:true}; })();
+            out[id] = out[id] || (function(){ var _dp=getDefaultBgParamsForLayout(id, ifrEl); return {fit:_dp.fit,sizeBasis:_dp.sizeBasis||'width',positionMode:'legacy',scale:_dp.scale,x:_dp.x,y:_dp.y,_initialized:true}; })();
             out[id].src = window._bgDataUrl;
             out[id].fit = out[id].fit || 'auto';
             out[id].scale = out[id].scale !== undefined ? out[id].scale : 100;
@@ -1282,10 +1293,12 @@
             if(src) hasRealSrc = true;
             _bgStates[id] = {
               src: src,
-              fit: st.fit || prev.fit || 'cover',
+              fit: st.fit || prev.fit || 'auto',
+              sizeBasis: st.sizeBasis || prev.sizeBasis || 'width',
+              positionMode: st.positionMode || (st.src === '__BN_IDB__' ? prev.positionMode : '') || 'legacy',
               scale: st.scale !== undefined ? parseInt(st.scale,10) : (prev.scale !== undefined ? prev.scale : 100),
-              x: st.x !== undefined ? parseInt(st.x,10) : (prev.x !== undefined ? prev.x : 50),
-              y: st.y !== undefined ? parseInt(st.y,10) : (prev.y !== undefined ? prev.y : 50),
+              x: st.x !== undefined ? parseFloat(st.x) : (prev.x !== undefined ? prev.x : 50),
+              y: st.y !== undefined ? parseFloat(st.y) : (prev.y !== undefined ? prev.y : 50),
               slab: !!st.slab,
               _initialized: st._initialized !== false
             };
@@ -1297,7 +1310,7 @@
             var id = getIfrBnid(ifrEl);
             if(!id) return;
             if(isNoImageBackgroundLayout(id, ifrEl)) return;
-            _bgStates[id] = _bgStates[id] || (function(){ var _dp=getDefaultBgParamsForLayout(id, ifrEl); return {fit:_dp.fit,scale:_dp.scale,x:_dp.x,y:_dp.y,_initialized:true}; })();
+            _bgStates[id] = _bgStates[id] || (function(){ var _dp=getDefaultBgParamsForLayout(id, ifrEl); return {fit:_dp.fit,sizeBasis:_dp.sizeBasis||'width',positionMode:'legacy',scale:_dp.scale,x:_dp.x,y:_dp.y,_initialized:true}; })();
             _bgStates[id].src = window._bgDataUrl;
           });
         }
@@ -1310,7 +1323,7 @@
       }
 
       function getBgState(id){
-        if(!_bgStates[id]) _bgStates[id] = {src:null,fit:'cover',scale:100,x:50,y:50};
+        if(!_bgStates[id]) _bgStates[id] = {src:null,fit:'auto',sizeBasis:'width',positionMode:'legacy',scale:100,x:50,y:50};
         return _bgStates[id];
       }
 
@@ -1369,7 +1382,7 @@
           return;
         }
         try{ ifrEl.contentWindow.postMessage(
-          {type:'bn-bg', src:src||null, fit:st.fit, scale:st.scale, x:st.x, y:st.y}, '*');
+          {type:'bn-bg', src:src||null, fit:st.fit, sizeBasis:st.sizeBasis, positionMode:st.positionMode, scale:st.scale, x:st.x, y:st.y}, '*');
         }catch(_){}
       }
 
@@ -1543,10 +1556,22 @@
       function updateFitBtns(panelEl, fitVal){
         if(!panelEl) return;
         panelEl.querySelectorAll('[data-fit]').forEach(function(btn){
-          var active = btn.dataset.fit === fitVal;
+          var active = btn.dataset.fit === fitVal || btn.dataset.fit === 'auto' && fitVal !== 'cover';
           btn.style.background = active ? '#1f6feb' : 'rgba(255,255,255,.06)';
           btn.style.color = active ? '#fff' : '#8b9dbf';
         });
+      }
+
+      var bgNaturalCache={};
+      function getBgNatural(src){
+        if(!bgNaturalCache[src])bgNaturalCache[src]=loadImg(src).then(function(image){return {w:image.naturalWidth||image.width,h:image.naturalHeight||image.height};}).catch(function(error){delete bgNaturalCache[src];throw error;});
+        return bgNaturalCache[src];
+      }
+      function getBgContainerSize(ifrEl,image){
+        var el=null;try{var doc=ifrEl.contentDocument;el=doc&&(doc.querySelector('.背景色,.bg')||doc.getElementById('canvas'));}catch(_){}
+        var css=el&&el.ownerDocument.defaultView.getComputedStyle(el);
+        return {w:el&&(el.clientWidth||parseFloat(css.width))||parseFloat(ifrEl.style.width)||ifrEl.width||image.w,
+          h:el&&(el.clientHeight||parseFloat(css.height))||parseFloat(ifrEl.style.height)||ifrEl.height||image.h};
       }
 
       /* 建立每個 preview-block 右側的背景圖控制面板 */
@@ -1596,15 +1621,15 @@
           panel.innerHTML = [
             '<div style="font-weight:700;margin-bottom:6px;color:#dde3f0">背景圖調整</div>',
             '<div style="display:flex;gap:3px;margin-bottom:6px">',
-            '  <button data-fit="cover"   style="flex:1;padding:3px;border-radius:4px;border:none;cursor:pointer;font-size:9px">填滿</button>',
             '  <button data-fit="auto"    style="flex:1;padding:3px;border-radius:4px;border:none;cursor:pointer;font-size:9px">原尺寸</button>',
+            '  <button data-fit="cover"   style="flex:1;padding:3px;border-radius:4px;border:none;cursor:pointer;font-size:9px">填滿</button>',
             '</div>',
             '<div style="margin-bottom:2px">縮放 <span class="bg-scale-val">100%</span></div>',
-            '<input type="range" class="bg-scale" min="0" max="700" value="100" style="width:100%;margin-bottom:4px">',
-            '<div style="margin-bottom:2px">水平位置 <span class="bg-x-val">50</span></div>',
-            '<input type="range" class="bg-x" min="-100" max="200" value="50" style="width:100%;margin-bottom:4px">',
-            '<div style="margin-bottom:2px">垂直位置 <span class="bg-y-val">50</span></div>',
-            '<input type="range" class="bg-y" min="-100" max="200" value="50" style="width:100%">',
+            '<input type="range" class="bg-scale" min="1" max="700" value="100" aria-label="以圖片中心縮放背景" style="width:100%;margin-bottom:4px">',
+            '<div style="margin-bottom:3px">水平位置 <span class="bg-x-val">0%</span></div>',
+            '<div style="display:flex;gap:6px;margin-bottom:6px"><button type="button" class="bg-nudge" data-axis="x" data-delta="-1" aria-label="背景向左" title="向左移 1%，Shift 加速" style="flex:1">←</button><button type="button" class="bg-nudge" data-axis="x" data-delta="1" aria-label="背景向右" title="向右移 1%，Shift 加速" style="flex:1">→</button></div>',
+            '<div style="margin-bottom:3px">垂直位置 <span class="bg-y-val">0%</span></div>',
+            '<div style="display:flex;gap:6px"><button type="button" class="bg-nudge" data-axis="y" data-delta="-1" aria-label="背景向上" title="向上移 1%，Shift 加速" style="flex:1">↑</button><button type="button" class="bg-nudge" data-axis="y" data-delta="1" aria-label="背景向下" title="向下移 1%，Shift 加速" style="flex:1">↓</button></div>',
           ].join('');
 
           /* 事件 */
@@ -1615,58 +1640,43 @@
           }
           function updateSliderState(fitVal){
             var scaleEl = panel.querySelector('.bg-scale');
-            var xEl     = panel.querySelector('.bg-x');
-            var yEl     = panel.querySelector('.bg-y');
-            /* SLAB 底圖不吃 fit（有自己的 DRED 對齊規則），三個滑桿一律可用 */
-            if(getBgState(id).slab){
-              setSlider(scaleEl, false);
-              setSlider(xEl, false);
-              setSlider(yEl, false);
-              return;
-            }
-            if(fitVal === 'auto'){
-              /* 原尺寸：三個都可用 */
-              setSlider(scaleEl, false);
-              setSlider(xEl, false);
-              setSlider(yEl, false);
-            } else if(fitVal === 'cover'){
-              /* 填滿：圖片裁切填滿，水平/垂直可移動裁切位置，縮放無效 */
-              setSlider(scaleEl, true);
-              setSlider(xEl, false);
-              setSlider(yEl, false);
-}
+            setSlider(scaleEl, !getBgState(id).slab && /^(cover|contain)$/.test(fitVal));
+            panel.querySelectorAll('.bg-nudge').forEach(function(button){setSlider(button,false);});
+          }
+
+          function editBackground(update){
+            var st=getBgState(id),src=st.src;
+            function commit(){if(getBgState(id)!==st||st.src!==src)return;update(st);st._initialized=true;syncPanelValues();bgBroadcastOne(id);markStateDirty();}
+            if(st.slab||st.positionMode==='center'){commit();return;}
+            if(Number(st.x)===50&&Number(st.y)===50){st.positionMode='center';commit();return;}
+            /* 舊存檔先換算成同一個視覺中心，才切換新的位移單位，避免第一次調整跳位。 */
+            getBgNatural(src).then(function(image){
+              if(getBgState(id)!==st||st.src!==src)return;
+              if(st.positionMode!=='center'){
+                var size=getBgContainerSize(ifrEl,image),iw,ih,factor;
+                if(st.fit==='cover'||st.fit==='contain'){factor=(st.fit==='cover'?Math.max:Math.min)(size.w/image.w,size.h/image.h);iw=image.w*factor;ih=image.h*factor;}
+                else if(st.fit==='height100'||st.fit==='auto'&&st.sizeBasis==='height'){ih=size.h*st.scale/100;iw=ih*image.w/image.h;}
+                else{iw=size.w*st.scale/100;ih=iw*image.h/image.w;}
+                st.x=50+(Number(st.x)-50)*(1-iw/size.w);st.y=50+(Number(st.y)-50)*(1-ih/size.h);st.positionMode='center';
+              }
+              commit();
+            }).catch(function(error){console.warn('[bn-editor] 無法讀取背景尺寸，保留原構圖',error);});
           }
 
           panel.querySelectorAll('[data-fit]').forEach(function(btn){
             btn.addEventListener('click', function(){
-              getBgState(id).fit = btn.dataset.fit;
-              updateFitBtns(panel, btn.dataset.fit);
-              updateSliderState(btn.dataset.fit);
-              bgBroadcastOne(id);
-              markStateDirty();
+              editBackground(function(st){if(btn.dataset.fit==='auto'&&st.fit==='height100')st.sizeBasis='height';st.fit=btn.dataset.fit;});
             });
           });
           panel.querySelector('.bg-scale').addEventListener('input', function(){
-            var v = parseInt(this.value);
-            getBgState(id).scale = v;
-            panel.querySelector('.bg-scale-val').textContent = v + '%';
-            bgBroadcastOne(id);
-            markStateDirty();
+            if(this.disabled)return;
+            var v = Math.max(1,Math.min(700,parseInt(this.value)||100));
+            editBackground(function(st){st.scale=v;});
           });
-          panel.querySelector('.bg-x').addEventListener('input', function(){
-            var v = parseInt(this.value);
-            getBgState(id).x = v;
-            panel.querySelector('.bg-x-val').textContent = v;
-            bgBroadcastOne(id);
-            markStateDirty();
-          });
-          panel.querySelector('.bg-y').addEventListener('input', function(){
-            var v = parseInt(this.value);
-            getBgState(id).y = v;
-            panel.querySelector('.bg-y-val').textContent = v;
-            bgBroadcastOne(id);
-            markStateDirty();
-          });
+          panel.querySelectorAll('.bg-nudge').forEach(function(button){button.addEventListener('click',function(event){
+            var axis=button.dataset.axis,delta=Number(button.dataset.delta)*(event.shiftKey?5:1);
+            editBackground(function(st){st[axis]=Math.max(-100,Math.min(200,Number(st[axis])+delta));});
+          });});
 
           /* 面板的滑桿一定要跟目前實際套用的 scale/x/y 同步，不能一直停在
              HTML 寫死的 100/50/50——不然使用者滑動之前看到的數字，
@@ -1675,20 +1685,12 @@
           function syncPanelValues(){
             var st = getBgState(id);
             var scaleEl2 = panel.querySelector('.bg-scale');
-            var xEl2 = panel.querySelector('.bg-x');
-            var yEl2 = panel.querySelector('.bg-y');
             if(scaleEl2 && st.scale !== undefined){
               scaleEl2.value = st.scale;
               panel.querySelector('.bg-scale-val').textContent = st.scale + '%';
             }
-            if(xEl2 && st.x !== undefined){
-              xEl2.value = st.x;
-              panel.querySelector('.bg-x-val').textContent = st.x;
-            }
-            if(yEl2 && st.y !== undefined){
-              yEl2.value = st.y;
-              panel.querySelector('.bg-y-val').textContent = st.y;
-            }
+            panel.querySelector('.bg-x-val').textContent = Math.round((Number(st.x)-50)*10)/10+'%';
+            panel.querySelector('.bg-y-val').textContent = Math.round((Number(st.y)-50)*10)/10+'%';
             updateFitBtns(panel, st.fit || 'auto');
             updateSliderState(st.fit || 'auto');
           }
@@ -1704,6 +1706,7 @@
             if(!thumb || !thumb.src) return;
             clearTimeout(_hideTimer);
             syncPanelValues();
+            if(!getBgState(id).slab)getBgNatural(getBgState(id).src).catch(function(){});
             panel.style.display = 'block';
             updatePanelPos();
           }
@@ -1807,19 +1810,9 @@
 
 
       function getDefaultBgFitForLayout(id, ifrEl){
-        /* SCBN_APP 這個版位畫布是 1200x200 的長條形（很寬很扁）。
-           改用「auto」模式，才能搭配下面的縮放160%、位置微調一起運作——
-           「cover」模式雖然能保證自動填滿無留白，但完全不支援手動縮放數值
-           （縮放滑桿在 cover 模式下沒有作用），沒辦法達成「縮放160%＋往右移」
-           這種需要同時控制縮放和位置的需求，所以改回 auto。
-           注意：auto 模式縮放到多少才會完全填滿沒有留白，取決於上傳圖片
-           本身的長寬比，160% 不是每張圖都保證填滿——如果換了一張比例差很多
-           的圖又出現留白，麻煩告訴我，可以再調整這個預設縮放值。 */
-        try{
-          var srcName = ifrEl && ifrEl.src ? String(ifrEl.src) : '';
-          if(/SCBN_APP/i.test(srcName) || /SCBN_APP/i.test(String(id||''))) return 'auto';
-        }catch(_){ }
-        return getBgLayoutOrientation(id, ifrEl) === 'horizontal' ? 'height100' : 'width100';
+        /* 一般背景預設原尺寸；橫／直版原有的縮放基準另存在 sizeBasis，
+           保留初始構圖，同時讓面板的縮放與方向箭頭可直接操作。 */
+        return 'auto';
       }
 
       /* SCBN_APP 專屬預設值：縮放 160%，位置在縮放 160% 的基礎上，
@@ -1890,7 +1883,7 @@
              垂直位置沿用一般預設 50。 */
           return { fit: fit, scale: 121, x: 58, y: 50 };
         }
-        return { fit: fit, scale: 100, x: 50, y: 50 };
+        return { fit: fit, sizeBasis:getBgLayoutOrientation(id, ifrEl)==='horizontal'?'height':'width', scale: 100, x: 50, y: 50 };
       }
       /* 暴露給 bn-bg-library-plugin.js（背景圖庫）共用：
          圖庫套用背景圖是完全獨立的另一支檔案，原本自己複製了一份
@@ -1918,7 +1911,7 @@
           st.slab = false;
           if(!st._initialized){
             var _dp = getDefaultBgParamsForLayout(id, ifrEl);
-            st.scale = _dp.scale; st.x = _dp.x; st.y = _dp.y; st.fit = _dp.fit;
+            st.scale = _dp.scale; st.x = _dp.x; st.y = _dp.y; st.fit = _dp.fit; st.sizeBasis=_dp.sizeBasis||'width';st.positionMode='legacy';
             st._initialized = true;
           }
         });
@@ -2023,7 +2016,7 @@
               /* 只有第一次上傳才重設位置，已有設定則保留 */
               if(!st._initialized){
                 var _dp2 = getDefaultBgParamsForLayout(id, ifrEl);
-                st.scale = _dp2.scale; st.x = _dp2.x; st.y = _dp2.y; st.fit = _dp2.fit;
+                st.scale = _dp2.scale; st.x = _dp2.x; st.y = _dp2.y; st.fit = _dp2.fit;st.sizeBasis=_dp2.sizeBasis||'width';st.positionMode='legacy';
                 st._initialized = true;
               }
             });
@@ -2142,6 +2135,14 @@
 
     /* 教學專用：使用真正的第二頁與 renderRankRow，但不套用、不重建商品。
        使用獨立的暫存資料／排序容器；離開時連原有 DOM 與事件一起還原。 */
+    function productOptionsDemoItems(){
+      var art=[
+        {id:'tour-speaker',name:'藍色喇叭',body:'<rect x="44" y="24" width="112" height="198" rx="24" fill="#83b6e4" stroke="#d1e7fa" stroke-width="3"/><rect x="54" y="72" width="92" height="128" rx="15" fill="#355775"/><circle cx="100" cy="111" r="23" fill="#182e43" stroke="#7496b3" stroke-width="6"/><circle cx="100" cy="166" r="23" fill="#182e43" stroke="#7496b3" stroke-width="6"/><circle cx="100" cy="48" r="10" fill="#eff6fc"/>'},
+        {id:'tour-headphones',name:'橘色耳機',body:'<path d="M42 139V96a58 58 0 0 1 116 0v43" fill="none" stroke="#edb482" stroke-width="22"/><path d="M42 139V96a58 58 0 0 1 116 0v43" fill="none" stroke="#ffdbb9" stroke-width="9"/><rect x="23" y="116" width="43" height="89" rx="19" fill="#dd8650" stroke="#ffdbb9" stroke-width="3"/><rect x="134" y="116" width="43" height="89" rx="19" fill="#dd8650" stroke="#ffdbb9" stroke-width="3"/><path d="M62 133v55M138 133v55" stroke="#754a38" stroke-width="8" stroke-linecap="round"/>'},
+        {id:'tour-bottle',name:'紫色保養瓶',body:'<rect x="75" y="15" width="50" height="54" rx="7" fill="#e9def4"/><path d="M78 18h44v7H78z" fill="#bca0d9"/><rect x="54" y="64" width="92" height="158" rx="21" fill="#b397d7" stroke="#e9def4" stroke-width="3"/><path d="M67 88v99" stroke="#f3ebff" stroke-width="7" stroke-linecap="round" opacity=".5"/><rect x="66" y="117" width="68" height="64" rx="4" fill="#f8f1ff"/><path d="M82 138h36M87 150h26M91 162h18" stroke="#8a6baa" stroke-width="4" stroke-linecap="round"/>'}
+      ];
+      return art.map(function(item){return {id:item.id,name:item.name,ratio:200/240,src:'data:image/svg+xml;charset=utf-8,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="200" height="240" viewBox="0 0 200 240">'+item.body+'</svg>')};});
+    }
     function closeProductOptionsTour(){
       var saved=productOptionsTourState;if(!saved)return;
       productOptionsTourState=null;
@@ -2152,29 +2153,44 @@
         view.attrs.forEach(function(attr){if(attr.value===null)view.el.removeAttribute(attr.name);else view.el.setAttribute(attr.name,attr.value);});
         if(view.text!==null)view.el.textContent=view.text;
       });
+      if(saved.intro)saved.intro.el.innerHTML=saved.intro.html;
+      if(saved.hint)saved.hint.el.textContent=saved.hint.text;
+      if(saved.parent&&modal.parentNode!==saved.parent)saved.parent.insertBefore(modal,saved.next&&saved.next.parentNode===saved.parent?saved.next:null);
       saved.scrolls.forEach(function(scroll){scroll.el.scrollTop=scroll.top;scroll.el.scrollLeft=scroll.left;});
     }
-    function openProductOptionsTour(){
+    function openProductOptionsTour(options){
       if(productOptionsTourState||window._bnExporting||window._bnStateDownloading)return null;
+      var interactive=!!(options&&options.interactiveDemo),host=interactive&&options.host;
+      if(interactive&&(!host||host!==document.getElementById('shopee-tour-root')||!host.isConnected))return null;
       if(!modal)buildModal();
       if(!modal||modal.classList.contains('show'))return null;
       var row=document.getElementById('bn-rrow');if(!row)return null;
       var views=[modal].concat(['bn-sc1','bn-sc2','bn-st1','bn-st2','bn-mback','bn-mnext','bn-mskip','bn-mfinp','bn-mc'].map(function(id){return document.getElementById(id);}));
       if(views.some(function(el){return !el;}))return null;
       var saved={staged:staged,heroIdx:heroIdx,rankOrder:rankOrder,currentStep:currentStep,dragSrc:dragSrc,
+        interactive:interactive,parent:modal.parentNode,next:modal.nextSibling,
         row:row,previewRow:row.cloneNode(false),events:['click','change','input','drop','dragstart','dragover'],
         views:views.map(function(el){return {el:el,text:/^(bn-mnext|bn-mskip)$/.test(el.id)?el.textContent:null,
           attrs:['class','style','hidden','disabled','inert','aria-hidden','data-bn-product-tour'].map(function(name){return {name:name,value:el.getAttribute(name)};})};}),
         scrolls:Array.from(modal.querySelectorAll('.bn-modal-body')).map(function(el){return {el:el,top:el.scrollTop,left:el.scrollLeft};})};
-      saved.blockInput=function(event){event.preventDefault();event.stopImmediatePropagation();};
+      saved.blockInput=function(event){
+        if(interactive&&saved.previewRow.contains(event.target)&&/^(click|dragstart|dragover|drop)$/.test(event.type))return;
+        event.preventDefault();event.stopImmediatePropagation();
+      };
       productOptionsTourState=saved;
       try{
         row.parentNode.replaceChild(saved.previewRow,row);
-        staged=(window._bnProducts||[]).slice().sort(function(a,b){return (a.position||0)-(b.position||0);}).slice(0,MAX_PROD).map(function(p){
+        staged=interactive?productOptionsDemoItems():(window._bnProducts||[]).slice().sort(function(a,b){return (a.position||0)-(b.position||0);}).slice(0,MAX_PROD).map(function(p){
           return {src:p.src,name:p.name,ratio:p.ratio,fromExisting:true,id:p.id};
         });
         heroIdx=0;rankOrder=null;dragSrc=null;
         showStep(2);
+        if(interactive){
+          var intro=document.getElementById('bn-sc2').firstElementChild,hint=document.getElementById('bn-sc2').querySelector('.bn-rank-hint');
+          if(intro){saved.intro={el:intro,html:intro.innerHTML};intro.innerHTML='・<b style="color:#dde3f0">中間 = 最大主品，圖層在最下面</b><br>・拖曳任一示範商品到另一張上，即可互換位置<br>・只調整教學示範，不會套用到正式商品';}
+          if(hint){saved.hint={el:hint,text:hint.textContent};hint.textContent='試試滑鼠拖曳換位；也可用左右箭頭。中間始終是較大的主品。';}
+          host.appendChild(modal);modal.removeAttribute('inert');modal.removeAttribute('aria-hidden');
+        }
         if(!staged.length){
           var empty=document.createElement('div');empty.className='bn-rank-hint';
           empty.textContent='尚未上傳商品；上傳後，這裡會顯示商品的大小比例與左右排序。';
@@ -2182,13 +2198,13 @@
         }
         ['bn-mnext','bn-mskip','bn-mback','bn-st1','bn-st2','bn-mfinp','bn-mc'].forEach(function(id){document.getElementById(id).disabled=true;});
         saved.events.forEach(function(type){modal.addEventListener(type,saved.blockInput,true);});
-        modal.setAttribute('inert','');modal.setAttribute('aria-hidden','true');
-        modal.setAttribute('data-bn-product-tour','true');modal.classList.add('show');
-        return {element:modal,panel:modal.querySelector('.bn-modal-box'),count:staged.length,
+        if(!interactive){modal.setAttribute('inert','');modal.setAttribute('aria-hidden','true');}
+        modal.setAttribute('data-bn-product-tour',interactive?'interactive':'true');modal.classList.add('show');
+        return {element:modal,panel:modal.querySelector('.bn-modal-box'),count:staged.length,interactive:interactive,
           close:function(){if(productOptionsTourState===saved)closeProductOptionsTour();}};
       }catch(error){closeProductOptionsTour();throw error;}
     }
-    window.BNProductOptionsTour={version:'20261029-1',open:openProductOptionsTour,close:closeProductOptionsTour,
+    window.BNProductOptionsTour={version:'20261029-2',open:openProductOptionsTour,close:closeProductOptionsTour,
       isOpen:function(){return !!productOptionsTourState;}};
 
     function handleFiles(files){
@@ -2275,6 +2291,11 @@
     function renderRankRow(){
       var row=document.getElementById('bn-rrow');
       if(!row)return;
+      var demoMode=!!(productOptionsTourState&&productOptionsTourState.interactive);
+      if(demoMode){
+        var fresh=row.cloneNode(false);row.parentNode.replaceChild(fresh,row);row=fresh;productOptionsTourState.previewRow=row;
+      }
+      function currentDemo(){return !demoMode||productOptionsTourState&&productOptionsTourState.previewRow===row;}
       row.innerHTML='';
       var roles = rankRoleMap(rankOrder.length);
       var roleLabels  = {hero:'中間主品（最下面）', left:'左側配品', right:'右側配品'};
@@ -2290,21 +2311,23 @@
 
         var card=document.createElement('div');
         card.className='bn-rank-card'; card.dataset.pos=pos; card.draggable=true;
+        if(demoMode)card.dataset.tourProduct=item.id;
 
         var wrap=document.createElement('div');
         wrap.className='bn-rank-img-wrap'; wrap.style.cssText='width:'+w+'px;height:'+h+'px;';
         var img=document.createElement('img');
         img.src=item.src; img.style.cssText='height:'+h+'px;width:auto;max-width:'+w+'px;';
+        if(demoMode){img.draggable=false;img.alt=item.name+'（教學示範）';}
         wrap.appendChild(img);
 
         if(pos>0){
           var al=document.createElement('button');al.className='bn-rank-arrow left-arr';al.textContent='‹';al.title='往左移';
-          al.addEventListener('click',function(e){e.stopPropagation();var t=rankOrder[pos];rankOrder[pos]=rankOrder[pos-1];rankOrder[pos-1]=t;renderRankRow();});
+          al.addEventListener('click',function(e){e.stopPropagation();if(!currentDemo())return;var t=rankOrder[pos];rankOrder[pos]=rankOrder[pos-1];rankOrder[pos-1]=t;renderRankRow();});
           wrap.appendChild(al);
         }
         if(pos<rankOrder.length-1){
           var ar=document.createElement('button');ar.className='bn-rank-arrow right-arr';ar.textContent='›';ar.title='往右移';
-          ar.addEventListener('click',function(e){e.stopPropagation();var t=rankOrder[pos];rankOrder[pos]=rankOrder[pos+1];rankOrder[pos+1]=t;renderRankRow();});
+          ar.addEventListener('click',function(e){e.stopPropagation();if(!currentDemo())return;var t=rankOrder[pos];rankOrder[pos]=rankOrder[pos+1];rankOrder[pos+1]=t;renderRankRow();});
           wrap.appendChild(ar);
         }
         card.appendChild(wrap);
@@ -2312,7 +2335,7 @@
         var nameEl=document.createElement('div');nameEl.className='bn-rank-name';nameEl.textContent=item.name;card.appendChild(nameEl);
         var tagEl=document.createElement('div');tagEl.className='bn-rank-tag '+role;tagEl.textContent=roleLabels[role]||'配品';card.appendChild(tagEl);
 
-        card.addEventListener('dragstart',function(e){dragSrc=+card.dataset.pos;e.dataTransfer.effectAllowed='move';setTimeout(function(){card.classList.add('dragging');},0);});
+        card.addEventListener('dragstart',function(e){if(!currentDemo())return;dragSrc=+card.dataset.pos;e.dataTransfer.effectAllowed='move';if(demoMode)e.dataTransfer.setData('text/plain',item.id);setTimeout(function(){card.classList.add('dragging');},0);});
         card.addEventListener('dragend',function(){card.classList.remove('dragging');hideLine();dragSrc=null;});
         row.appendChild(card);
       });
@@ -2322,9 +2345,15 @@
       function hideLine(){line.style.display='none';}
       function getInsertIdx(cx){var cards=Array.from(row.querySelectorAll('.bn-rank-card'));for(var i=0;i<cards.length;i++){var r=cards[i].getBoundingClientRect();if(cx<r.left+r.width*.5)return i;}return cards.length;}
       function showLine(cx){var cards=Array.from(row.querySelectorAll('.bn-rank-card'));var rr=row.getBoundingClientRect();var idx=getInsertIdx(cx);var lx;if(!cards.length){lx=0;}else if(idx===0){lx=cards[0].getBoundingClientRect().left-rr.left-8;}else if(idx>=cards.length){lx=cards[cards.length-1].getBoundingClientRect().right-rr.left+8;}else{lx=(cards[idx-1].getBoundingClientRect().right+cards[idx].getBoundingClientRect().left)/2-rr.left;}line.style.left=Math.round(lx)+'px';line.style.display='block';}
-      row.addEventListener('dragover',function(e){if(dragSrc===null)return;e.preventDefault();showLine(e.clientX);});
+      row.addEventListener('dragover',function(e){if(!currentDemo()||dragSrc===null)return;e.preventDefault();showLine(e.clientX);});
       row.addEventListener('dragleave',function(e){if(!row.contains(e.relatedTarget))hideLine();});
-      row.addEventListener('drop',function(e){e.preventDefault();hideLine();if(dragSrc===null)return;var idx=getInsertIdx(e.clientX);var moved=rankOrder.splice(dragSrc,1)[0];if(idx>dragSrc)idx--;rankOrder.splice(idx,0,moved);dragSrc=null;renderRankRow();});
+      row.addEventListener('drop',function(e){
+        e.preventDefault();hideLine();if(!currentDemo()||dragSrc===null)return;
+        var target=demoMode&&e.target.closest&&e.target.closest('.bn-rank-card');
+        if(target&&row.contains(target)){var to=+target.dataset.pos,temp=rankOrder[dragSrc];rankOrder[dragSrc]=rankOrder[to];rankOrder[to]=temp;}
+        else{var idx=getInsertIdx(e.clientX);var moved=rankOrder.splice(dragSrc,1)[0];if(idx>dragSrc)idx--;rankOrder.splice(idx,0,moved);}
+        dragSrc=null;renderRankRow();
+      });
     }
 
     function showStep(n){

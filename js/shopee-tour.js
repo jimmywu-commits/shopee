@@ -1,7 +1,7 @@
 (function () {
   'use strict';
   if (window.ShopeeTour) return;
-  var VERSION = '20261029-6';
+  var VERSION = '20261029-7';
     var ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.8 8.5a2.5 2.5 0 0 1 4.7 1.2c0 1.8-2.5 2-2.5 3.8M12 17h.01"/></svg>';
   var POINTER = '<svg viewBox="0 0 22 28" fill="currentColor" stroke="#111111" stroke-width="1" aria-hidden="true"><path d="m3 2 16 14-8 1-4 8z"/></svg>';
   var FILE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M6 3h8l4 4v14H6zM14 3v5h5M9 12h6M9 16h6"/></svg>';
@@ -72,8 +72,8 @@
       text:'使用<b>上傳商品圖</b>加入素材，依上傳視窗確認圖片、相對大小與排列，再按確認套用到畫布。',
       tip:'操作前先確認商品圖與 LOGO 分別上傳到正確欄位。動畫是示意圖片，不會取代你的商品。',demo:'folder'},
     {id:'arrange',group:'上傳素材',liveOptions:true,target:['#bn-prod-open-btn','#bn-prod-list'],fallback:['#sidebar'],title:'確認左、中、右與前後順序',
-      text:'在商品排序步驟確認<b>左配品、主品、右配品</b>，主品預設在中間、位於後層。套用後可用商品清單的上下箭頭調整前後關係。',
-      tip:'此步會開啟實際商品選項視窗供教學展示；離開此步時關閉，不會按確認套用或變更商品排列。'},
+      text:'試著用滑鼠<b>拖曳三張示範商品互換位置</b>。中間固定是<b>較大的主品</b>、位於後層；商品換到中間時，會自動以主品比例放大。也可以用左右箭頭換位。',
+      tip:'此步只操作獨立示範圖；不論是否已上傳商品，都會有三張示範圖。離開時關閉，不會改動正式商品或確認套用。'},
     {id:'text',group:'文案與背景',target:['#field-main','#section-text'],title:'在左側編輯文案，右側即時預覽',
       text:'修改品牌名、主標、副標、日期等文字，各版位會依自己的規則呈現。欄位旁會提示字數；看到紅框或橘色內容提醒，請先處理再下載。',
       tip:'不同版位的字數／欄位不同；請依目前顯示的提示，不要為了排版自行加入不支援的換行。',demo:'text'},
@@ -86,11 +86,11 @@
     {id:'preview',group:'畫布編輯',target:['.preview-block','#preview-area'],title:'在右側逐張確認實際成品',
       text:'右側每個區塊是一張獨立版位，上方顯示尺寸與預覽比例。捲動畫布逐張檢查<b>文案、商品、LOGO、背景與 CTA</b>，不要只看第一張。',
       tip:'沒有勾選版位時會顯示空白提示；教學不會自動勾選或灌入測試素材。',demo:'exposure'},
-    {id:'transform',group:'畫布編輯',liveScreen:'image-editor',target:['#preview-area'],title:'在畫布中央認識實際圖片編輯器',
-      text:'商品在畫布可拖曳、用四角縮放與旋轉；需要<b>裁切、去背、橡皮擦或回復步驟</b>時，從商品清單按「編輯」。中央會展示真正的圖片編輯器與示範商品。',
-      tip:'示範圖只存在獨立教學畫面，不會加入商品清單，也不會修改正式商品的位置、大小或角度。'},
+    {id:'transform',group:'畫布編輯',liveScreen:'canvas-transform',target:['#preview-area'],title:'直接在畫布中央縮放與旋轉商品',
+      text:'不用開啟浮動編輯視窗。先<b>點選畫布中央的示範商品</b>，才會出現四角縮放點與旋轉圖示。拖商品可移動，拖四角可等比例縮放，拖上方把手可原地旋轉；點空白處則收起圖示。',
+      tip:'這裡框亮的是畫布上的商品與操作把手，不是圖片編輯視窗。示範圖不會加入正式商品，也不會改動原本的位置、大小或角度。'},
     {id:'linked',group:'畫布編輯',target:['.bn-layout-lock','.preview-block-head'],fallback:['#preview-area'],title:'用畫布右上角的鎖鏈控制連動',
-      text:'<b>鎖定時</b>，商品位置與大小會依各版位的有效商品區連動；<b>單張解鎖</b>後，可獨立調整這張，再按一次可重新加入連動。',
+      text:'<b>鎖定時</b>，商品與人物的位置、大小會依各版位的有效商品區連動；<b>單張解鎖</b>後，可獨立調整這張，再按一次可重新加入連動。',
       tip:'首頁 LOGO 牆、SearchICON_PRODUCT 維持各自規則，不加入這套商品位置連動。教學不會替你切換鎖定。',demo:'linked'},
     {id:'shadow',group:'畫布編輯',liveScreen:'shadow-editor',entryPoint:true,target:['#preview-area'],fallback:['#sidebar'],title:'商品陰影也可以獨立微調',
       text:'從左側商品清單按<b>影子</b>，或按<b>編輯 → 加 / 編輯影子</b>，即可進入右側示範的影子畫面。可調整光源方向、陰影位移、寬度、長度與顏色。',
@@ -112,15 +112,15 @@
   var pendingRoute='',waitingElement=null,waitingFocus=null,waitingTimer=0,idleTimer=0,launchObserver=null;
   var optionsPreview=null,optionsTimer=0;
   var livePreview=null,screenSources={},entryPreview=null;
-    /* 真實教學介面：背景圖庫使用原介面；圖片／影子使用隔離 frame 及原外掛。
-     隔離 frame 只有內建示範圖，不接收作品、字型、帳號或暫存資料。 */
+    /* 背景圖庫使用原介面；畫布直接示範商品把手，影子使用隔離 frame 與原外掛。
+     隔離示範只有內建商品，不會寫入作品、字型、帳號或暫存資料。 */
   function liveScreenTarget(){
     return livePreview&&livePreview.panel&&visible(livePreview.panel)?livePreview.panel:null;
   }
   function updateScreenNotice(){
     var note=root&&root.querySelector('.spt-screen-status');if(!note||!livePreview)return;
     var state=livePreview.state;if(note.dataset.status===state)return;note.dataset.status=state;
-    if(state==='ready')note.textContent=livePreview.kind==='backgrounds'?'已開啟真正的背景搜尋圖庫；教學不會選圖或套用。':'這是正式工具相同的真實編輯介面，已帶入獨立示範商品，不會影響你的作品。';
+    if(state==='ready')note.textContent=livePreview.kind==='backgrounds'?'已開啟真正的背景搜尋圖庫；教學不會選圖或套用。':livePreview.kind==='canvas-transform'?'可直接拖拉示範商品、四角縮放與上方旋轉把手；不會開啟浮動編輯器或修改作品。':'這是正式工具相同的真實編輯介面，已帶入獨立示範商品，不會影響你的作品。';
     else if(state==='error')note.innerHTML=html(livePreview.error||'無法載入實際介面，請確認外掛檔案存在並使用網頁伺服器開啟工具。')+'<br><button type="button" class="spt-secondary" data-action="screen">重新載入實際介面</button>';
     else note.textContent='正在載入實際介面與示範商品…';
   }
@@ -134,6 +134,7 @@
     var session=livePreview;if(!session)return;livePreview=null;session.closed=true;
     clearTimeout(session.timer);clearTimeout(session.timeout);
     if(session.listener)window.removeEventListener('message',session.listener);
+    if(session.dispose)session.dispose();
     if(session.kind==='backgrounds'&&session.element){
       try{if(window.BNBgLibrary&&typeof window.BNBgLibrary.close==='function')window.BNBgLibrary.close();}catch(_){}
       if(session.attributes)session.attributes.forEach(restoreScreenAttrs);
@@ -187,6 +188,83 @@
   function screenSampleSource(){
     return 'data:image/svg+xml;base64,'+window.btoa('<svg xmlns="http://www.w3.org/2000/svg" width="460" height="500" viewBox="0 0 460 500"><defs><linearGradient id="body" x1="0" x2="1"><stop stop-color="#94a7ba"/><stop offset=".23" stop-color="#e6eef5"/><stop offset=".55" stop-color="#fff"/><stop offset="1" stop-color="#9cafc1"/></linearGradient><linearGradient id="top" x2="0" y2="1"><stop stop-color="#e9f1f7"/><stop offset="1" stop-color="#778da5"/></linearGradient><pattern id="mesh" width="8" height="8" patternUnits="userSpaceOnUse"><circle cx="4" cy="4" r="1.35" fill="#74879b"/></pattern></defs><path d="M155 109v-28c0-45 150-45 150 0v28" fill="none" stroke="#899fb4" stroke-width="15"/><rect x="115" y="95" width="230" height="335" rx="55" fill="url(#body)" stroke="#71879b" stroke-width="2"/><ellipse cx="230" cy="110" rx="98" ry="22" fill="url(#top)"/><path d="M132 158q98-19 196 0v195q-98 28-196 0z" fill="#bdcbd8"/><path d="M132 158q98-19 196 0v195q-98 28-196 0z" fill="url(#mesh)"/><ellipse cx="230" cy="375" rx="86" ry="12" fill="#9bafc2"/><rect x="211" y="391" width="38" height="7" rx="3.5" fill="#263c50"/><circle cx="230" cy="123" r="5" fill="#ee4d2d"/><path d="M153 143v202" stroke="#fff" stroke-width="8" opacity=".34" stroke-linecap="round"/></svg>');
   }
+  /* 畫布操作只放一個暫時的商品／把手在原畫布區，不開任何編輯浮窗。
+     位置、比例、角度皆存在此 session，沒有商品廣播或暫存寫入。 */
+  function showCanvasTransform(session){
+    var mount=document.createElement('div');mount.className='spt-canvas-demo';
+    mount.innerHTML='<div class="spt-canvas-caption">畫布操作示範 · 不會修改作品 <span data-demo-angle>0°</span></div>'+
+      '<div class="spt-canvas-target" aria-hidden="true"></div><div class="spt-canvas-product" role="group" aria-label="可拖拉、縮放與旋轉的教學示範商品">'+
+      '<img alt="教學示範商品" draggable="false"><button type="button" data-demo-resize="nw" aria-label="拖曳左上角等比例縮放"></button><button type="button" data-demo-resize="ne" aria-label="拖曳右上角等比例縮放"></button>'+
+      '<button type="button" data-demo-resize="sw" aria-label="拖曳左下角等比例縮放"></button><button type="button" data-demo-resize="se" aria-label="拖曳右下角等比例縮放"></button>'+
+      '<i class="spt-canvas-stem" aria-hidden="true"></i><button type="button" data-demo-rotate aria-label="拖曳把手原地旋轉">↻</button></div>';
+    mount.querySelector('img').src=screenSampleSource();root.appendChild(mount);
+    session.mount=mount;session.panel=mount.querySelector('.spt-canvas-target');session.product=mount.querySelector('.spt-canvas-product');
+    session.value={x:.5,y:.55,scale:1,angle:0};session.gesture=null;session.state='ready';
+    session.product.dataset.selected='false';
+    var anchor=firstVisible(['.preview-block iframe','.preview-block-body','#preview-area']);
+    if(anchor){try{anchor.scrollIntoView({behavior:'instant',block:'nearest',inline:'nearest'});}catch(_){}}
+    function start(event){
+      if(session.closed||event.button!==undefined&&event.button!==0)return;
+      session.product.dataset.selected='true';paintCanvasTransform(session);scheduleLayout();
+      var resize=event.target.closest('[data-demo-resize]'),rotate=event.target.closest('[data-demo-rotate]');
+      var area=session.area,value=session.value,cx=area.left+value.x*area.width,cy=area.top+value.y*area.height;
+      session.gesture={id:event.pointerId,mode:resize?'scale':rotate?'rotate':'move',x:event.clientX,y:event.clientY,cx:cx,cy:cy,value:{x:value.x,y:value.y,scale:value.scale,angle:value.angle},distance:Math.hypot(event.clientX-cx,event.clientY-cy)||1,angle:Math.atan2(event.clientY-cy,event.clientX-cx)};
+      try{session.product.setPointerCapture(event.pointerId);}catch(_){}
+      event.preventDefault();event.stopPropagation();
+    }
+    function move(event){
+      var drag=session.gesture;if(!drag||session.closed||event.pointerId!==drag.id)return;
+      var value=session.value,area=session.area;
+      if(drag.mode==='move'){
+        value.x=clamp(drag.value.x+(event.clientX-drag.x)/area.width,.1,.9);value.y=clamp(drag.value.y+(event.clientY-drag.y)/area.height,.15,.85);
+      }else if(drag.mode==='scale')value.scale=clamp(drag.value.scale*Math.hypot(event.clientX-drag.cx,event.clientY-drag.cy)/drag.distance,.5,1.8);
+      else{
+        var delta=(Math.atan2(event.clientY-drag.cy,event.clientX-drag.cx)-drag.angle)*180/Math.PI;
+        if(delta>180)delta-=360;if(delta< -180)delta+=360;
+        value.angle=drag.value.angle+delta;if(event.shiftKey)value.angle=Math.round(value.angle/15)*15;
+      }
+      paintCanvasTransform(session);scheduleLayout();event.preventDefault();event.stopPropagation();
+    }
+    function end(event){
+      if(!session.gesture||event.pointerId!==session.gesture.id)return;
+      session.gesture=null;try{session.product.releasePointerCapture(event.pointerId);}catch(_){}
+      /* 放開時不重新計算座標，保持同一中心點，避免旋轉／縮放彈跳。 */
+      event.preventDefault();event.stopPropagation();
+    }
+    session.product.addEventListener('pointerdown',start);
+    function deselect(event){if(!session.product.contains(event.target)){session.product.dataset.selected='false';paintCanvasTransform(session);scheduleLayout();}}
+    window.addEventListener('pointerdown',deselect,true);
+    window.addEventListener('pointermove',move,true);window.addEventListener('pointerup',end,true);window.addEventListener('pointercancel',end,true);
+    session.dispose=function(){session.gesture=null;session.product.removeEventListener('pointerdown',start);window.removeEventListener('pointerdown',deselect,true);window.removeEventListener('pointermove',move,true);window.removeEventListener('pointerup',end,true);window.removeEventListener('pointercancel',end,true);};
+    placeCanvasTransform(session);updateScreenNotice();scheduleLayout();
+  }
+  function placeCanvasTransform(session){
+    if(session.closed||!session.mount)return;
+    var w=window.innerWidth,h=window.innerHeight,anchor=firstVisible(['.preview-block iframe','.preview-block-body']);
+    var area=anchor&&intersect(anchor.getBoundingClientRect(),{left:14,top:76,right:w-14,bottom:h-18});
+    if(!area||area.width<100||area.height<100){
+      var preview=document.getElementById('preview-area'),rect=preview&&preview.getBoundingClientRect();
+      var left=rect&&rect.left>0?rect.left+14:w>=900?402:14;
+      area={left:left,top:86,width:Math.max(100,w-left-18),height:Math.max(160,Math.min(h-130,w<900?250:430))};
+      session.mount.dataset.emptyCanvas='true';
+    }else session.mount.removeAttribute('data-empty-canvas');
+    session.area=area;
+    session.mount.style.left=area.left+'px';session.mount.style.top=area.top+'px';session.mount.style.width=area.width+'px';session.mount.style.height=area.height+'px';
+    paintCanvasTransform(session);
+  }
+  function paintCanvasTransform(session){
+    var area=session.area;if(!area)return;
+    var value=session.value,height=Math.min(240,area.height*.48,area.width*.42)*value.scale,width=height*460/500;
+    var x=area.width*value.x,y=area.height*value.y,angle=value.angle*Math.PI/180;
+    var box=session.product;box.style.left=x+'px';box.style.top=y+'px';box.style.width=width+'px';box.style.height=height+'px';box.style.transform='translate(-50%,-50%) rotate('+value.angle+'deg)';
+    box.dataset.angle=String(value.angle);box.dataset.scale=String(value.scale);session.mount.querySelector('[data-demo-angle]').textContent=Math.round(value.angle)+'°';
+    var corners=[[-width/2,-height/2],[width/2,-height/2],[-width/2,height/2],[width/2,height/2]];
+    if(box.dataset.selected==='true')corners.push([0,-height/2-32]);
+    var points=corners.map(function(p){return {x:x+p[0]*Math.cos(angle)-p[1]*Math.sin(angle),y:y+p[0]*Math.sin(angle)+p[1]*Math.cos(angle)};});
+    var left=Math.min.apply(null,points.map(function(p){return p.x;}))-12,top=Math.min.apply(null,points.map(function(p){return p.y;}))-12;
+    var right=Math.max.apply(null,points.map(function(p){return p.x;}))+12,bottom=Math.max.apply(null,points.map(function(p){return p.y;}))+12;
+    session.panel.style.left=left+'px';session.panel.style.top=top+'px';session.panel.style.width=(right-left)+'px';session.panel.style.height=(bottom-top)+'px';
+  }
   function screenFrameBootstrap(config){
     'use strict';
     var sent=false,started=Date.now();
@@ -224,6 +302,7 @@
   function showLiveScreen(kind){
     if(!kind||livePreview)return;
     var session=livePreview={kind:kind,state:'loading',closed:false,panel:null,element:null,mount:null,iframe:null,attributes:null};
+    if(kind==='canvas-transform'){showCanvasTransform(session);return;}
     if(kind==='backgrounds'){
       var tries=0;
       function openBackground(){
@@ -275,6 +354,7 @@
   }
   function placeLiveScreen(){
     var session=livePreview;if(!session||!session.panel)return;
+    if(session.kind==='canvas-transform'){placeCanvasTransform(session);return;}
     var w=window.innerWidth,h=window.innerHeight,m=14,desktop=w>=900;
     if(session.kind==='backgrounds'){
       session.element.style.boxSizing='border-box';session.element.style.padding=desktop?'72px 16px 16px 402px':'72px 14px '+Math.min(330,Math.round(h*.47))+'px';
@@ -310,7 +390,7 @@
     var shown=!!productOptionsTarget(),status=shown?'shown':optionsPreview&&optionsPreview.opening?'opening':'unavailable';
     if(note.dataset.status===status)return;
     note.dataset.status=status;
-    note.innerHTML=shown?(optionsPreview.session.count?'已開啟實際的「② 確認大小比例」選項視窗（教學展示，不會套用）。':'這是實際的「② 確認大小比例」選項視窗。尚未上傳商品，因此暫時沒有商品縮圖。'):
+    note.innerHTML=shown?(optionsPreview.session.interactive?'三張示範圖可直接拖拉換位；中間為較大的主品。操作不會套用到正式作品。':optionsPreview.session.count?'已開啟實際的「② 確認大小比例」選項視窗（教學展示，不會套用）。':'這是實際的「② 確認大小比例」選項視窗。尚未上傳商品，因此暫時沒有商品縮圖。'):
       status==='opening'?'正在開啟實際商品選項視窗…':
       '目前無法開啟商品選項，請確認已一併更新商品編輯外掛，並先完成其他編輯視窗。<br><button type="button" class="spt-secondary" data-action="options">重新開啟商品選項</button>';
   }
@@ -322,7 +402,7 @@
       optionsTimer=0;if(!active||!optionsPreview||index<0||!steps[index].liveOptions)return;
       var api=window.BNProductOptionsTour;
       if(!optionsPreview.session&&api&&typeof api.open==='function'){
-        try{optionsPreview.session=api.open();}catch(_){optionsPreview.opening=false;}
+        try{optionsPreview.session=api.open({interactiveDemo:true,host:root});}catch(_){optionsPreview.opening=false;}
       }
       updateOptionsNotice();scheduleLayout();
       if(productOptionsTarget())return;

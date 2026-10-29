@@ -949,7 +949,7 @@
 
 
   function getDefaultBgFitForLibraryLayout(info){
-    return (info && Number(info.w) > Number(info.h)) ? 'height100' : 'width100';
+    return 'auto';
   }
 
   /* 橫式/直式的選擇、以及套用後的預設 fit/scale/x/y，一律優先用
@@ -977,7 +977,7 @@
     if(typeof window._bnGetDefaultBgParamsForLayout === 'function'){
       return window._bnGetDefaultBgParamsForLayout(info && info.id, iframeEl);
     }
-    return { fit: getDefaultBgFitForLibraryLayout(info), scale:100, x:50, y:50 };
+    return { fit: getDefaultBgFitForLibraryLayout(info), sizeBasis:info&&Number(info.w)>Number(info.h)?'height':'width', scale:100, x:50, y:50 };
   }
 
   function applyPreset(img){
@@ -1002,8 +1002,8 @@
           var src = chooseSrcForLayout(info, img, dataH, dataV);
           if(!src) return;
           var params = getBgParamsForLibraryLayout(info, iframe);
-          if(info.id) states[info.id] = {src:resolveBgImgUrl(src), fit:params.fit, scale:params.scale, x:params.x, y:params.y, _initialized:true};
-          try{ iframe.contentWindow.postMessage({ type:'bn-bg', src:resolveBgImgUrl(src), fit:params.fit, scale:params.scale, x:params.x, y:params.y }, '*'); }catch(_){ }
+          if(info.id) states[info.id] = {src:resolveBgImgUrl(src), fit:params.fit, sizeBasis:params.sizeBasis||'width',positionMode:'legacy',scale:params.scale, x:params.x, y:params.y, _initialized:true};
+          try{ iframe.contentWindow.postMessage({ type:'bn-bg', src:resolveBgImgUrl(src), fit:params.fit,sizeBasis:params.sizeBasis||'width',positionMode:'legacy',scale:params.scale, x:params.x, y:params.y }, '*'); }catch(_){ }
         });
         if(window._bnSetBgStates){
           try{ window._bnSetBgStates(states, null); }catch(_){ }

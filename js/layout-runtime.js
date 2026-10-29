@@ -32,6 +32,43 @@
   var _bnWhiteCanvasUnderCircleTemplate = /^searchicon_(logo|product|text)$/i.test(fname || '');
   var _bnCurrentCanvasBg = '';
 
+  /* IG 下方顏色遮罩暫時隱藏；只隱藏圖層，保留原始設定方便之後恢復。 */
+  if(/^IG/i.test(fname||'')){
+    var igMaskStyle=document.createElement('style');igMaskStyle.id='bn-ig-bottom-mask-hidden';
+    igMaskStyle.textContent='#canvas .漸層下,#canvas .下保護,#canvas .下方保護{display:none!important;}';
+    document.head.appendChild(igMaskStyle);
+  }
+  var selectionStyle=document.createElement('style');selectionStyle.id='bn-object-selection-style';
+  selectionStyle.textContent='.bn-prod-box:not([data-bn-selected="1"])>[data-corner],.bn-prod-box:not([data-bn-selected="1"])>[data-rotate-handle],.bn-prod-box:not([data-bn-selected="1"])>[data-rotate-badge],.bn-char-box:not([data-bn-selected="1"])>[data-corner]{display:none!important;}';
+  document.head.appendChild(selectionStyle);
+  function selectCanvasObject(box){
+    document.querySelectorAll('.bn-prod-box[data-bn-selected],.bn-char-box[data-bn-selected]').forEach(function(el){if(el!==box)el.removeAttribute('data-bn-selected');});
+    if(box)box.setAttribute('data-bn-selected','1');
+  }
+  document.addEventListener('pointerdown',function(event){
+    var box=event.target.closest&&event.target.closest('.bn-prod-box,.bn-char-box');
+    selectCanvasObject(box||null);
+  },true);
+
+  var _bnBgNaturalSizes={};
+  function renderBnBackgroundImg(img,src,fit,basis,scale,x,y,mode,container){
+    var token=(img._bnBgToken||0)+1;img._bnBgToken=token;
+    function place(natural){
+      if(img._bnBgToken!==token)return;
+      var css=window.getComputedStyle(container),cw=container.clientWidth||parseFloat(css.width)||natural.w,ch=container.clientHeight||parseFloat(css.height)||natural.h;
+      var iw,ih,k;
+      if(fit==='cover'||fit==='contain'){k=(fit==='cover'?Math.max:Math.min)(cw/natural.w,ch/natural.h);iw=natural.w*k;ih=natural.h*k;}
+      else if(fit==='height100'||fit==='auto'&&basis==='height'){ih=ch*scale/100;iw=ih*natural.w/natural.h;}
+      else{iw=cw*scale/100;ih=iw*natural.h/natural.w;}
+      var left=mode==='center'?cw/2+(x-50)*cw/100-iw/2:(cw-iw)*x/100;
+      var top=mode==='center'?ch/2+(y-50)*ch/100-ih/2:(ch-ih)*y/100;
+      img.style.position='absolute';img.style.objectFit='fill';img.style.objectPosition='0 0';img.style.transform='';img.style.width=iw+'px';img.style.height=ih+'px';img.style.left=left+'px';img.style.top=top+'px';
+    }
+    if(_bnBgNaturalSizes[src]){_bnBgNaturalSizes[src].then(place).catch(function(){delete _bnBgNaturalSizes[src];});return;}
+    _bnBgNaturalSizes[src]=new Promise(function(resolve,reject){var image=new Image();image.onload=function(){resolve({w:image.naturalWidth||image.width,h:image.naturalHeight||image.height});};image.onerror=reject;image.src=src;});
+    _bnBgNaturalSizes[src].then(place).catch(function(){delete _bnBgNaturalSizes[src];});
+  }
+
   /* 可編輯文字不得使用近黑／近白；CTA 底色允許近白，但禁用近黑與灰色。
      父頁會先正規化一次；這裡是版型端最後防線，連寫死在 CSS 的預設色也會攔截。 */
   var _bnRestrictedColorFallbacks={
@@ -1794,7 +1831,7 @@
       syncCharGradientOverlay(cbox);
       setupCharDrag(cbox, czone);
       applyCharacterZ();
-      setTimeout(function(){ postCharacterLayout(cbox); }, 0);
+      setTimeout(function(){ postCharacterLayout(cbox,{snapshotOnly:true}); }, 0);
       return;
     }
 
@@ -1873,7 +1910,9 @@
       var bgContainer = document.querySelector('.背景色') || document.querySelector('.bg');
       var bimg2 = document.getElementById('底圖');
       var bgSrc   = e.data.src   || null;
-      var bgFit   = e.data.fit   || 'cover';
+      var bgFit   = e.data.fit   || 'auto';
+      var bgBasis = e.data.sizeBasis || 'width';
+      var bgPositionMode = e.data.positionMode || 'legacy';
       var bgScale = e.data.scale !== undefined ? e.data.scale : 100;
       var bgX     = e.data.x     !== undefined ? e.data.x     : 50;
       var bgY     = e.data.y     !== undefined ? e.data.y     : 50;
@@ -1920,12 +1959,20 @@
         /* 原尺寸（auto）：用 background-size 百分比，從中心縮放
            技巧：position 設 50% 50%，size 設 scale%，
            這樣圖片中心固定在容器中心，往外放大 */
-        bgSize = bgScale + '%';
+        bgSize = bgBasis==='height'?'auto '+bgScale+'%':bgScale+'% auto';
         /* 以中心為基準：position 固定在 50% 50%，
            再用 background-position-x/y 微調偏移 */
         var offsetX = bgX - 50;  /* -50~+50 */
         var offsetY = bgY - 50;
         bgPos = 'calc(50% + ' + offsetX + '%) calc(50% + ' + offsetY + '%)';
+      }
+
+      /* 新位移為容器寬高的固定百分比，不是剩餘空間百分比。
+         scale 改變時，圖片中心仍固定在 50% + 位移，不會往四邊漂移。 */
+      if(bgPositionMode==='center'){
+        var bgArea=bgContainer||document.getElementById('canvas')||document.body;
+        var bgCss=window.getComputedStyle(bgArea),bgW=bgArea.clientWidth||parseFloat(bgCss.width)||1,bgH=bgArea.clientHeight||parseFloat(bgCss.height)||1;
+        bgPos='calc(50% + '+((bgX-50)*bgW/100)+'px) calc(50% + '+((bgY-50)*bgH/100)+'px)';
       }
 
       if(bgSrc){
@@ -1938,14 +1985,12 @@
           if(bimg2){
             bimg2.src = bgSrc;
             bimg2.style.display = 'block';
-            bimg2.style.objectFit = (bgFit === 'auto' || bgFit === 'height100' || bgFit === 'width100') ? 'none' : bgFit;
-            bimg2.style.objectPosition = bgPos;
-            if(bgFit === 'auto') bimg2.style.transform = 'scale(' + bgScale/100 + ')';
+            renderBnBackgroundImg(bimg2,bgSrc,bgFit,bgBasis,bgScale,bgX,bgY,bgPositionMode,document.getElementById('canvas')||document.body);
           }
         }
       } else {
         if(bgContainer) bgContainer.style.backgroundImage = '';
-        if(bimg2){ bimg2.src=''; bimg2.style.display='none'; bimg2.style.transform=''; }
+        if(bimg2){ bimg2._bnBgToken=(bimg2._bnBgToken||0)+1;bimg2.src=''; bimg2.style.display='none'; bimg2.style.transform=''; }
       }
       return;
     }
@@ -1954,6 +1999,7 @@
        將上傳圖片依本版位「商品範圍/商品圖範圍」高度等比縮放、置中對齊，
        套用後商品範圍原本的 40% 提示色塊改成同色的 40% 線框。 */
     if (e.data.type === 'bn-bg-slab') {
+      var slabImage=document.getElementById('底圖');if(slabImage)slabImage._bnBgToken=(slabImage._bnBgToken||0)+1;
       if(!_bnNoImageBackgroundTemplate){
         applyBnBgSlab(e.data.src || null, {scale:e.data.scale, x:e.data.x, y:e.data.y});
       }
@@ -2001,7 +2047,7 @@
 
     if (e.data.type === 'bn-layout-snapshot-request') {
       postAllProductLayouts({snapshotOnly:true, requestId:e.data.requestId});
-      postAllCharacterLayouts();
+      postAllCharacterLayouts({snapshotOnly:true,requestId:e.data.requestId});
       /* 讓同一頁其他專用 listener（例如 SearchICON_LOGO）先回傳自己的位置，
          再通知父層此 iframe 已完成快照。 */
       setTimeout(function(){
@@ -2486,10 +2532,10 @@
     }catch(_){ }
   }
 
-  function postAllCharacterLayouts(){
+  function postAllCharacterLayouts(options){
     try{
       var zone = getProductZone(); if(!zone) return;
-      Array.from(zone.querySelectorAll('.bn-char-box')).forEach(postCharacterLayout);
+      Array.from(zone.querySelectorAll('.bn-char-box')).forEach(function(box){postCharacterLayout(box,options);});
     }catch(_){ }
   }
 
@@ -2926,6 +2972,7 @@
 
   function setupProdDrag(box,zone){
     var drag=null;
+    function finishDrag(){if(drag&&drag.changed)postProductLayout(box);drag=null;box.style.outline='2px solid transparent';}
     var rotHandle = box.querySelector('[data-rotate-handle]');
     var rotBadge = box.querySelector('[data-rotate-badge]');
     if(rotHandle){
@@ -3019,6 +3066,7 @@
       h.addEventListener('pointermove',function(e){
         if(!drag||drag.type!=='resize') return;
         var dx=e.clientX-drag.sx,dy=e.clientY-drag.sy,c=drag.corner,r=drag.ratio;
+        if(dx===0&&dy===0)return;drag.changed=true;
         var sX=c.includes('w')?-1:1,sY=c.includes('n')?-1:1;
         var delta=Math.abs(dx)>Math.abs(dy)?dx*sX:dy*sY*r;
         var w=Math.max(40,drag.w+delta),bh=w/r;
@@ -3032,20 +3080,21 @@
         bnRelayoutProductBox(box);
         scheduleProductLayoutPost(box);
       });
-      h.addEventListener('pointerup',function(){ postProductLayout(box); drag=null; });
-      h.addEventListener('pointercancel',function(){ postProductLayout(box); drag=null; });
-      h.addEventListener('lostpointercapture',function(){ postProductLayout(box); drag=null; });
+      h.addEventListener('pointerup',finishDrag);
+      h.addEventListener('pointercancel',finishDrag);
+      h.addEventListener('lostpointercapture',finishDrag);
     });
     box.addEventListener('pointermove',function(e){
       if(!drag||drag.type!=='move') return;
+      if(e.clientX===drag.sx&&e.clientY===drag.sy)return;drag.changed=true;
       box.dataset.manualLayout = '1';
       box.style.left=Math.max(0,Math.min(drag.zw-drag.w,drag.l+e.clientX-drag.sx))+'px';
       box.style.top =Math.max(0,Math.min(drag.zh-drag.h,drag.t+e.clientY-drag.sy))+'px';
       scheduleProductLayoutPost(box);
     });
-    box.addEventListener('pointerup',function(){ postProductLayout(box); drag=null; box.style.outline='2px solid transparent'; });
-    box.addEventListener('pointercancel',function(){ postProductLayout(box); drag=null; box.style.outline='2px solid transparent'; });
-    box.addEventListener('lostpointercapture',function(){ postProductLayout(box); drag=null; box.style.outline='2px solid transparent'; });
+    box.addEventListener('pointerup',finishDrag);
+    box.addEventListener('pointercancel',finishDrag);
+    box.addEventListener('lostpointercapture',finishDrag);
     box.addEventListener('wheel',function(e){
       e.preventDefault();
       var zr=zone.getBoundingClientRect(),br=box.getBoundingClientRect();
@@ -3272,36 +3321,34 @@
     var cs = window.getComputedStyle(zone);
     var zw = parseFloat(cs.width)  || zone.offsetWidth  || 1;
     var zh = parseFloat(cs.height) || zone.offsetHeight || 1;
-    var l = layout.leftPct   !== undefined ? layout.leftPct   * zw : layout.left;
-    var t = layout.topPct    !== undefined ? layout.topPct    * zh : layout.top;
-    var w = layout.widthPct  !== undefined ? layout.widthPct  * zw : layout.width;
-    var h = layout.heightPct !== undefined ? layout.heightPct * zh : layout.height;
+    var area=layout.syncAreaMode?getProductSyncArea(zone):{left:0,top:0,width:zw,height:zh};
+    var l = layout.leftPct   !== undefined ? area.left+layout.leftPct   * area.width : layout.left;
+    var t = layout.topPct    !== undefined ? area.top+layout.topPct    * area.height : layout.top;
+    var w = layout.widthPct  !== undefined ? layout.widthPct  * area.width : layout.width;
+    var h = layout.heightPct !== undefined ? layout.heightPct * area.height : layout.height;
     if(!isFinite(l) || !isFinite(t) || !isFinite(w) || !isFinite(h) || w <= 0 || h <= 0) return false;
     box.style.left = l + 'px'; box.style.top = t + 'px';
     box.style.width = w + 'px'; box.style.height = h + 'px';
     return true;
   }
 
-  function postCharacterLayout(box){
+  function postCharacterLayout(box,options){
     try{
       var zone = getProductZone(); if(!zone || !box) return;
       var zr = zone.getBoundingClientRect();
       var br = box.getBoundingClientRect();
-      var zw = zr.width || parseFloat(window.getComputedStyle(zone).width) || 1;
-      var zh = zr.height || parseFloat(window.getComputedStyle(zone).height) || 1;
+      var css=window.getComputedStyle(zone),zw=parseFloat(css.width)||zone.offsetWidth||zr.width||1,zh=parseFloat(css.height)||zone.offsetHeight||zr.height||1;
+      var sx=zr.width/zw||1,sy=zr.height/zh||1,area=getProductSyncArea(zone);
+      var left=(br.left-zr.left)/sx,top=(br.top-zr.top)/sy,width=br.width/sx,height=br.height/sy;
       var data = {
         type:'bn-character-layout-update',
         bnid:getCurrentBnId(),
         id:box.dataset.id,
+        snapshotOnly:!!(options&&options.snapshotOnly),requestId:options&&options.requestId,
         layout:{
-          left: br.left - zr.left,
-          top: br.top - zr.top,
-          width: br.width,
-          height: br.height,
-          leftPct: (br.left - zr.left) / zw,
-          topPct: (br.top - zr.top) / zh,
-          widthPct: br.width / zw,
-          heightPct: br.height / zh
+          left:left,top:top,width:width,height:height,
+          leftPct:(left-area.left)/area.width,topPct:(top-area.top)/area.height,
+          widthPct:width/area.width,heightPct:height/area.height,syncAreaMode:area.mode
         }
       };
       window.parent && window.parent.postMessage(data, '*');
@@ -3321,6 +3368,7 @@
      人物圖可以自由拖到商品範圍外、甚至畫布外。 */
   function setupCharDrag(box, zone){
     var drag = null;
+    function finishDrag(){if(drag&&drag.changed)postCharacterLayout(box);drag=null;box.style.outline='2px solid transparent';}
     box.addEventListener('pointerdown', function(e){
       if(e.target.dataset.corner) return;
       e.stopPropagation();
@@ -3338,6 +3386,7 @@
       h.addEventListener('pointermove', function(e){
         if(!drag || drag.type !== 'resize') return;
         var dx=e.clientX-drag.sx, dy=e.clientY-drag.sy, c=drag.corner, r=drag.ratio;
+        if(dx===0&&dy===0)return;drag.changed=true;
         var sX = c.indexOf('w')!==-1 ? -1 : 1, sY = c.indexOf('n')!==-1 ? -1 : 1;
         var delta = Math.abs(dx) > Math.abs(dy) ? dx*sX : dy*sY*r;
         var w = Math.max(30, drag.w+delta), bh = w/r;
@@ -3350,21 +3399,22 @@
         syncCharGradientOverlay(box);
         scheduleCharLayoutPost(box);
       });
-      h.addEventListener('pointerup', function(){ postCharacterLayout(box); drag=null; });
-      h.addEventListener('pointercancel', function(){ postCharacterLayout(box); drag=null; });
-      h.addEventListener('lostpointercapture', function(){ postCharacterLayout(box); drag=null; });
+      h.addEventListener('pointerup', finishDrag);
+      h.addEventListener('pointercancel', finishDrag);
+      h.addEventListener('lostpointercapture', finishDrag);
     });
     box.addEventListener('pointermove', function(e){
       if(!drag || drag.type !== 'move') return;
+      if(e.clientX===drag.sx&&e.clientY===drag.sy)return;drag.changed=true;
       box.dataset.manualLayout = '1';
       box.style.left = (drag.l + e.clientX - drag.sx) + 'px';
       box.style.top  = (drag.t + e.clientY - drag.sy) + 'px';
       syncCharGradientOverlay(box);
       scheduleCharLayoutPost(box);
     });
-    box.addEventListener('pointerup', function(){ postCharacterLayout(box); drag=null; box.style.outline='2px solid transparent'; });
-    box.addEventListener('pointercancel', function(){ postCharacterLayout(box); drag=null; box.style.outline='2px solid transparent'; });
-    box.addEventListener('lostpointercapture', function(){ postCharacterLayout(box); drag=null; box.style.outline='2px solid transparent'; });
+    box.addEventListener('pointerup', finishDrag);
+    box.addEventListener('pointercancel', finishDrag);
+    box.addEventListener('lostpointercapture', finishDrag);
     box.addEventListener('wheel', function(e){
       e.preventDefault();
       var br = box.getBoundingClientRect();
