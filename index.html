@@ -403,6 +403,280 @@ html[data-host="boda"] #lv-wrap { display:block; }
   color: var(--text3); letter-spacing: .5px; }
 </style>
 
+<!-- SHOPEE_TOUR_STYLES_BEGIN -->
+<style id="shopee-tour-styles">
+
+/* Shopee 操作導覽。所有樣式皆以 spt / shopee-tour 命名，避免影響版位與匯出。 */
+.shopee-tour-launch,.shopee-tour-home,#shopee-tour-root,#shopee-tour-waiting{--spt-accent:#ee4d2d;--spt-accent-hover:#d83e21;--spt-accent-light:#ffb19f;--spt-accent-soft:rgba(238,77,45,.12);--spt-glow:rgba(238,77,45,.22);--spt-deep:#1b1b1f;--spt-soft:#26262c;--spt-line:#3a3a44;--spt-line-strong:#555562;--spt-text:#f2f2f4;--spt-muted:#9a9aa4;--spt-on-accent:#ffffff;--spt-dim:rgba(0,0,0,.62);}
+.shopee-tour-launch:focus-visible,.shopee-tour-home:focus-visible{outline:3px solid var(--spt-accent);outline-offset:3px;}
+.shopee-tour-launch{order:6;margin-top:auto;width:60px;flex-shrink:0;border:1px solid var(--spt-line-strong);border-radius:9px;background:var(--spt-deep);color:var(--spt-text);display:flex;flex-direction:column;align-items:center;gap:5px;padding:11px 2px;font:inherit;cursor:pointer;transition:background .18s,color .18s,border-color .18s;}
+.shopee-tour-launch svg{width:22px;height:22px;color:var(--spt-accent);}
+.shopee-tour-launch span{font-size:10px;}
+.shopee-tour-launch:hover{background:var(--spt-accent-soft);color:var(--spt-on-accent);border-color:var(--spt-accent);}
+.shopee-tour-home{display:inline-flex;align-items:center;gap:7px;margin:16px auto 0;border:1px solid var(--spt-accent);border-radius:100px;padding:9px 16px;background:var(--spt-accent);color:var(--spt-on-accent);font-family:inherit;font-size:13px;font-weight:600;line-height:1.3;cursor:pointer;}
+.shopee-tour-home svg{width:17px;height:17px;}
+.shopee-tour-home:hover{background:var(--spt-accent-hover);}
+#shopee-tour-root{position:fixed;inset:0;z-index:2147480000;isolation:isolate;font-family:"PingFang TC","Microsoft JhengHei","Segoe UI",Arial,sans-serif;font-size:14px;line-height:1.6;color:var(--spt-text);overscroll-behavior:contain;}
+#shopee-tour-root[hidden]{display:none!important;}
+#shopee-tour-root [hidden]{display:none!important;}
+#shopee-tour-root *{box-sizing:border-box;}
+#shopee-tour-root button,#shopee-tour-root select{font-family:inherit;}
+#shopee-tour-root button{cursor:pointer;}
+#shopee-tour-root button:focus-visible,#shopee-tour-root select:focus-visible{outline:3px solid var(--spt-accent);outline-offset:4px;}
+#shopee-tour-root button:disabled{opacity:.32;cursor:default;}
+.spt-dimmer{position:absolute;inset:0;background:var(--spt-dim);}
+.spt-focus{position:absolute;pointer-events:none;border:2px solid var(--spt-accent);border-radius:12px;box-shadow:0 0 0 9999px var(--spt-dim),0 0 0 5px var(--spt-glow);transition:left .23s ease,top .23s ease,width .23s ease,height .23s ease;}
+.spt-focus::after{content:"";position:absolute;inset:-5px;border:1px solid var(--spt-accent-light);border-radius:16px;animation:spt-focus-pulse 2.6s ease-out infinite;}
+.spt-dual-dimmer{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;}
+#shopee-tour-root[data-dual-focus="true"] .spt-focus{box-shadow:0 0 0 5px var(--spt-glow);}
+#shopee-tour-root[data-dual-focus="true"] .spt-focus:not(.spt-color-focus)::after{animation:spt-palette-pulse 4s ease-in-out infinite;}
+.spt-color-focus{border-radius:9px;}
+.spt-color-example{position:absolute;z-index:1;display:grid;place-items:center;border:1px solid var(--spt-accent-light);border-radius:5px;background:var(--spt-accent);color:var(--spt-on-accent);font-size:11px;pointer-events:none;}
+.spt-color-pointer{position:absolute;z-index:2;width:23px;height:30px;pointer-events:none;color:#ffffff;filter:drop-shadow(0 1px 2px #111111);transform-origin:3px 3px;animation:spt-color-click 4s ease-in-out infinite;}
+.spt-color-pointer svg{display:block;width:23px;height:30px;}
+.spt-color-pointer i{position:absolute;left:-11px;top:-11px;width:28px;height:28px;border:2px solid var(--spt-accent);border-radius:50%;box-shadow:0 0 0 1px var(--spt-deep);animation:spt-color-ring 4s ease-out infinite;}
+.spt-color-hint,.spt-palette-hint{position:absolute;z-index:2;max-width:234px;padding:4px 8px;border:1px solid var(--spt-accent);border-radius:6px;background:var(--spt-deep);color:var(--spt-text);font-size:10px;line-height:1.5;pointer-events:none;}
+.spt-color-link{animation:spt-color-link 4s linear infinite;}
+.spt-hud{position:absolute;z-index:2;top:14px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:14px;max-width:calc(100vw - 28px);padding:8px 10px 8px 15px;border:1px solid var(--spt-line);border-radius:100px;background:rgba(27,27,31,.98);box-shadow:0 8px 30px rgba(0,0,0,.5);}
+.spt-hud strong{font-size:12px;white-space:nowrap;letter-spacing:.05em;color:var(--spt-accent);}
+.spt-hud-note{font-size:11px;color:var(--spt-muted);white-space:nowrap;}
+.spt-icon-button{display:inline-grid;place-items:center;width:28px;height:28px;flex-shrink:0;border:0;border-radius:50%;background:var(--spt-soft);color:var(--spt-text);font-size:19px;line-height:1;}
+.spt-icon-button:hover{background:#30303a;}
+.spt-pause{border:0;background:none;color:var(--spt-muted);font-size:11px;padding:2px 6px;white-space:nowrap;}
+.spt-welcome{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(580px,calc(100vw - 32px));max-height:calc(100dvh - 96px);overflow:auto;border:1px solid var(--spt-line);border-radius:24px;background:var(--spt-deep);box-shadow:0 28px 90px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.06);padding:32px;animation:spt-welcome-in .28s ease-out;}
+.spt-eyebrow{display:flex;align-items:center;gap:8px;font-size:11px;font-weight:700;letter-spacing:.16em;color:var(--spt-accent);margin-bottom:18px;}
+.spt-eyebrow::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--spt-accent);box-shadow:0 0 0 5px var(--spt-accent-soft);}
+.spt-welcome h2{margin:0 0 12px;font-size:31px;line-height:1.4;font-weight:750;letter-spacing:.01em;}
+.spt-welcome-lead{font-size:14px;color:var(--spt-muted);line-height:1.8;margin:0 0 22px;}
+.spt-welcome-path{display:flex;align-items:center;justify-content:space-between;padding:16px 4px;border-top:1px solid var(--spt-line);border-bottom:1px solid var(--spt-line);margin-bottom:22px;}
+.spt-welcome-path div{display:flex;flex-direction:column;gap:6px;font-size:12px;text-align:center;color:var(--spt-text);}
+.spt-welcome-path b{display:grid;place-items:center;width:32px;height:32px;margin:auto;border:1px solid var(--spt-line-strong);border-radius:10px;color:var(--spt-accent);font-size:15px;}
+.spt-welcome-path>span{color:var(--spt-muted);}
+.spt-route-label{display:block;color:var(--spt-muted);font-size:12px;margin-bottom:7px;}
+.spt-route-select,.spt-jump{width:100%;border:1px solid var(--spt-line-strong);border-radius:9px;background:var(--spt-soft);color:var(--spt-text);padding:10px 12px;font-size:13px;}
+.spt-welcome-foot{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,3fr);align-items:stretch;gap:10px;margin-top:20px;}
+.spt-welcome-foot .spt-primary,.spt-welcome-foot .spt-secondary{width:100%;min-width:0;}
+.spt-welcome-foot .spt-primary{padding:12px 16px;}
+.spt-route-box{margin-top:16px;}
+.spt-route-box .spt-route-select{border-style:dashed;border-color:var(--spt-line-strong);}
+.spt-primary,.spt-secondary,.spt-skip{border-radius:8px;padding:9px 14px;font-size:12px;font-weight:650;line-height:1.4;}
+.spt-primary{border:1px solid var(--spt-accent);background:var(--spt-accent);color:var(--spt-on-accent);}
+.spt-primary:hover{background:var(--spt-accent-hover);border-color:var(--spt-accent-hover);}
+.spt-secondary{border:1px solid var(--spt-line);background:var(--spt-soft);color:var(--spt-muted);}
+.spt-secondary:hover:not(:disabled){background:#30303a;border-color:var(--spt-line-strong);color:var(--spt-text);}
+.spt-skip{border:0;background:none;color:var(--spt-muted);padding:6px 2px;}
+.spt-skip:hover{color:#fff;}
+.spt-safe{color:var(--spt-muted);font-size:11px;margin-top:16px;line-height:1.7;}
+.spt-safe b{color:var(--spt-text);font-weight:500;}
+.spt-card{position:absolute;z-index:3;width:364px;max-width:calc(100vw - 28px);max-height:calc(100dvh - 90px);overflow:auto;padding:20px;border:1px solid var(--spt-line);border-radius:16px;background:var(--spt-deep);box-shadow:0 10px 30px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.06);}
+.spt-card-content{animation:spt-card-in .22s ease-out;}
+.spt-step-meta{display:flex;align-items:center;gap:10px;justify-content:space-between;font-size:11px;font-weight:650;color:var(--spt-accent);margin-bottom:8px;}
+.spt-group{color:var(--spt-muted);font-weight:500;}
+.spt-card h2{font-size:19px;line-height:1.5;font-weight:700;margin:0 0 9px;letter-spacing:.01em;}
+.spt-description{font-size:13px;line-height:1.8;color:var(--spt-muted);margin:0;}
+.spt-description b{font-weight:650;color:var(--spt-text);}
+.spt-description code{color:var(--spt-accent-light);background:var(--spt-accent-soft);padding:1px 4px;border-radius:4px;font-size:11px;}
+.spt-tip{border-left:2px solid var(--spt-accent);padding:0 0 0 9px;margin:12px 0 0;font-size:11px;color:var(--spt-muted);line-height:1.7;}
+.spt-fallback{font-size:11px;color:var(--spt-accent-light);background:var(--spt-accent-soft);padding:7px 9px;border-radius:6px;margin-top:9px;}
+.spt-progress{margin-top:16px;height:3px;overflow:hidden;border-radius:10px;background:var(--spt-line);}
+.spt-progress span{display:block;height:100%;background:var(--spt-accent);transition:width .22s;}
+.spt-controls{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:13px;}
+.spt-controls-right{display:flex;gap:7px;}
+.spt-jump{font-size:11px;margin-top:14px;padding:7px 8px;color:var(--spt-muted);background:var(--spt-soft);border-color:var(--spt-line-strong);}
+.spt-demo{position:relative;isolation:isolate;overflow:hidden;height:116px;min-height:116px;margin-top:15px;border:1px solid var(--spt-line);border-radius:10px;background:#141417;color:var(--spt-text);}
+.spt-demo-caption{position:absolute;left:9px;top:6px;font-size:9px;color:var(--spt-muted);letter-spacing:.05em;z-index:3;}
+.spt-demo-cursor{position:absolute;width:20px;height:25px;z-index:4;filter:drop-shadow(0 2px 3px #191919);color:white;}
+.spt-demo-cursor svg{display:block;width:100%;height:100%;}
+.spt-demo-zone{position:absolute;inset:30px 16px 16px 110px;border:1px dashed var(--spt-line-strong);border-radius:7px;display:flex;align-items:center;justify-content:center;flex-direction:column;font-size:11px;color:var(--spt-muted);}
+.spt-demo-file{position:absolute;left:15px;top:48px;z-index:2;display:flex;align-items:center;gap:5px;white-space:nowrap;border:1px solid var(--spt-accent);border-radius:6px;background:var(--spt-soft);color:var(--spt-accent-light);padding:6px 8px;font-size:10px;font-weight:700;box-shadow:0 4px 12px rgba(0,0,0,.35);animation:spt-upload 4.6s ease-in-out infinite;}
+.spt-demo-folder .spt-demo-file{font-size:10px;}
+.spt-demo .spt-cursor-drag{left:70px;top:68px;animation:spt-upload 4.6s ease-in-out infinite;}
+.spt-demo-badge{position:absolute;right:24px;bottom:23px;font-size:10px;color:var(--spt-accent);opacity:0;animation:spt-success 4.6s ease-in-out infinite;}
+.spt-demo-layout .spt-demo-file{width:70px;left:18px;top:36px;height:57px;background:#cacaca;display:grid;place-items:center;padding:4px;animation-name:spt-layout;}
+.spt-demo-layout .spt-demo-zone{inset:28px 14px 13px 114px;flex-direction:row;gap:5px;}
+.spt-demo-layout .spt-demo-zone i{width:40px;height:45px;border-radius:3px;background:#5b5b5b;}
+.spt-demo-layout .spt-cursor-drag{animation-name:spt-layout;}
+.spt-demo-matching{display:flex;flex-direction:column;align-items:stretch;justify-content:center;gap:4px;padding:25px 13px 7px;font:10px/1.4 "Segoe UI",sans-serif;}
+.spt-match-source{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:3px 9px;border:1px solid var(--spt-line-strong);border-radius:5px;background:var(--spt-soft);}
+.spt-match-source small{font-size:10px;color:var(--spt-muted);}
+.spt-match-source strong{font:700 22px/1.1 "Segoe UI",sans-serif;letter-spacing:.04em;color:var(--spt-text);white-space:nowrap;}
+.spt-match-source strong b{display:inline-block;margin:0 8px;font-weight:900;text-decoration:underline;text-underline-offset:3px;color:var(--spt-accent);}
+.spt-match-rule{text-align:center;color:var(--spt-muted);font-size:10px;}
+.spt-match-files{display:flex;gap:9px;}
+.spt-match-files span{flex:1;display:flex;align-items:center;justify-content:center;gap:5px;padding:2px 6px;border:1px solid var(--spt-accent);border-radius:5px;background:var(--spt-accent-soft);color:var(--spt-text);}
+.spt-match-files svg{width:15px;height:18px;}
+.spt-frame-status{display:flex;align-items:center;gap:8px;}
+.spt-frame-status[data-state="loading"]::before{content:"";flex-shrink:0;width:12px;height:12px;border:2px solid #666666;border-top-color:#ffffff;border-radius:50%;animation:spt-wait-spin .8s linear infinite;}
+.spt-demo-board{position:absolute;left:32px;right:32px;top:27px;height:74px;border-radius:5px;background:#e8e8e8;border:1px solid #777777;}
+.spt-product{position:absolute;left:calc(50% - 19px);bottom:12px;width:38px;height:47px;border:2px solid #f7f7f7;border-radius:4px 4px 7px 7px;background:linear-gradient(110deg,#c3c3c3,#e4e4e4 45%,#c3c3c3);box-shadow:0 3px 5px rgba(57,57,57,.15);transform-origin:50% 100%;}
+.spt-product::before{content:"";position:absolute;left:8px;right:8px;top:16px;height:17px;background:#8c8c8c;border-radius:2px;}
+.spt-product::after{content:"";position:absolute;left:8px;right:8px;top:-7px;height:7px;background:#6a6a6a;border-radius:2px 2px 0 0;}
+.spt-demo-resize .spt-product{animation:spt-resize 4.5s ease-in-out infinite;}
+.spt-selection{position:absolute;inset:-7px;border:1px solid var(--spt-accent);}
+.spt-selection i{position:absolute;width:6px;height:6px;border:1px solid var(--spt-accent);border-radius:50%;background:#fbfbfb;}
+.spt-selection i:nth-child(1){top:-3px;left:-3px;}
+.spt-selection i:nth-child(2){top:-3px;right:-3px;}
+.spt-selection i:nth-child(3){bottom:-3px;left:-3px;}
+.spt-selection i:nth-child(4){bottom:-3px;right:-3px;}
+.spt-demo-rotate .spt-product{animation:spt-rotate 5.4s ease-in-out infinite;transform-origin:50% 65%;}
+.spt-rotate-handle{position:absolute;left:50%;top:-26px;transform:translateX(-50%);font-size:17px;font-style:normal;color:#111111;line-height:1;}
+.spt-rotate-handle::after{content:"";height:9px;border-left:1px solid #333333;position:absolute;left:50%;top:17px;}
+.spt-product-shadow{position:absolute;width:76px;height:9px;left:calc(50% - 20px);bottom:8px;background:#7e7e7e;border-radius:50%;filter:blur(4px);opacity:.4;}
+.spt-demo-rotate .spt-product-shadow{animation:spt-shadow 5.4s ease-in-out infinite;}
+.spt-demo-shadow .spt-demo-board{top:27px;height:68px;}
+.spt-demo-shadow .spt-product-shadow{left:50%;margin-left:-27px;width:54px;height:12px;bottom:6px;background:#555555;filter:blur(3px);opacity:.65;transform:translateX(34px) scaleX(1.2);animation:spt-shadow-side 6s ease-in-out infinite;}
+.spt-shadow-directions{position:absolute;left:32px;right:32px;bottom:3px;display:flex;gap:4px;font-size:9px;line-height:1.4;}
+.spt-shadow-directions span{flex:1;min-width:0;text-align:center;border:1px solid #666666;border-radius:4px;background:#222222;color:#bcbcbc;animation:spt-shadow-choice 6s step-end infinite;}
+.spt-shadow-directions span:nth-child(2){animation-delay:-4s;}
+.spt-shadow-directions span:nth-child(3){animation-delay:-2s;}
+.spt-bg-thumbs{position:absolute;left:12px;top:28px;width:72px;display:grid;gap:4px;}
+.spt-bg-option{position:relative;height:23px;overflow:hidden;border:1px solid var(--spt-line-strong);border-radius:4px;animation:spt-bg-choice 9s step-end infinite;}
+.spt-bg-option small{position:absolute;left:3px;bottom:1px;padding:0 3px;background:rgba(0,0,0,.78);color:#ffffff;font-size:8px;line-height:1.4;}
+.spt-bg-theme-1{background-color:#e8e8e8;background-image:linear-gradient(#b7b7b7 1px,transparent 1px),linear-gradient(90deg,#b7b7b7 1px,transparent 1px);background-size:var(--spt-bg-size,8px) var(--spt-bg-size,8px);}
+.spt-bg-theme-2{background-color:#c6c6c6;background-image:repeating-linear-gradient(135deg,#eeeeee 0 4px,#aaaaaa 4px 9px);}
+.spt-bg-theme-3{background-color:#444444;background-image:radial-gradient(circle,#bebebe 1.5px,transparent 2px);background-size:var(--spt-bg-size,8px) var(--spt-bg-size,8px);}
+.spt-bg-preview{--spt-bg-size:15px;position:absolute;left:99px;right:12px;top:28px;bottom:10px;overflow:hidden;border:1px solid #bcbcbc;border-radius:5px;background:#777777;}
+.spt-bg-layer{position:absolute;inset:0;opacity:0;animation:spt-bg-frame 9s linear infinite;}
+.spt-bg-layer:nth-child(2),.spt-bg-option:nth-child(2){animation-delay:-6s;}
+.spt-bg-layer:nth-child(3),.spt-bg-option:nth-child(3){animation-delay:-3s;}
+.spt-bg-preview-label{position:absolute;left:5px;top:4px;padding:1px 4px;border-radius:3px;background:rgba(0,0,0,.78);color:#ffffff;font-size:9px;line-height:1.4;}
+.spt-bg-preview .spt-bg-product{left:calc(50% - 14px);bottom:8px;width:28px;height:34px;box-shadow:5px 3px 4px rgba(0,0,0,.3);}
+.spt-bg-product::before{top:11px;height:12px;left:5px;right:5px;}
+.spt-bg-product::after{left:6px;right:6px;}
+.spt-demo-backgrounds .spt-demo-cursor{left:69px;top:36px;width:16px;height:20px;animation:spt-bg-cursor 9s ease-in-out infinite;}
+.spt-demo-assets{display:flex;gap:10px;padding:28px 12px 9px;}
+.spt-asset-kinds{flex:1;min-width:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px;}
+.spt-asset-kinds>span{display:flex;align-items:center;gap:3px;min-width:0;padding:3px 4px;border:1px solid var(--spt-line);border-radius:4px;background:var(--spt-soft);}
+.spt-asset-kinds svg{width:15px;height:17px;flex-shrink:0;}
+.spt-asset-kinds small{font-size:8px;line-height:1.4;color:var(--spt-text);}
+.spt-asset-actions{width:54px;flex-shrink:0;display:grid;grid-template-rows:repeat(4,minmax(0,1fr));gap:3px;}
+.spt-asset-actions span{display:grid;place-items:center;border:1px solid var(--spt-line-strong);border-radius:3px;background:var(--spt-soft);color:var(--spt-text);font-size:9px;animation:spt-asset-choice 8s step-end infinite;}
+.spt-asset-actions span:nth-child(2){animation-delay:-6s;}
+.spt-asset-actions span:nth-child(3){animation-delay:-4s;}
+.spt-asset-actions span:nth-child(4){animation-delay:-2s;}
+.spt-demo-assets .spt-demo-cursor{right:35px;top:31px;width:14px;height:18px;animation:spt-asset-cursor 8s ease-in-out infinite;}
+.spt-demo-colors{display:grid;grid-template-columns:1fr 22px 1fr;align-items:stretch;gap:5px;padding:27px 11px 8px;}
+.spt-mini-palette,.spt-mini-canvas{position:relative;min-width:0;padding:5px;border:1px solid var(--spt-line);border-radius:5px;background:var(--spt-soft);font-size:9px;line-height:1.4;}
+.spt-mini-palette small,.spt-mini-canvas small{display:block;font-size:9px;color:var(--spt-muted);margin-bottom:5px;}
+.spt-mini-palette span{display:flex;align-items:center;gap:4px;padding:3px;border:1px solid var(--spt-line-strong);border-radius:3px;animation:spt-palette-row 4s infinite;}
+.spt-mini-palette span i{width:16px;height:12px;background:var(--spt-accent);border:1px solid var(--spt-accent-light);}
+.spt-mini-palette b{display:block;position:absolute;left:10px;right:5px;bottom:3px;padding:2px;border:1px solid var(--spt-accent);border-radius:3px;background:var(--spt-deep);color:var(--spt-text);font-size:8px;opacity:0;animation:spt-palette-open 4s infinite;}
+.spt-mini-link{display:grid;place-items:center;font-size:20px;color:var(--spt-accent);}
+.spt-mini-canvas>span{display:block;min-height:29px;padding:7px 2px;border:1px solid var(--spt-accent-light);border-radius:4px;background:var(--spt-accent);}
+.spt-mini-pointer{position:absolute;right:12px;top:34px;display:block;width:17px;height:22px;color:#ffffff;transform-origin:2px 2px;animation:spt-color-click 4s infinite;}
+.spt-mini-pointer svg{display:block;width:100%;height:100%;}
+.spt-demo-color-reference{display:grid;grid-template-columns:1fr 1fr;gap:7px;padding:25px 10px 23px;}
+.spt-reference-price,.spt-reference-menu{min-width:0;padding:4px;border:1px solid var(--spt-line);border-radius:5px;background:var(--spt-soft);font-size:9px;}
+.spt-reference-price small,.spt-reference-menu small{display:block;font-size:9px;color:var(--spt-muted);margin-bottom:4px;}
+.spt-reference-price>div{display:flex;align-items:center;justify-content:center;gap:4px;padding:4px 1px;background:var(--spt-deep);color:var(--spt-text);white-space:nowrap;font-size:8px;}
+.spt-reference-price b{font-size:9px;color:var(--spt-accent);}
+.spt-reference-price>span,.spt-reference-swatches{display:flex;gap:4px;margin-top:4px;}
+.spt-reference-price i,.spt-reference-swatches i{flex:1;height:9px;border:1px solid #aaaaaa;background:#cccccc;}
+.spt-reference-price i:nth-child(2),.spt-reference-swatches i:nth-child(2){background:#777777;}
+.spt-reference-price i:nth-child(3),.spt-reference-swatches i:nth-child(3){background:#eeeeee;}
+.spt-reference-menu>div{display:flex;gap:2px;}
+.spt-reference-menu>div>span{flex:1;padding:4px 1px;text-align:center;border:1px solid #777777;border-radius:3px;animation:spt-bg-choice 9s step-end infinite;}
+.spt-reference-menu>div>span:nth-child(2){animation-delay:-6s;}
+.spt-reference-menu>div>span:nth-child(3){animation-delay:-3s;}
+.spt-reference-csv{position:absolute;left:5px;right:5px;bottom:4px;text-align:center;font-size:9px;color:var(--spt-accent-light);}
+.spt-demo-level{display:flex;align-items:center;justify-content:center;gap:9px;padding:26px 14px 9px;}
+.spt-level-pill{border:1px solid #808080;border-radius:7px;padding:5px 9px;font-size:11px;}
+.spt-level-pill:first-of-type{animation:spt-level 4.6s ease-in-out infinite;}
+.spt-level-pill:nth-of-type(2){color:#dfdfdf;border-color:#b3b3b3;}
+.spt-demo-text .spt-demo-board{padding:12px 15px;}
+.spt-text-line{color:#535353;font-size:16px;line-height:1.8;font-weight:700;width:7em;white-space:nowrap;overflow:hidden;border-right:2px solid #6d6d6d;animation:spt-typing 5s steps(7,end) infinite;}
+.spt-demo-text small{font-size:10px;color:#7d7d7d;}
+.spt-demo-download{display:flex;align-items:center;justify-content:center;gap:8px;padding-top:18px;}
+.spt-download-file{border:1px solid #848484;background:#414141;border-radius:6px;padding:10px 8px;font:600 11px/1.5 "Segoe UI",sans-serif;animation:spt-download 4.6s ease-in-out infinite;}
+.spt-download-file:nth-of-type(2){animation-delay:.3s;}
+.spt-download-file:nth-of-type(3){animation-delay:.6s;}
+.spt-demo-restore .spt-demo-file{left:16px;max-width:130px;}
+.spt-demo-bottom{display:flex;align-items:center;justify-content:center;gap:5px;padding:20px 16px 5px;}
+.spt-bottom-slot{height:47px;flex:1;min-width:0;border:1px solid #696969;background:#cbcbcb;border-radius:7px;color:#4b4b4b;display:grid;place-items:center;font-size:10px;animation:spt-bottom 5s infinite;}
+.spt-bottom-slot:nth-of-type(2){animation-delay:.8s;}
+.spt-bottom-slot:nth-of-type(3){animation-delay:1.6s;}
+.spt-demo-exposure{display:flex;align-items:center;justify-content:center;gap:10px;padding:26px 16px 10px;}
+.spt-exposure-tile{width:56px;height:56px;border:1px solid #cbcbcb;border-radius:7px;background:#7e7e7e;display:grid;place-items:center;font-size:10px;}
+.spt-exposure-tile:nth-of-type(2){width:85px;height:43px;background:#c0c0c0;color:#4b4b4b;}
+.spt-exposure-tile:nth-of-type(3){width:43px;height:66px;background:#d4d4d4;color:#5d5d5d;}
+.spt-ghost{position:absolute;z-index:2;pointer-events:none;display:flex;align-items:center;gap:6px;background:var(--spt-deep);color:var(--spt-text);border:1px solid var(--spt-accent);border-radius:8px;padding:7px 10px;box-shadow:0 4px 20px rgba(0,0,0,.45);font-size:11px;font-weight:650;animation:spt-ghost 4.6s ease-in-out infinite;transform:translate(-80px,-16px);}
+.spt-ghost svg{width:17px;height:17px;}
+.spt-ghost::after{content:"";position:absolute;right:4px;bottom:-9px;width:10px;height:15px;background:var(--spt-accent);clip-path:polygon(0 0,100% 70%,55% 72%,33% 100%);}
+#shopee-tour-waiting{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:2147480001;width:min(540px,calc(100vw - 28px));display:flex;align-items:center;gap:13px;padding:15px 17px;box-sizing:border-box;border:1px solid var(--spt-line);border-radius:14px;background:var(--spt-deep);color:var(--spt-text);box-shadow:0 12px 40px rgba(0,0,0,.5);font:12px/1.65 "PingFang TC","Microsoft JhengHei",sans-serif;}
+#shopee-tour-waiting .spt-wait-spinner{flex:none;width:19px;height:19px;border:2px solid var(--spt-line-strong);border-top-color:var(--spt-accent);border-radius:50%;animation:spt-wait-spin .8s linear infinite;}
+#shopee-tour-waiting .spt-wait-copy{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;}
+#shopee-tour-waiting b{font-size:13px;color:var(--spt-text);}
+#shopee-tour-waiting span{overflow-wrap:anywhere;}
+#shopee-tour-waiting small{font-size:10px;color:var(--spt-muted);}
+#shopee-tour-waiting button{flex:none;border:1px solid var(--spt-line-strong);border-radius:7px;padding:7px 10px;background:var(--spt-soft);color:var(--spt-muted);font:inherit;cursor:pointer;}
+#shopee-tour-waiting button:focus-visible{outline:2px solid var(--spt-accent);outline-offset:3px;}
+@keyframes spt-wait-spin{to{transform:rotate(360deg);}}
+#shopee-tour-root[data-paused="true"] *,#shopee-tour-root[data-paused="true"] *::after{animation-play-state:paused!important;}
+@keyframes spt-focus-pulse{0%,100%{opacity:.18;transform:scale(1);}55%{opacity:.8;transform:scale(1.007);}}
+@keyframes spt-welcome-in{from{opacity:0;margin-top:10px;}to{opacity:1;margin-top:0;}}
+@keyframes spt-card-in{from{opacity:.3;transform:translateY(5px);}to{opacity:1;transform:translateY(0);}}
+@keyframes spt-upload{0%,12%{transform:translate(0,0);opacity:1;}45%,68%{transform:translate(130px,0);opacity:1;}80%,100%{transform:translate(130px,0);opacity:0;}}
+@keyframes spt-success{0%,63%,100%{opacity:0;}72%,90%{opacity:1;}}
+@keyframes spt-layout{0%,12%{transform:translate(0,0);opacity:1;}45%,70%{transform:translate(105px,0);opacity:1;}85%,100%{transform:translate(105px,0);opacity:0;}}
+@keyframes spt-resize{0%,15%,100%{transform:scale(.78);}50%,75%{transform:scale(1.15);}}
+@keyframes spt-rotate{0%,12%,100%{transform:rotate(0);}40%{transform:rotate(-24deg);}70%{transform:rotate(20deg);}}
+@keyframes spt-shadow{0%,12%,100%{transform:translateX(0) scaleX(1);}40%{transform:translateX(-16px) scaleX(1.2);}70%{transform:translateX(14px) scaleX(.9);}}
+@keyframes spt-shadow-side{0%,24%,100%{transform:translateX(34px) scaleX(1.2);}33%,57%{transform:translateX(0) scaleX(.78);}66%,90%{transform:translateX(-34px) scaleX(1.2);}}
+@keyframes spt-shadow-choice{0%,32%,100%{background:var(--spt-accent);color:var(--spt-on-accent);border-color:var(--spt-accent);}33%,99%{background:var(--spt-soft);color:var(--spt-muted);border-color:var(--spt-line);}}
+@keyframes spt-bg-frame{0%,29%,100%{opacity:1;}33%,96%{opacity:0;}}
+@keyframes spt-bg-choice{0%,32%,100%{border-color:var(--spt-accent);box-shadow:0 0 0 1px var(--spt-accent);}33%,99%{border-color:var(--spt-line);box-shadow:none;}}
+@keyframes spt-bg-cursor{0%,27%,100%{transform:translateY(0);}33%,60%{transform:translateY(27px);}66%,93%{transform:translateY(54px);}}
+@keyframes spt-asset-choice{0%,24%,100%{background:var(--spt-accent);color:var(--spt-on-accent);border-color:var(--spt-accent);}25%,99%{background:var(--spt-soft);color:#ffffff;border-color:var(--spt-line);}}
+@keyframes spt-asset-cursor{0%,20%,100%{transform:translateY(0);}25%,45%{transform:translateY(20px);}50%,70%{transform:translateY(40px);}75%,95%{transform:translateY(60px);}}
+@keyframes spt-color-click{0%,18%,32%,100%{transform:scale(1);}25%{transform:scale(.82);}}
+@keyframes spt-color-ring{0%,18%,60%,100%{opacity:0;transform:scale(.6);}25%{opacity:1;transform:scale(.7);}45%{opacity:0;transform:scale(1.7);}}
+@keyframes spt-palette-pulse{0%,28%,100%{opacity:.2;transform:scale(1);}40%,65%{opacity:1;transform:scale(1.01);}}
+@keyframes spt-palette-row{0%,28%,100%{box-shadow:none;}40%,70%{box-shadow:0 0 0 2px var(--spt-accent);}}
+@keyframes spt-palette-open{0%,30%,95%,100%{opacity:0;}40%,82%{opacity:1;}}
+@keyframes spt-color-link{to{stroke-dashoffset:-40;}}
+@keyframes spt-level{0%,100%{background:#313131;}50%{background:#7b7b7b;color:#fff;}}
+@keyframes spt-typing{0%,12%,100%{width:0;}55%,85%{width:7em;}}
+@keyframes spt-download{0%,15%{transform:translateY(-7px);opacity:.2;}45%,80%{transform:translateY(0);opacity:1;}100%{opacity:.2;}}
+@keyframes spt-bottom{0%,100%{box-shadow:inset 0 0 0 0 #696969;}25%{box-shadow:inset 0 -4px 0 0 #696969;}}
+@keyframes spt-ghost{0%,12%{transform:translate(-70px,-14px);opacity:0;}22%{opacity:1;}55%,70%{transform:translate(18px,14px);opacity:1;}88%,100%{transform:translate(18px,14px);opacity:0;}}
+@media(max-width:640px){.spt-hud{gap:6px;}.spt-hud-note{display:none;}.spt-welcome{padding:25px 22px;}.spt-welcome h2{font-size:26px;}.spt-card{padding:17px;}.spt-welcome-path{gap:5px;}.spt-welcome-path div{font-size:10px;}.spt-welcome-foot .spt-secondary{padding:10px 8px;font-size:11px;}}
+@media(max-width:360px){.spt-welcome{padding:24px 16px;}.spt-welcome-foot{gap:8px;grid-template-columns:minmax(0,5fr) minmax(0,6fr);}.spt-welcome-foot .spt-secondary{padding:10px 5px;font-size:10px;}}
+@media(max-height:600px){.spt-card{max-height:calc(100dvh - 76px);}.spt-demo{height:85px;min-height:85px;}.spt-demo-matching,.spt-demo-shadow,.spt-demo-backgrounds,.spt-demo-assets,.spt-demo-colors,.spt-demo-color-reference{height:116px;min-height:116px;}.spt-card h2{font-size:17px;}.spt-welcome{padding:22px;}.spt-welcome-path{display:none;}}
+@media(prefers-reduced-motion:reduce){#shopee-tour-root *,#shopee-tour-root *::after,#shopee-tour-waiting .spt-wait-spinner{animation:none!important;transition:none!important;}.spt-demo-file,.spt-ghost{transform:none;}.spt-demo-badge{opacity:1;}.spt-text-line{width:7em;}}
+@media(prefers-reduced-motion:reduce){.spt-bg-layer:first-child{opacity:1;}.spt-bg-option:first-child{border-color:var(--spt-accent);}.spt-shadow-directions span:first-child,.spt-asset-actions span:first-child{background:var(--spt-accent);color:var(--spt-on-accent);border-color:var(--spt-accent);}}
+@media(prefers-reduced-motion:reduce){.spt-mini-palette b{opacity:1;}.spt-color-pointer i{opacity:0;}}
+
+
+#shopee-tour-launch{position:fixed;z-index:100001;right:18px;bottom:72px;width:auto;margin:0;min-height:39px;display:inline-flex;flex-direction:row;align-items:center;justify-content:center;gap:7px;padding:10px 16px;border:1px solid var(--spt-accent);border-radius:8px;background:var(--spt-accent);color:#fff;font-family:inherit;font-size:13px;font-weight:600;line-height:1.3;box-shadow:0 4px 14px rgba(0,0,0,.35);cursor:pointer;}
+#shopee-tour-launch:hover{background:var(--spt-accent-hover);border-color:var(--spt-accent-hover);}
+#shopee-tour-launch svg{width:17px;height:17px;color:inherit;flex-shrink:0;}
+#shopee-tour-launch span{font-size:13px;}
+html.boda-hosted #shopee-tour-launch{display:none!important;}
+#shopee-tour-root{z-index:2147483500;}
+#shopee-tour-waiting{z-index:2147483600;}
+#shopee-tour-root .spt-welcome,#shopee-tour-root .spt-card{scrollbar-width:thin;scrollbar-color:var(--spt-line-strong) var(--spt-deep);}
+#shopee-tour-root .spt-demo-colors .spt-mini-pointer{right:auto;left:24px;top:40px;}
+.spt-demo-arrange,.spt-demo-linked{display:flex;align-items:flex-end;justify-content:center;gap:13px;padding:27px 18px 9px;}
+.spt-arrange-item{position:relative;flex:1;height:58px;border:1px solid #8d8d8d;border-radius:7px;background:#bababa;color:#353535;text-align:center;padding-top:33px;font-size:10px;animation:spt-arrange 5s ease-in-out infinite;}
+.spt-arrange-item:nth-child(2){height:73px;background:#e4e4e4;padding-top:39px;animation-delay:.3s;}
+.spt-arrange-item:nth-child(3){animation-delay:.6s;}
+.spt-arrange-item small{display:block;font-size:8px;line-height:1.2;}
+.spt-link-card{position:relative;flex:1;height:70px;overflow:hidden;border:1px solid var(--spt-accent);border-radius:5px;background:#d7d7d7;}
+.spt-link-card>small{position:absolute;left:0;right:0;top:3px;text-align:center;font-size:9px;color:#303030;}
+.spt-link-card .spt-product{width:18px;height:25px;left:20px;bottom:7px;animation:spt-link-move 4s ease-in-out infinite;}
+.spt-link-card .spt-product::before{left:3px;right:3px;top:8px;height:8px;}
+.spt-link-card .spt-product::after{left:4px;right:4px;top:-5px;height:5px;}
+.spt-link-card:last-child{border-color:#777777;}
+.spt-link-card:last-child .spt-product{animation:none;left:calc(50% - 9px);}
+.spt-demo-background-fit .spt-demo-board{background-image:linear-gradient(135deg,#eeeeee 25%,#bcbcbc 25%,#bcbcbc 50%,#eeeeee 50%,#eeeeee 75%,#bcbcbc 75%);background-size:35px 35px;animation:spt-bg-pan 5s ease-in-out infinite;}
+.spt-demo-background-fit small{position:absolute;left:12px;bottom:5px;font-size:9px;color:#303030;background:#ffffff;padding:1px 4px;border-radius:3px;}
+@keyframes spt-arrange{0%,100%{box-shadow:none;}35%,60%{box-shadow:0 0 0 2px var(--spt-accent);}}
+@keyframes spt-link-move{0%,100%{transform:translateX(0);}45%,70%{transform:translateX(18px);}}
+@keyframes spt-bg-pan{0%,100%{background-position:0 0;}45%,70%{background-position:30px 12px;}}
+@media(prefers-reduced-motion:reduce){#shopee-tour-root .spt-arrange-item,#shopee-tour-root .spt-link-card .spt-product,#shopee-tour-root .spt-demo-background-fit .spt-demo-board{animation:none!important;}}
+
+</style>
+<!-- SHOPEE_TOUR_STYLES_END -->
 </head>
 <body>
 <div id="app">
@@ -3429,6 +3703,7 @@ window.addEventListener('message',function(e){
 </script>
 
 <div id="feedback-btn">📝 填寫反饋</div>
+<button id="shopee-tour-launch" class="shopee-tour-launch" type="button" title="開始 SHOPEE 使用教學" aria-haspopup="dialog" aria-controls="shopee-tour-root">使用教學</button>
 <div id="manual-btn">📖 使用說明書</div>
 <div id="manual-modal" role="dialog" aria-modal="true" aria-label="JBP 編輯器使用說明書">
   <div id="manual-box">
@@ -3577,6 +3852,445 @@ window.addEventListener('storage', function (e) {
 })();
 </script>
 
+<!-- SHOPEE_TOUR_SCRIPT_BEGIN -->
+<script id="shopee-tour-script" data-version="20261029-3">
+(function () {
+  'use strict';
+  if (window.ShopeeTour) return;
+  var VERSION = '20261029-3';
+    var ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.8 8.5a2.5 2.5 0 0 1 4.7 1.2c0 1.8-2.5 2-2.5 3.8M12 17h.01"/></svg>';
+  var POINTER = '<svg viewBox="0 0 22 28" fill="currentColor" stroke="#111111" stroke-width="1" aria-hidden="true"><path d="m3 2 16 14-8 1-4 8z"/></svg>';
+  var FILE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M6 3h8l4 4v14H6zM14 3v5h5M9 12h6M9 16h6"/></svg>';
+  var IMAGE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8" cy="9" r="1.5"/><path d="m4 17 5-5 4 4 3-3 4 4"/></svg>';
+  function selection(){return '<span class="spt-selection"><i></i><i></i><i></i><i></i></span>';}
+  function product(rotate){return '<div class="spt-product">'+selection()+(rotate?'<i class="spt-rotate-handle">↻</i>':'')+'</div>';}
+  function demo(type){
+    var caption='<span class="spt-demo-caption">操作示意 · 不影響目前內容</span>',body='';
+    if(type==='upload'||type==='folder'||type==='restore'){
+      var label=type==='folder'?'商品圖片':type==='restore'?'編輯暫存.json':'工單.xlsx';
+      body='<div class="spt-demo-zone">拖曳到對應區域<small>放開即可讀取</small></div><div class="spt-demo-file">'+label+'</div><div class="spt-demo-cursor spt-cursor-drag">'+POINTER+'</div><span class="spt-demo-badge">✓ 已讀取</span>';
+    }else if(type==='layout'){
+      body='<div class="spt-demo-zone"><i></i><i></i></div><div class="spt-demo-file">MSBN</div><div class="spt-demo-cursor spt-cursor-drag">'+POINTER+'</div>';
+    }else if(type==='matching'){
+      body='<div class="spt-match-source"><small>工單圖片欄位</small><strong>A<b>,</b>B<b>,</b>C</strong></div>'+
+        '<div class="spt-match-rule">↓ 用逗號分開，獨立尋找 3 張圖片</div>'+
+        '<div class="spt-match-files"><span>'+IMAGE_ICON+'<b>A</b></span><span>'+IMAGE_ICON+'<b>B</b></span><span>'+IMAGE_ICON+'<b>C</b></span></div>';
+    }else if(type==='shadow'){
+      body='<div class="spt-demo-board"><span class="spt-product-shadow"></span>'+product(false)+'</div>'+
+        '<div class="spt-shadow-directions"><span>影子向右</span><span>影子置中</span><span>影子向左</span></div>';
+    }else if(type==='resize'||type==='rotate'){
+      body='<div class="spt-demo-board"><span class="spt-product-shadow"></span>'+product(type==='rotate')+'</div>';
+    }else if(type==='assets'){
+      body='<div class="spt-asset-kinds">'+['LOGO 圖','商品圖','人物圖 1','人物圖 2'].map(function(label){return '<span>'+IMAGE_ICON+'<small>'+label+'</small></span>';}).join('')+'</div>'+
+        '<div class="spt-asset-actions"><span>編輯</span><span>影子</span><span>前後</span><span>刪除</span></div><div class="spt-demo-cursor">'+POINTER+'</div>';
+    }else if(type==='backgrounds'){
+      body='<div class="spt-bg-thumbs"><span class="spt-bg-option spt-bg-theme-1"><small>背景 1</small></span><span class="spt-bg-option spt-bg-theme-2"><small>背景 2</small></span><span class="spt-bg-option spt-bg-theme-3"><small>背景 3</small></span></div>'+
+        '<div class="spt-bg-preview"><i class="spt-bg-layer spt-bg-theme-1"></i><i class="spt-bg-layer spt-bg-theme-2"></i><i class="spt-bg-layer spt-bg-theme-3"></i><small class="spt-bg-preview-label">背景圖預覽</small><div class="spt-product spt-bg-product"></div></div>'+
+        '<div class="spt-demo-cursor">'+POINTER+'</div>';
+    }else if(type==='colors'){
+      body='<div class="spt-mini-palette"><small>左側：點選色票</small><span><i></i>對應色票</span><b>開啟色盤修改</b></div><span class="spt-mini-link">→</span>'+
+        '<div class="spt-mini-canvas"><small>右側畫布｜同步預覽</small><span aria-label="可換色的空白色塊"></span><i class="spt-mini-pointer">'+POINTER+'</i></div>';
+    }else if(type==='color-reference'){
+      body='<div class="spt-reference-price"><small>配色參考－價格</small><div><s>$999</s><b>活動價 $699</b></div><span><i></i><i></i><i></i></span></div>'+
+        '<div class="spt-reference-menu"><small>配色參考－選單</small><div><span>一般</span><span>滑過</span><span>按下</span></div><span class="spt-reference-swatches"><i></i><i></i><i></i></span></div>'+
+        '<div class="spt-reference-csv">選用色碼 → 色票_取色工具.csv</div>';
+    }else if(type==='level'){
+      body='<span class="spt-level-pill">A / B+</span><span>→</span><span class="spt-level-pill">依等級顯示版位</span>';
+    }else if(type==='text'){
+      body='<div class="spt-demo-board"><div class="spt-text-line">限時優惠開跑</div><small>在左側欄位編輯文案</small></div>';
+    }else if(type==='bottom'){
+      body='<span class="spt-bottom-slot">主會場</span><span class="spt-bottom-slot">品牌優惠</span><span class="spt-bottom-slot">限時精選</span>';
+    }else if(type==='download'){
+      body='<span class="spt-download-file">ZIP<br>多版位圖</span><span class="spt-download-file">PNG<br>單張圖片</span><span class="spt-download-file">JSON<br>暫存檔</span>';
+    }else if(type==='arrange'){
+      body='<span class="spt-arrange-item">左配品</span><span class="spt-arrange-item">中間主品<small>預設在後層</small></span><span class="spt-arrange-item">右配品</span>';
+    }else if(type==='linked'){
+      body='<div class="spt-link-card"><small>🔗 連動</small>'+product(false)+'</div><div class="spt-link-card"><small>🔗 連動</small>'+product(false)+'</div><div class="spt-link-card"><small>單張解鎖</small>'+product(false)+'</div>';
+    }else if(type==='background-fit'){
+      body='<div class="spt-demo-board"><small>縮放・水平・垂直位置</small></div>';
+    }else{
+      body='<span class="spt-exposure-tile">LOGO</span><span class="spt-exposure-tile">BN 預覽</span><span class="spt-exposure-tile">DDCARD</span>';
+      type='exposure';
+    }
+    return '<div class="spt-demo spt-demo-'+type+'" aria-hidden="true">'+caption+body+'</div>';
+  }
+
+
+
+  var STEPS = [
+    {id:'layouts',group:'選擇版位',target:['#layout-checks'],title:'先選擇這次要製作的版位',
+      text:'在左側<b>排版選擇</b>勾選所需版位，右側就會出現對應畫布。也可使用「全選／全消」，一次調整目前入口允許選擇的版位。',
+      tip:'網址後的 # 可能限制可用版位；教學不會改網址，也不會替你變更勾選。',demo:'exposure'},
+    {id:'logos',group:'上傳素材',target:['#bn-logo-drop','#bn-logo-list'],fallback:['#sidebar'],title:'先上傳 LOGO',
+      text:'透過<b>Logo 上傳</b>加入品牌 LOGO，最多三張，再調整大小與位置。',
+      tip:'導覽不會選檔、替換圖片或改動既有版位。',demo:'assets'},
+    {id:'products',group:'上傳素材',target:['#bn-prod-open-btn','#bn-prod-list'],fallback:['#sidebar'],title:'商品圖片：選圖、排大小、再套用',
+      text:'使用<b>上傳商品圖</b>加入素材，依上傳視窗確認圖片、相對大小與排列，再按確認套用到畫布。',
+      tip:'操作前先確認商品圖與 LOGO 分別上傳到正確欄位。動畫是示意圖片，不會取代你的商品。',demo:'folder'},
+    {id:'arrange',group:'上傳素材',liveOptions:true,target:['#bn-prod-open-btn','#bn-prod-list'],fallback:['#sidebar'],title:'確認左、中、右與前後順序',
+      text:'在商品排序步驟確認<b>左配品、主品、右配品</b>，主品預設在中間、位於後層。套用後可用商品清單的上下箭頭調整前後關係。',
+      tip:'此步會開啟實際商品選項視窗供教學展示；離開此步時關閉，不會按確認套用或變更商品排列。'},
+    {id:'text',group:'文案與背景',target:['#field-main','#section-text'],title:'在左側編輯文案，右側即時預覽',
+      text:'修改品牌名、主標、副標、日期等文字，各版位會依自己的規則呈現。欄位旁會提示字數；看到紅框或橘色內容提醒，請先處理再下載。',
+      tip:'不同版位的字數／欄位不同；請依目前顯示的提示，不要為了排版自行加入不支援的換行。',demo:'text'},
+    {id:'colors',group:'文案與背景',target:['#color-rows','#dot-mainText'],title:'點色票，統一調整整組配色',
+      text:'點選左側圓形色票，可調整<b>文字、背景、CTA 等顏色</b>，也能輸入色碼。實際可用色與自動配色，會依各版位的規則處理。',
+      tip:'這裡的滑鼠與色盤只是示意，不會開啟真實色盤，也不會寫入你的配色。',demo:'colors'},
+    {id:'backgrounds',group:'文案與背景',target:['#bn-bg-open-btn','#bg-upload-btn'],findHeading:'背景圖',fallback:['#sidebar'],title:'透過背景圖庫選擇合適的背景',
+      text:'按<b>上傳背景圖</b>開啟圖庫，再選圖並套用。包含四大類別：<b>EL、Fashion、FMCG、Lifestyle</b>',
+      tip:'圖庫可用條件依目前入口顯示；也可以使用「上傳自己的圖片」。教學不會改入口或圖庫資格。',demo:'backgrounds'},
+    {id:'preview',group:'畫布編輯',target:['.preview-block','#preview-area'],title:'在右側逐張確認實際成品',
+      text:'右側每個區塊是一張獨立版位，上方顯示尺寸與預覽比例。捲動畫布逐張檢查<b>文案、商品、LOGO、背景與 CTA</b>，不要只看第一張。',
+      tip:'沒有勾選版位時會顯示空白提示；教學不會自動勾選或灌入測試素材。',demo:'exposure'},
+    {id:'transform',group:'畫布編輯',frameTargets:['.bn-prod-box'],target:['.preview-block-body','#preview-area'],title:'拖曳、四角縮放與任意角度旋轉',
+      text:'在畫布拖曳商品調整位置，用<b>四角控制點</b>縮放，拖曳上方 <b>↻</b> 把手旋轉。放開後，再確認商品沒有遮住文案或 CTA。',
+      tip:'尚未上傳商品時，先看獨立動畫示意。導覽不會拖曳或旋轉你的圖片。',demo:'rotate'},
+    {id:'linked',group:'畫布編輯',target:['.bn-layout-lock','.preview-block-head'],fallback:['#preview-area'],title:'用畫布右上角的鎖鏈控制連動',
+      text:'<b>鎖定時</b>，商品位置與大小會依各版位的有效商品區連動；<b>單張解鎖</b>後，可獨立調整這張，再按一次可重新加入連動。',
+      tip:'首頁 LOGO 牆、SearchICON_PRODUCT 維持各自規則，不加入這套商品位置連動。教學不會替你切換鎖定。',demo:'linked'},
+    {id:'shadow',group:'畫布編輯',target:['#bn-prod-list','#bn-prod-open-btn'],fallback:['#sidebar'],title:'商品陰影也可以獨立微調',
+      text:'使用商品的<b>影子編輯</b>入口，調整光源方向、陰影位移、寬度、長度與顏色。完成後套用，再檢查各張版位的呈現。',
+      tip:'需要等待圖片處理完成時，請不要連續重複點擊。這個動畫不會重製任何商品圖。',demo:'shadow'},
+    {id:'download',group:'下載與暫存',target:['#bn-dl-all','#bn-download-bar'],findText:'下載全部勾選畫版|下載全部',fallback:['#sidebar'],title:'檢查完成，再下載勾選的畫版',
+      text:'按<b>下載全部勾選畫版</b>輸出目前成品。多版位會打包成 ZIP；下載前請確認字數、內容提醒與圖片都已處理完成。',
+      tip:'打包期間請等待完成，不要關閉分頁。導覽只標示按鈕，不會觸發下載。',demo:'download'},
+    {id:'restore',group:'下載與暫存',target:['#bn-state-upload','#bn-state-bar'],findText:'上傳暫存|還原暫存|載入暫存|下載暫存',fallback:['#bn-download-bar','#sidebar'],title:'保存暫存檔，下次可以接著做',
+      text:'保留工具提供的 <b>JSON 暫存檔</b>；下次從上傳／還原暫存入口載回，即可繼續編輯。同一瀏覽器的本機暫存，不能取代跨電腦的備份檔。',
+      tip:'清除暫存可能重設內容，請先備份。完成教學後會回到開始前的捲動位置。',demo:'restore'}
+  ];
+  var ROUTES = {
+    full:{label:'完整導覽 · '+STEPS.length+' 步',ids:STEPS.map(function(s){return s.id;})},
+    assets:{label:'只看素材與畫布 · 8 步',ids:['layouts','logos','products','arrange','preview','transform','linked','shadow']},
+    delivery:{label:'只看文案背景與交付 · 5 步',ids:['text','colors','backgrounds','download','restore']}
+  };
+  var root,card,focus,dim,snapshot,currentTarget,steps=[],route='full',index=-1,active=false,paused=false;
+  var frameRaf=0,restoreRaf=0,mutationObserver=null,resizeObserver=null,frameObserver=null,observedFrameDoc=null;
+  var pendingRoute='',waitingElement=null,waitingFocus=null,waitingTimer=0,idleTimer=0,launchObserver=null;
+  var optionsPreview=null,optionsTimer=0;
+
+  function html(s){return String(s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+  function $$(selector,doc){return Array.prototype.slice.call((doc||document).querySelectorAll(selector));}
+  function visible(el){
+    if(!el||!el.isConnected)return false;
+    var r=el.getBoundingClientRect(),s=el.ownerDocument.defaultView.getComputedStyle(el);
+    return r.width>2&&r.height>2&&s.visibility!=='hidden'&&s.display!=='none';
+  }
+  function safeFocus(el){if(el&&el.focus){try{el.focus({preventScroll:true});}catch(_){el.focus();}}}
+  function clamp(value,min,max){return Math.max(min,Math.min(Math.max(min,max),value));}
+  function productOptionsTarget(){
+    var session=optionsPreview&&optionsPreview.session;
+    return session&&visible(session.element)&&visible(session.panel)?session.panel:null;
+  }
+  function updateOptionsNotice(){
+    var note=root&&root.querySelector('.spt-options-status');if(!note)return;
+    var shown=!!productOptionsTarget(),status=shown?'shown':optionsPreview&&optionsPreview.opening?'opening':'unavailable';
+    if(note.dataset.status===status)return;
+    note.dataset.status=status;
+    note.innerHTML=shown?(optionsPreview.session.count?'已開啟實際的「② 確認大小比例」選項視窗（教學展示，不會套用）。':'這是實際的「② 確認大小比例」選項視窗。尚未上傳商品，因此暫時沒有商品縮圖。'):
+      status==='opening'?'正在開啟實際商品選項視窗…':
+      '目前無法開啟商品選項，請確認已一併更新商品編輯外掛，並先完成其他編輯視窗。<br><button type="button" class="spt-secondary" data-action="options">重新開啟商品選項</button>';
+  }
+  function showProductOptions(){
+    if(optionsPreview)return;
+    optionsPreview={session:null,opening:true};
+    var attempt=0;
+    function check(){
+      optionsTimer=0;if(!active||!optionsPreview||index<0||!steps[index].liveOptions)return;
+      var api=window.BNProductOptionsTour;
+      if(!optionsPreview.session&&api&&typeof api.open==='function'){
+        try{optionsPreview.session=api.open();}catch(_){optionsPreview.opening=false;}
+      }
+      updateOptionsNotice();scheduleLayout();
+      if(productOptionsTarget())return;
+      if(++attempt<20&&optionsPreview.opening)optionsTimer=setTimeout(check,100);
+      else{optionsPreview.opening=false;updateOptionsNotice();}
+    }
+    check();
+  }
+  function hideProductOptions(){
+    clearTimeout(optionsTimer);optionsTimer=0;
+    if(!optionsPreview)return;var saved=optionsPreview;optionsPreview=null;
+    if(saved.session&&typeof saved.session.close==='function')saved.session.close();
+  }
+  function isBusy(){
+    if(window._bnExporting||window._bnStateDownloading)return true;
+    return $$('#bn-loading-overlay.show,#bn-download-overlay.show,#manual-modal.show,#bn-prod-modal.show,#bn-bg-modal.show,#bnBgLibModal.open,#bn-shadow-modal.show,.hbn-plugin-modal.show,#bnSlabFitModal.open').some(visible);
+  }
+  function clearPending(){
+    pendingRoute='';clearTimeout(waitingTimer);clearTimeout(idleTimer);waitingTimer=idleTimer=0;
+    if(waitingElement){waitingElement.remove();waitingElement=null;}
+    var launch=document.getElementById('shopee-tour-launch');if(launch)launch.removeAttribute('aria-busy');
+    window.removeEventListener('keydown',onWaitingKey,true);
+    window.removeEventListener('hashchange',cancelPending,true);
+    window.removeEventListener('popstate',cancelPending,true);
+  }
+  function cancelPending(){var old=waitingFocus;clearPending();waitingFocus=null;if(visible(old))safeFocus(old);}
+  function onWaitingKey(e){if(e.key==='Escape'){e.preventDefault();e.stopImmediatePropagation();cancelPending();}}
+  function checkPending(){
+    if(!pendingRoute)return;
+    if(!isBusy()&&document.visibilityState!=='hidden'){
+      if(!idleTimer)idleTimer=setTimeout(function(){
+        idleTimer=0;if(!pendingRoute||isBusy()||document.visibilityState==='hidden')return;
+        var key=pendingRoute,old=waitingFocus;clearPending();waitingFocus=null;begin(key,old);
+      },220);
+    }else{clearTimeout(idleTimer);idleTimer=0;}
+    waitingTimer=setTimeout(checkPending,250);
+  }
+  function queueStart(key){
+    pendingRoute=key;
+    if(!waitingElement){
+      waitingFocus=document.activeElement;
+      waitingElement=document.createElement('div');waitingElement.id='shopee-tour-waiting';waitingElement.setAttribute('role','status');
+      waitingElement.innerHTML='<span class="spt-wait-spinner" aria-hidden="true"></span><div class="spt-wait-copy"><b>已預約開始教學</b><span>請先完成目前的編輯或等待處理結束，導覽會自動開啟。</span></div><button type="button">取消等候</button>';
+      document.body.appendChild(waitingElement);waitingElement.querySelector('button').addEventListener('click',cancelPending);
+      var launch=document.getElementById('shopee-tour-launch');if(launch)launch.setAttribute('aria-busy','true');
+      window.addEventListener('keydown',onWaitingKey,true);
+      window.addEventListener('hashchange',cancelPending,true);window.addEventListener('popstate',cancelPending,true);
+      checkPending();
+    }
+    return true;
+  }
+  function takeSnapshot(){
+    var scrolls=$$('#sidebar-scroll,#preview-area').map(function(el){return {el:el,x:el.scrollLeft,y:el.scrollTop};});
+    var frames=[];
+    $$('.preview-block iframe').forEach(function(frame){try{
+      if(frame.contentDocument)frames.push({win:frame.contentWindow,x:frame.contentWindow.scrollX,y:frame.contentWindow.scrollY});
+    }catch(_){}});
+    return {focus:document.activeElement,x:window.scrollX,y:window.scrollY,scrolls:scrolls,frames:frames,background:[]};
+  }
+  function isolateBackground(){
+    Array.prototype.slice.call(document.body.children).forEach(function(el){
+      if(el===root||/^(SCRIPT|STYLE|LINK)$/.test(el.tagName))return;
+      snapshot.background.push({el:el,inert:el.getAttribute('inert'),aria:el.getAttribute('aria-hidden')});
+      el.setAttribute('inert','');el.setAttribute('aria-hidden','true');
+    });
+  }
+  function restore(){
+    if(!snapshot)return;var saved=snapshot;snapshot=null;
+    saved.background.forEach(function(s){
+      if(!s.el.isConnected)return;
+      if(s.inert===null)s.el.removeAttribute('inert');else s.el.setAttribute('inert',s.inert);
+      if(s.aria===null)s.el.removeAttribute('aria-hidden');else s.el.setAttribute('aria-hidden',s.aria);
+    });
+    function scrollBack(){
+      saved.scrolls.forEach(function(s){if(s.el.isConnected){s.el.scrollLeft=s.x;s.el.scrollTop=s.y;}});
+      saved.frames.forEach(function(s){try{s.win.scrollTo(s.x,s.y);}catch(_){}});
+      if(window.scrollX!==saved.x||window.scrollY!==saved.y)window.scrollTo(saved.x,saved.y);
+    }
+    scrollBack();restoreRaf=requestAnimationFrame(function(){restoreRaf=0;if(!active){scrollBack();if(visible(saved.focus))safeFocus(saved.focus);}});
+  }
+  function firstVisible(selectors,doc){
+    var found=null;
+    (selectors||[]).some(function(selector){return $$(selector,doc).some(function(el){if(visible(el)){found=el;return true;}return false;});});
+    return found;
+  }
+  function findText(pattern){
+    var re=new RegExp(pattern),found=null;
+    $$('button,label,a,[role="button"]').some(function(el){
+      if(root&&root.contains(el)||el.closest('#manual-modal,#shopee-tour-waiting'))return false;
+      var text=String(el.textContent||el.title||'').trim();
+      if(text.length<90&&re.test(text)&&visible(el)){found=el;return true;}return false;
+    });return found;
+  }
+  function resolve(step){
+    var el=null,frame=null,fallback=false;
+    if(step.liveOptions){el=productOptionsTarget();if(el)return {el:el,frame:null,fallback:false};}
+    if(step.frameTargets){
+      $$('.preview-block iframe').some(function(f){
+        if(!visible(f))return false;
+        try{el=firstVisible(step.frameTargets,f.contentDocument);if(el){frame=f;return true;}}catch(_){}
+        return false;
+      });
+    }
+    if(!el)el=firstVisible(step.target);
+    if(!el&&step.findHeading){
+      $$('#sidebar .s-section').some(function(heading){if(visible(heading)&&heading.textContent.replace(/\s/g,'')===step.findHeading){el=heading;return true;}return false;});
+    }
+    if(!el&&step.findText)el=findText(step.findText);
+    if(!el){el=firstVisible(step.fallback);fallback=true;}
+    if(step.frameTargets&&!frame)fallback=true;
+    return {el:el,frame:frame,fallback:fallback};
+  }
+  function scrollTarget(target){
+    if(!target||!target.el)return;
+    try{target.el.scrollIntoView({behavior:'instant',block:'center',inline:'nearest'});}catch(_){}
+    if(target.frame){try{target.frame.scrollIntoView({behavior:'instant',block:'center',inline:'nearest'});}catch(_){}}
+  }
+  function clearFrameObserver(){
+    if(frameObserver){frameObserver.disconnect();frameObserver=null;}
+    if(observedFrameDoc)observedFrameDoc.removeEventListener('scroll',scheduleLayout,true);
+    observedFrameDoc=null;
+  }
+  function watchFrame(){
+    var doc=null;try{doc=currentTarget&&currentTarget.frame&&currentTarget.frame.contentDocument;}catch(_){}
+    if(doc===observedFrameDoc)return;
+    clearFrameObserver();observedFrameDoc=doc;
+    if(doc){
+      doc.addEventListener('scroll',scheduleLayout,true);
+      if(window.MutationObserver&&doc.body){frameObserver=new MutationObserver(scheduleLayout);frameObserver.observe(doc.body,{childList:true,subtree:true,attributes:true,attributeFilter:['class','style']});}
+    }
+  }
+  function buildRoot(){
+    root=document.createElement('div');root.id='shopee-tour-root';root.hidden=true;root.tabIndex=-1;
+    root.setAttribute('role','dialog');root.setAttribute('aria-modal','true');root.setAttribute('aria-labelledby','shopee-tour-title');
+    root.innerHTML='<div class="spt-dimmer" aria-hidden="true"></div><div class="spt-focus" aria-hidden="true" hidden></div>'+
+      '<div class="spt-hud"><strong>SHOPEE 使用教學</strong><span class="spt-hud-note">教學模式 · 不會變更你的內容</span>'+
+      '<button type="button" class="spt-pause" data-action="pause" aria-pressed="false">暫停動畫</button>'+
+      '<button type="button" class="spt-icon-button" data-action="close" aria-label="關閉使用教學">×</button></div><div class="spt-host"></div>';
+    document.body.appendChild(root);focus=root.querySelector('.spt-focus');dim=root.querySelector('.spt-dimmer');
+    root.addEventListener('click',function(event){
+      var button=event.target.closest('[data-action]');if(!button||button.disabled)return;
+      var action=button.getAttribute('data-action');
+      if(action==='close')stop();
+      else if(action==='start'){chooseRoute(root.querySelector('.spt-route-select').value);go(0);}
+      else if(action==='next'){if(index===steps.length-1)stop();else go(index+1);}
+      else if(action==='prev')go(index-1);
+      else if(action==='options'){hideProductOptions();showProductOptions();updateOptionsNotice();scheduleLayout();}
+      else if(action==='pause'){
+        paused=!paused;root.dataset.paused=String(paused);button.setAttribute('aria-pressed',String(paused));button.textContent=paused?'播放動畫':'暫停動畫';
+      }
+    });
+    root.addEventListener('change',function(event){if(event.target.classList.contains('spt-jump'))go(Number(event.target.value));});
+    function preventBackgroundScroll(event){if(!event.target.closest('.spt-card,.spt-welcome'))event.preventDefault();}
+    root.addEventListener('wheel',preventBackgroundScroll,{passive:false});root.addEventListener('touchmove',preventBackgroundScroll,{passive:false});
+  }
+  function chooseRoute(key){
+    route=ROUTES[key]?key:'full';steps=ROUTES[route].ids.map(function(id){return STEPS.filter(function(s){return s.id===id;})[0];});
+    root.dataset.route=route;root.dataset.total=String(steps.length);
+  }
+  function welcome(){
+    index=-1;card=null;currentTarget=null;focus.hidden=true;dim.hidden=false;
+    root.dataset.screen='welcome';root.dataset.step='welcome';
+    root.querySelector('.spt-host').innerHTML='<section class="spt-welcome"><div class="spt-eyebrow">SHOPEE / 互動操作導覽</div>'+
+      '<h2 id="shopee-tour-title">從素材，到整組成品。</h2><p class="spt-welcome-lead">跟著重點框選與操作動畫，認識 BN 編輯器。<br>第一次使用，先看一遍就有方向。</p>'+
+      '<div class="spt-welcome-path" aria-hidden="true"><div><b>1</b>勾選版位與素材</div><span>→</span><div><b>2</b>編輯文案與畫布</div><span>→</span><div><b>3</b>下載與備份</div></div>'+
+      '<div class="spt-welcome-foot"><button type="button" class="spt-secondary" data-action="close">先不用，結束導覽</button><button type="button" class="spt-primary" data-action="start">開始導覽 →</button></div>'+
+      '<div class="spt-route-box"><label class="spt-route-label" for="shopee-tour-route">想先了解哪一段？</label><select class="spt-route-select" id="shopee-tour-route">'+
+      Object.keys(ROUTES).map(function(k){return '<option value="'+k+'"'+(route===k?' selected':'')+'>'+html(ROUTES[k].label)+'</option>';}).join('')+'</select></div>'+
+      '<p class="spt-safe"><b>放心看，不會替你修改作品。</b>商品排序教學會開啟實際選項視窗供展示，離開該步驟時關閉；不會確認套用、改文字、配色、素材、版位勾選、鎖定或暫存，也不會上傳、下載。下次可從右下角「使用教學」再次播放。</p></section>';
+    safeFocus(root.querySelector('[data-action="start"]'));
+  }
+  function go(position){
+    if(!active||position<0||position>=steps.length)return;
+    var step=steps[position];if(!step.liveOptions)hideProductOptions();
+    clearFrameObserver();index=position;if(step.liveOptions)showProductOptions();currentTarget=resolve(step);scrollTarget(currentTarget);
+    root.dataset.screen='step';root.dataset.step=step.id;root.dataset.index=String(index+1);
+    var fallback=!step.liveOptions&&(currentTarget.fallback||!currentTarget.el)?'<p class="spt-fallback">目前尚未顯示此操作區或素材，先看動畫示意；可以繼續下一步。</p>':'';
+    root.querySelector('.spt-host').innerHTML='<section class="spt-card"><div class="spt-card-content">'+
+      '<div class="spt-step-meta"><span>'+String(index+1).padStart(2,'0')+' / '+steps.length+'</span><span class="spt-group">'+html(step.group)+'</span></div>'+
+      '<h2 id="shopee-tour-title">'+html(step.title)+'</h2><p class="spt-description">'+step.text+'</p>'+(step.liveOptions?'<p class="spt-fallback spt-options-status" role="status"></p>':demo(step.demo))+'<p class="spt-tip">'+step.tip+'</p>'+fallback+
+      '<div class="spt-progress" role="progressbar" aria-label="導覽進度" aria-valuemin="0" aria-valuemax="'+steps.length+'" aria-valuenow="'+(index+1)+'"><span style="width:'+((index+1)/steps.length*100)+'%"></span></div>'+
+      '<div class="spt-controls"><button type="button" class="spt-skip" data-action="close">跳過導覽</button><div class="spt-controls-right">'+
+      '<button type="button" class="spt-secondary" data-action="prev"'+(index===0?' disabled':'')+'>上一步</button><button type="button" class="spt-primary" data-action="next">'+(index===steps.length-1?'完成教學 ✓':'下一步 →')+'</button></div></div>'+
+      '<select class="spt-jump" aria-label="跳至教學步驟">'+steps.map(function(s,i){return '<option value="'+i+'"'+(i===index?' selected':'')+'>'+(i+1)+'. '+html(s.title)+'</option>';}).join('')+'</select></div></section>';
+    card=root.querySelector('.spt-card');if(step.liveOptions)updateOptionsNotice();layout();watchFrame();safeFocus(card.querySelector('[data-action="next"]'));scheduleLayout();
+  }
+  function intersect(a,b){
+    var l=Math.max(a.left,b.left),t=Math.max(a.top,b.top),r=Math.min(a.right,b.right),d=Math.min(a.bottom,b.bottom);
+    return r>l&&d>t?{left:l,top:t,right:r,bottom:d,width:r-l,height:d-t}:null;
+  }
+  function targetRect(){
+    if(!currentTarget||!visible(currentTarget.el))return null;
+    var r=currentTarget.el.getBoundingClientRect(),frame=currentTarget.frame;
+    if(frame){
+      var f=frame.getBoundingClientRect(),sx=f.width/(frame.offsetWidth||f.width),sy=f.height/(frame.offsetHeight||f.height);
+      r={left:f.left+r.left*sx,top:f.top+r.top*sy,right:f.left+r.right*sx,bottom:f.top+r.bottom*sy};
+      r=intersect(r,f);if(!r)return null;
+    }
+    var parent=(frame||currentTarget.el).parentElement;
+    while(parent&&parent!==document.body){
+      var cs=window.getComputedStyle(parent);
+      if(/auto|scroll|hidden|clip/.test(cs.overflow+cs.overflowY+cs.overflowX)){r=intersect(r,parent.getBoundingClientRect());if(!r)return null;}
+      parent=parent.parentElement;
+    }
+    return intersect({left:r.left-6,top:r.top-6,right:r.right+6,bottom:r.bottom+6},{left:8,top:62,right:window.innerWidth-8,bottom:window.innerHeight-8});
+  }
+  function layout(){
+    if(!active||index<0||!card)return;
+    if(steps[index].liveOptions)updateOptionsNotice();
+    var next=resolve(steps[index]);
+    if(!currentTarget||next.el!==currentTarget.el||next.frame!==currentTarget.frame){currentTarget=next;scrollTarget(next);watchFrame();}
+    var r=targetRect(),w=window.innerWidth,h=window.innerHeight,m=14,g=18,cw=Math.max(180,Math.min(364,w-2*m));
+    card.style.width=cw+'px';var ch=card.offsetHeight||420;
+    dim.hidden=!!r;focus.hidden=!r;
+    if(r){focus.style.left=r.left+'px';focus.style.top=r.top+'px';focus.style.width=r.width+'px';focus.style.height=r.height+'px';}
+    var options=r?[{x:r.right+g,y:r.top},{x:r.left-cw-g,y:r.top},{x:r.left+(r.width-cw)/2,y:r.bottom+g},{x:r.left+(r.width-cw)/2,y:r.top-ch-g}]:[{x:(w-cw)/2,y:(h-ch)/2}];
+    var best=null,score=Infinity;
+    options.forEach(function(p){
+      var x=clamp(p.x,m,w-cw-m),y=clamp(p.y,66,h-ch-m);
+      var overlap=r?Math.max(0,Math.min(x+cw,r.right)-Math.max(x,r.left))*Math.max(0,Math.min(y+ch,r.bottom)-Math.max(y,r.top)):0;
+      var value=overlap*10+Math.abs(x-p.x)+Math.abs(y-p.y);if(value<score){score=value;best={x:x,y:y};}
+    });
+    card.style.left=best.x+'px';card.style.top=best.y+'px';
+  }
+  function scheduleLayout(){if(active&&!frameRaf)frameRaf=requestAnimationFrame(function(){frameRaf=0;layout();});}
+  function onKey(event){
+    if(!active)return;event.stopImmediatePropagation();
+    if(event.key==='Escape'){event.preventDefault();stop();return;}
+    if(event.target.tagName!=='SELECT'&&index>=0&&!event.ctrlKey&&!event.altKey&&!event.metaKey){
+      if(event.key==='ArrowRight'){event.preventDefault();if(index===steps.length-1)stop();else go(index+1);return;}
+      if(event.key==='ArrowLeft'){event.preventDefault();if(index>0)go(index-1);return;}
+    }
+    if(event.key==='Tab'){
+      var controls=$$('button:not(:disabled),select',root).filter(visible),first=controls[0],last=controls[controls.length-1];
+      if(event.shiftKey&&(document.activeElement===first||!root.contains(document.activeElement))){event.preventDefault();safeFocus(last);}
+      else if(!event.shiftKey&&(document.activeElement===last||!root.contains(document.activeElement))){event.preventDefault();safeFocus(first);}
+    }
+  }
+  function onFocus(event){if(active&&!root.contains(event.target))safeFocus(root.querySelector('[data-action="next"],[data-action="start"]'));}
+  function onLocation(){if(active)stop();}
+  function start(key){
+    if(active)return false;key=ROUTES[key]?key:'full';
+    if(isBusy())return queueStart(key);clearPending();return begin(key);
+  }
+  function begin(key,returnFocus){
+    if(active)return false;
+    if(restoreRaf){cancelAnimationFrame(restoreRaf);restoreRaf=0;}
+    if(!root)buildRoot();snapshot=takeSnapshot();active=true;paused=false;root.dataset.paused='false';
+    if(visible(returnFocus))snapshot.focus=returnFocus;
+    var pause=root.querySelector('[data-action="pause"]');pause.setAttribute('aria-pressed','false');pause.textContent='暫停動畫';
+    chooseRoute(key);root.hidden=false;safeFocus(root);isolateBackground();welcome();
+    window.addEventListener('keydown',onKey,true);window.addEventListener('focusin',onFocus,true);
+    window.addEventListener('resize',scheduleLayout);window.addEventListener('scroll',scheduleLayout,true);
+    window.addEventListener('hashchange',onLocation,true);window.addEventListener('popstate',onLocation,true);
+    document.addEventListener('load',scheduleLayout,true);
+    if(window.MutationObserver){
+      mutationObserver=new MutationObserver(scheduleLayout);
+      ['sidebar','preview-area'].forEach(function(id){var el=document.getElementById(id);if(el)mutationObserver.observe(el,{childList:true,subtree:true,attributes:true,attributeFilter:['class','style','hidden']});});
+    }
+    if(window.ResizeObserver){resizeObserver=new ResizeObserver(scheduleLayout);resizeObserver.observe(document.documentElement);}
+    return true;
+  }
+  function stop(){
+    if(pendingRoute)cancelPending();if(!active)return;active=false;
+    hideProductOptions();
+    clearFrameObserver();if(frameRaf){cancelAnimationFrame(frameRaf);frameRaf=0;}
+    if(mutationObserver){mutationObserver.disconnect();mutationObserver=null;}
+    if(resizeObserver){resizeObserver.disconnect();resizeObserver=null;}
+    window.removeEventListener('keydown',onKey,true);window.removeEventListener('focusin',onFocus,true);
+    window.removeEventListener('resize',scheduleLayout);window.removeEventListener('scroll',scheduleLayout,true);
+    window.removeEventListener('hashchange',onLocation,true);window.removeEventListener('popstate',onLocation,true);
+    document.removeEventListener('load',scheduleLayout,true);
+    root.hidden=true;root.querySelector('.spt-host').innerHTML='';currentTarget=card=null;index=-1;restore();
+  }
+  function positionLaunch(){
+    var button=document.getElementById('shopee-tour-launch'),manual=document.getElementById('manual-btn');
+    if(!button||!visible(manual))return;
+    var r=manual.getBoundingClientRect();
+    button.style.right=Math.max(8,window.innerWidth-r.right)+'px';button.style.bottom=Math.max(18,window.innerHeight-r.top+10)+'px';button.style.width=r.width+'px';
+  }
+  function mount(){
+    var button=document.getElementById('shopee-tour-launch');if(!button)return;
+    button.innerHTML=ICON+'<span>使用教學</span>';button.addEventListener('click',function(){start('full');});
+    positionLaunch();window.addEventListener('resize',positionLaunch);
+    var manual=document.getElementById('manual-btn');
+    if(window.ResizeObserver&&manual){launchObserver=new ResizeObserver(positionLaunch);launchObserver.observe(manual);}
+  }
+  window.ShopeeTour={version:VERSION,start:start,stop:stop,isActive:function(){return active;},isPending:function(){return !!pendingRoute;}};
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',mount,{once:true});else mount();
+})();
+</script>
+<!-- SHOPEE_TOUR_SCRIPT_END -->
 </body>
 
 </html>

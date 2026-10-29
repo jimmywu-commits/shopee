@@ -1161,6 +1161,7 @@
 
     /* ══ 商品上傳（Modal） ══ */
     var modal, staged=[], heroIdx=0, rankOrder=null, currentStep=1, dragSrc=null;
+    var productOptionsTourState=null;
 
     function insertProductUI(){
       var scroll=document.getElementById('sidebar-scroll');
@@ -2108,11 +2109,13 @@
       document.getElementById('bn-st1').addEventListener('click',function(){if(currentStep!==1)showStep(1);});
       document.getElementById('bn-st2').addEventListener('click',function(){if(currentStep!==2&&staged.length&&staged.length<=MAX_PROD)showStep(2);});
       document.getElementById('bn-mnext').addEventListener('click',function(){
+        if(productOptionsTourState)return;
         if(currentStep===1){if(!staged.length||staged.length>MAX_PROD)return;showStep(2);}
         else{applyWithOrder(rankOrderToHeroFirst());closeModal();}
       });
       document.getElementById('bn-mback').addEventListener('click',function(){showStep(1);});
       document.getElementById('bn-mskip').addEventListener('click',function(){
+        if(productOptionsTourState)return;
         if(!staged.length){closeModal();return;}
         applyWithOrder(staged.slice(0,MAX_PROD),true);closeModal();
       });
@@ -2126,12 +2129,67 @@
     }
 
     function openModal(){
+      if(productOptionsTourState)return;
       staged=window._bnProducts.map(function(p){return{src:p.src,name:p.name,ratio:p.ratio,fromExisting:true,id:p.id,baseSrc:p.baseSrc,meta:p.meta?JSON.parse(JSON.stringify(p.meta)):undefined};});
       heroIdx=0; rankOrder=null; currentStep=1;
       renderPreview(); updateLimit(); showStep(1);
       modal.classList.add('show');
     }
-    function closeModal(){modal.classList.remove('show');}
+    function closeModal(){
+      if(productOptionsTourState){closeProductOptionsTour();return;}
+      modal.classList.remove('show');
+    }
+
+    /* 教學專用：使用真正的第二頁與 renderRankRow，但不套用、不重建商品。
+       使用獨立的暫存資料／排序容器；離開時連原有 DOM 與事件一起還原。 */
+    function closeProductOptionsTour(){
+      var saved=productOptionsTourState;if(!saved)return;
+      productOptionsTourState=null;
+      saved.events.forEach(function(type){modal.removeEventListener(type,saved.blockInput,true);});
+      if(saved.previewRow.parentNode)saved.previewRow.parentNode.replaceChild(saved.row,saved.previewRow);
+      staged=saved.staged;heroIdx=saved.heroIdx;rankOrder=saved.rankOrder;currentStep=saved.currentStep;dragSrc=saved.dragSrc;
+      saved.views.forEach(function(view){
+        view.attrs.forEach(function(attr){if(attr.value===null)view.el.removeAttribute(attr.name);else view.el.setAttribute(attr.name,attr.value);});
+        if(view.text!==null)view.el.textContent=view.text;
+      });
+      saved.scrolls.forEach(function(scroll){scroll.el.scrollTop=scroll.top;scroll.el.scrollLeft=scroll.left;});
+    }
+    function openProductOptionsTour(){
+      if(productOptionsTourState||window._bnExporting||window._bnStateDownloading)return null;
+      if(!modal)buildModal();
+      if(!modal||modal.classList.contains('show'))return null;
+      var row=document.getElementById('bn-rrow');if(!row)return null;
+      var views=[modal].concat(['bn-sc1','bn-sc2','bn-st1','bn-st2','bn-mback','bn-mnext','bn-mskip','bn-mfinp','bn-mc'].map(function(id){return document.getElementById(id);}));
+      if(views.some(function(el){return !el;}))return null;
+      var saved={staged:staged,heroIdx:heroIdx,rankOrder:rankOrder,currentStep:currentStep,dragSrc:dragSrc,
+        row:row,previewRow:row.cloneNode(false),events:['click','change','input','drop','dragstart','dragover'],
+        views:views.map(function(el){return {el:el,text:/^(bn-mnext|bn-mskip)$/.test(el.id)?el.textContent:null,
+          attrs:['class','style','hidden','disabled','inert','aria-hidden','data-bn-product-tour'].map(function(name){return {name:name,value:el.getAttribute(name)};})};}),
+        scrolls:Array.from(modal.querySelectorAll('.bn-modal-body')).map(function(el){return {el:el,top:el.scrollTop,left:el.scrollLeft};})};
+      saved.blockInput=function(event){event.preventDefault();event.stopImmediatePropagation();};
+      productOptionsTourState=saved;
+      try{
+        row.parentNode.replaceChild(saved.previewRow,row);
+        staged=(window._bnProducts||[]).slice().sort(function(a,b){return (a.position||0)-(b.position||0);}).slice(0,MAX_PROD).map(function(p){
+          return {src:p.src,name:p.name,ratio:p.ratio,fromExisting:true,id:p.id};
+        });
+        heroIdx=0;rankOrder=null;dragSrc=null;
+        showStep(2);
+        if(!staged.length){
+          var empty=document.createElement('div');empty.className='bn-rank-hint';
+          empty.textContent='尚未上傳商品；上傳後，這裡會顯示商品的大小比例與左右排序。';
+          saved.previewRow.appendChild(empty);
+        }
+        ['bn-mnext','bn-mskip','bn-mback','bn-st1','bn-st2','bn-mfinp','bn-mc'].forEach(function(id){document.getElementById(id).disabled=true;});
+        saved.events.forEach(function(type){modal.addEventListener(type,saved.blockInput,true);});
+        modal.setAttribute('inert','');modal.setAttribute('aria-hidden','true');
+        modal.setAttribute('data-bn-product-tour','true');modal.classList.add('show');
+        return {element:modal,panel:modal.querySelector('.bn-modal-box'),count:staged.length,
+          close:function(){if(productOptionsTourState===saved)closeProductOptionsTour();}};
+      }catch(error){closeProductOptionsTour();throw error;}
+    }
+    window.BNProductOptionsTour={version:'20261029-1',open:openProductOptionsTour,close:closeProductOptionsTour,
+      isOpen:function(){return !!productOptionsTourState;}};
 
     function handleFiles(files){
       var imgs=files.filter(function(f){return f.type.startsWith('image/');});
@@ -2289,6 +2347,7 @@
        呼叫端（確認並套用按鈕）需要先轉換成主品優先順序才能傳進來，
        「跳過，直接套用」這條路徑則本來就是用 staged 的上傳順序，也符合主品優先假設。 */
     async function applyWithOrder(orderedItems,skipRatio){
+      if(productOptionsTourState)return;
       if(!orderedItems.length)return;
       /* 清除舊商品 */
       var oldIds=window._bnProducts.map(function(p){return p.id;});
