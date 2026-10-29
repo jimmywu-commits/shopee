@@ -30,7 +30,8 @@
   var MANIFEST_URL = CFG.manifestUrl || 'bgimg/index.json';
   var BRAND_URL = CFG.brandUrl || 'bgimg/brand.json';
   var IMG_BASE_URL = CFG.imgBaseUrl || 'bgimg/';
-  var CATEGORIES = CFG.categories || ['EL','Fashion','FMCG','Lifestyle'];
+  var CATEGORY_ONLY_CATEGORIES = ['EL','Fashion','FMCG','Lifestyle'];
+  var CATEGORIES = CFG.categories || CATEGORY_ONLY_CATEGORIES.slice();
   var DEFAULT_IMAGES = CFG.images || [];
 
   var modal, grid, tabsEl, filtersEl, searchEl, statusEl, selectedEl, applyBtn;
@@ -39,8 +40,8 @@
   var imagesLoaded = false;
   var indexData = null;
   var brandData = null;
-  /* 「全部」是虛擬分類：一打開圖庫預設就顯示所有分類的預覽圖，
-     使用者再用上面的分類頁籤或下面的 風格／素材／顏色 篩選縮小範圍。 */
+  /* 「全部」是虛擬分類：完整模式可顯示整份圖庫；只有類別的模式，
+     「全部」只能是 EL／Fashion／FMCG／Lifestyle 四類的合集。 */
   var ALL_CAT = '全部';
   var currentCat = ALL_CAT;
   var searchQuery = '';
@@ -139,8 +140,18 @@
     /* BODA 內 A／B+ 已取得完整圖庫資格時，舊的 JBP hash 不可再把它限回類別模式。 */
     return !(isBodaHosted() && isFullLibraryMode());
   }
+  function isCategoryOnlyLibraryMode(){
+    return isJbpMode() || !isFullLibraryMode();
+  }
+  function isCategoryOnlyCategory(cat){
+    cat = String(cat || '').trim().toLowerCase();
+    return CATEGORY_ONLY_CATEGORIES.some(function(c){ return c.toLowerCase() === cat; });
+  }
+  function isCardAllowedInLibraryMode(img){
+    return !isCategoryOnlyLibraryMode() || !!(img && isCategoryOnlyCategory(img.cat));
+  }
   function activeFilterDefs(){
-    if(isJbpMode() || !isFullLibraryMode()){
+    if(isCategoryOnlyLibraryMode()){
       return FILTER_DEFS.filter(function(def){ return def.key === 'cat'; });
     }
     return FILTER_DEFS;
@@ -154,6 +165,14 @@
         filters.style = ALL_CAT;
         filters.material = ALL_CAT;
         filters.color = ALL_CAT;
+        if(filters.cat !== ALL_CAT && !isCategoryOnlyCategory(filters.cat)) filters.cat = ALL_CAT;
+        /* 從完整模式切回四類模式時，不能留下先前選到的 A／其他分類，
+           避免畫面已經隱藏，卻仍能按「套用選取」套用。 */
+        if(selected && !isCardAllowedInLibraryMode(selected)){
+          selected = null;
+          if(applyBtn) applyBtn.disabled = true;
+          if(selectedEl) selectedEl.textContent = '選預設圖會依版位寬高比自動套用；要用自己的圖，請按右側按鈕。';
+        }
         searchQuery = '';
         if(searchEl) searchEl.value = '';
       }
@@ -459,7 +478,9 @@
     modal.addEventListener('click', function(e){ if(e.target === modal) closeModal(); });
     modal.querySelector('.bn-bglib-upload').addEventListener('click', function(){ closeModal(); openNativeUpload(); });
     modal.querySelector('.bn-bglib-slab').addEventListener('click', function(){ openSlabUpload(); });
-    applyBtn.addEventListener('click', function(){ if(selected) applyPreset(selected); });
+    applyBtn.addEventListener('click', function(){
+      if(selected && isCardAllowedInLibraryMode(selected)) applyPreset(selected);
+    });
     searchEl.addEventListener('input', function(){ searchQuery = searchEl.value || ''; renderGrid(); });
     document.addEventListener('keydown', function(e){ if(e.key === 'Escape') closeModal(); });
     renderTabs();
@@ -474,8 +495,8 @@
 
   /* 風格／素材／顏色／類別 四列篩選。每個 chip 後面的數字是「其他三組篩選」條件下
      會剩幾張，0 張的 chip 變淡但仍可點（點了會看到空清單提示）。
-     「類別」列只列 EL / Fashion / FMCG / Lifestyle，A 不列出來（A 的圖透過「全部」
-     以及上面三組風格／素材／顏色來找）。 */
+     四類模式的「全部」只限 EL / Fashion / FMCG / Lifestyle；A 不列出來，
+     也不能出現在圖片結果或計數中。完整模式才可透過「全部」與標籤找 A 圖。 */
   var CATEGORY_CHIP_HIDE = ['A'];
   function getRules(){
     var base;
@@ -490,7 +511,10 @@
         if(img.color && base.color.indexOf(img.color) === -1) base.color.push(img.color);
       });
     }
-    base.cat = CATEGORIES.filter(function(c){ return CATEGORY_CHIP_HIDE.indexOf(c) === -1; });
+    base.cat = CATEGORIES.filter(function(c){
+      return CATEGORY_CHIP_HIDE.indexOf(c) === -1 &&
+        (!isCategoryOnlyLibraryMode() || isCategoryOnlyCategory(c));
+    });
     return base;
   }
   function matchFilter(img, def, value){
@@ -500,6 +524,9 @@
     return v === value;
   }
   function matchAllFilters(img, except){
+    /* 先限定可見圖庫，再比對各組篩選。「全部」會略過 matchFilter，
+       所以範圍限制必須放在這裡，圖片清單與 chip 數量才不會漏出 A／其他分類。 */
+    if(!isCardAllowedInLibraryMode(img)) return false;
     var defs = activeFilterDefs();
     for(var i = 0; i < defs.length; i++){
       var def = defs[i];
@@ -772,6 +799,7 @@
   }
 
   function selectCard(img){
+    if(!isCardAllowedInLibraryMode(img)) return;
     selected = img;
     if(selectedEl){
       selectedEl.textContent = '已選：' + (img.name || '') + (img.verticalSrc
