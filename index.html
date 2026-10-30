@@ -1452,7 +1452,9 @@ function bnHidePreviewLoading(manual) {
 
 /* 下載/打包中的浮動遮罩：跟預覽載入遮罩共用同一種毛玻璃卡片風格。
    暴露成 window 上的函式，讓 bn-editor-plugin.js 的下載流程可以直接呼叫。 */
+var bnDownloadOverlayActive=false;
 function bnShowDownloadOverlay(desc) {
+  bnDownloadOverlayActive=true;
   var overlay = document.getElementById('bn-download-overlay');
   if (!overlay) return;
   var descEl = document.getElementById('bn-download-overlay-desc');
@@ -1473,13 +1475,14 @@ function bnUpdateDownloadOverlay(text, done, total) {
     bar.style.width = pct + '%';
   }
   if (count) count.textContent = text || '';
-  bnNotifyHostLoading('update', total ? Math.round((done || 0) / total * 100) : 45, 'LOADING · 曝光資源下載', text || '正在打包下載…');
+  if(bnDownloadOverlayActive&&text)bnNotifyHostLoading('update',total?Math.round((done||0)/total*100):45,'LOADING · 曝光資源下載',text);
 }
 
 function bnHideDownloadOverlay() {
+  bnDownloadOverlayActive=false;
   var overlay = document.getElementById('bn-download-overlay');
   if (overlay) overlay.classList.remove('show');
-  bnNotifyHostLoading('finish', 100, '曝光資源下載完成', '檔案已準備完成');
+  bnNotifyHostLoading('finish',100,'曝光資源下載已結束','下載流程已結束，可繼續編輯');
 }
 window.bnShowDownloadOverlay = bnShowDownloadOverlay;
 window.bnUpdateDownloadOverlay = bnUpdateDownloadOverlay;

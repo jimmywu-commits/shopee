@@ -6,6 +6,9 @@
 (function(){
 
 (function () {
+  var _bnRuntimeScriptNode=document.currentScript;
+  var _bnRuntimeScriptBase=new URL('.',(_bnRuntimeScriptNode&&_bnRuntimeScriptNode.src)||new URL('../js/layout-runtime.js',document.baseURI).href).href;
+  var _bnActiveCapture=null;
   var urlId = parseInt(new URLSearchParams(location.search).get('bnid')) || 0;
   var fname = decodeURIComponent(location.pathname.split('/').pop().replace(/\.html$/i, ''));
 
@@ -2109,18 +2112,51 @@
       return;
     }
 
+    if(e.data.type==='bn-capture-cancel'){
+      if(_bnActiveCapture&&_bnActiveCapture.msgId===e.data.msgId){
+        _bnActiveCapture.finish(null,null,null,bnCaptureError('CANCELLED','下載已取消；畫布已還原。','cancel'));
+      }
+      return;
+    }
     if (e.data.type === 'bn-capture') {
-      var _cv = document.getElementById('canvas');
-
+      if(_bnActiveCapture){
+        try{(e.source||window.parent).postMessage({type:'bn-snapshot',msgId:e.data.msgId,dataUrl:null,error:{code:'CAPTURE_BUSY',message:'此版位仍在截圖，請稍後重試。'}},'*');}catch(_){}
+        return;
+      }
+      var _cv=document.getElementById('canvas');
+      var captureContext={msgId:e.data.msgId,source:e.source||window.parent,started:Date.now(),deadline:Date.now()+45000,stage:'prepare',done:false,mainUrl:null,assets:Object.create(null)};
+      var _overEls,_contentWarningCaptureEls,_editEls,_captureAdjustEls,_transformAdjustEls,_iconRasterEls,_gradRasterEls,_emptyZoneEls,_objectFitAdjustEls,_logoWallCaptureEls;
+      var captureStyles=[],captureContainers=Array.prototype.slice.call(document.querySelectorAll('iframe.html2canvas-container'));
+      var captureOldWarning=window.__bnContentWarningCaptureActive;
+      var captureOldShadows=window.__bnLogoWallShadowSpecs;
+      var captureTimer=setTimeout(function(){captureFinish(captureContext.mainUrl,null,null,captureContext.mainUrl?null:bnCaptureError('CAPTURE_TIMEOUT','版位截圖逾時，畫布已還原，可重新下載。',captureContext.stage));},45000);
+      _bnActiveCapture=captureContext;captureContext.finish=captureFinish;
+      function captureFinish(dataUrl,bgUrl,fgUrl,error){
+        if(captureContext.done)return;captureContext.done=true;clearTimeout(captureTimer);
+        if(_bnActiveCapture===captureContext)_bnActiveCapture=null;
+        [_iconRasterEls||[],_gradRasterEls||[]].forEach(function(list){list.forEach(function(o){try{if(o.cnv&&o.cnv.parentNode)o.cnv.remove();}catch(_){}});});
+        captureStyles.forEach(function(o){
+          if(!o.el||!o.el.isConnected)return;
+          try{o.style===null?o.el.removeAttribute('style'):o.el.setAttribute('style',o.style);o.cls===null?o.el.removeAttribute('class'):o.el.setAttribute('class',o.cls);}catch(_){}
+        });
+        window.__bnContentWarningCaptureActive=!!captureOldWarning;window.__bnLogoWallShadowSpecs=captureOldShadows;
+        document.querySelectorAll('iframe.html2canvas-container').forEach(function(frame){if(captureContainers.indexOf(frame)<0)frame.remove();});
+        var failure=error?{code:error.code||'CAPTURE_FAILED',message:String(error.message||'截圖失敗，請重試。').slice(0,300),stage:error.stage||captureContext.stage}:null;
+        window._bnLastCaptureReport={msgId:captureContext.msgId,stage:captureContext.stage,elapsed:Date.now()-captureContext.started,error:failure,warning:captureContext.layerWarning||null};
+        try{captureContext.source.postMessage({type:'bn-snapshot',msgId:captureContext.msgId,dataUrl:dataUrl||null,bgUrl:bgUrl||null,fgUrl:fgUrl||null,error:failure,report:window._bnLastCaptureReport},'*');}catch(_){}
+      }
+      bnPrepareCaptureAssets(captureContext).then(function(){
+        if(captureContext.done)return;
+        if(!_cv)throw bnCaptureError('NO_CANVAS','找不到版位畫布。','prepare');
+        captureStyles=[_cv].concat(Array.prototype.slice.call(_cv.querySelectorAll('*'))).map(function(el){return {el:el,style:el.getAttribute('style'),cls:el.getAttribute('class')};});
+        document.querySelectorAll('.bn-content-warning-tip').forEach(function(el){if(!_cv.contains(el))captureStyles.push({el:el,style:el.getAttribute('style'),cls:el.getAttribute('class')});});
+        try{
       /* 保險：截圖前先拿掉超字紅框，避免紅框被畫進圖裡 */
-      var _overEls = [];
+      _overEls = [];
       if(_cv){
         _cv.querySelectorAll('.bn-over-limit').forEach(function(el){
           _overEls.push(el); el.classList.remove('bn-over-limit');
         });
-        setTimeout(function(){
-          _overEls.forEach(function(el){ el.classList.add('bn-over-limit'); });
-        }, 3000);
       }
 
       /* 橘色內容提醒只屬於編輯預覽：截圖期間移除框線並隱藏提示文字。 */
@@ -2138,7 +2174,7 @@
       }
 
       /* 隱藏所有編輯用控制元素（縮放點等），截完再還原 */
-      var _editEls = [];
+      _editEls = [];
       if(_cv){
         _cv.querySelectorAll('[data-corner],[data-rotate-handle],[data-rotate-badge]').forEach(function(h){
           _editEls.push({el:h, disp:h.style.display});
@@ -2155,7 +2191,7 @@
          下載 = 預覽，不再需要用固定位移去猜 html2canvas 的誤差；
          繼續留著 +14 反而會讓下載結果偏下（使用者回報的「有時往下掉」）。 */
       var SEARCH_IMAGE1_SUBTITLE_OFFSET = 0;
-      var _captureAdjustEls = [];
+      _captureAdjustEls = [];
       var _fnameLower = (fname || '').toLowerCase();
       var _isSearchImage1 = _fnameLower.indexOf('search_image1') !== -1;
 
@@ -2215,7 +2251,7 @@
          設為 0 時完全不會寫入 transform，也不會蓋掉 config.css 的
          transform:none !important。 */
       var ICON_TEXT_OFFSET_RATIO = 0;
-      var _transformAdjustEls = [];
+      _transformAdjustEls = [];
       if(_cv && ICON_TEXT_OFFSET_RATIO){
         _cv.querySelectorAll('.ICON獨立文案').forEach(function(el){
           var oldTransform = el.style.transform || '';
@@ -2239,7 +2275,7 @@
          3. html2canvas 對 canvas 是像素複製，沒有字型/基準線計算空間
             → 下載結果永遠等於預覽。
          4. 截圖完成後移除 canvas、還原文字色，畫布預覽不受影響。 */
-      var _iconRasterEls = [];
+      _iconRasterEls = [];
       if(_cv){
         /* .官方旗艦店（2026-08 加入）：字級 29.63px 配 line-height 30px，
            字型內容高度 43.85px > 行框 → 負半行距約 -7px。html2canvas 處理
@@ -2309,7 +2345,7 @@
          把漸層畫成點陣圖蓋上去（我們控制色標：透明端用同 RGB 的
          rgba(r,g,b,0)，插值路徑顏色恆定），html2canvas 只能像素複製。
          截圖完成後移除、還原，預覽不受影響。 */
-      var _gradRasterEls = [];
+      _gradRasterEls = [];
       if(_cv){
         _cv.querySelectorAll('.漸層左, .漸層右, .漸層上, .漸層下').forEach(function(gel){
           var w = gel.offsetWidth, h = gel.offsetHeight;
@@ -2359,7 +2395,7 @@
          暫時把提示色改成透明再截圖，讓下載出來的圖片不會帶有這塊淡紅色；
          截圖完成後立刻還原，畫面上的編輯提示不受影響。
          LOGO 範圍與商品範圍套用同一套邏輯，行為一致。 */
-      var _emptyZoneEls = [];
+      _emptyZoneEls = [];
       function _bnHideEmptyPlaceholder(selector, hasContentSelector){
         document.querySelectorAll(selector).forEach(function(zn){
           if(!zn) return;
@@ -2387,7 +2423,7 @@
          width/height/position/left/top（不再依賴 object-fit)，
          html2canvas 就只是照著這組已經算好的絕對數字截圖，不會拉伸。
          截圖完成後全部還原，畫面上的即時編輯行為完全不受影響。 */
-      var _objectFitAdjustEls = [];
+      _objectFitAdjustEls = [];
       function _bnFixObjectFitForCapture(selector){
         document.querySelectorAll(selector).forEach(function(img){
           if(!img || img.tagName !== 'IMG') return;
@@ -2425,7 +2461,7 @@
       /* 首頁LOGO牆截圖補償：html2canvas 1.4.1 會把圓角元素的外陰影
          （box-shadow rgba(0,0,0,.14)）誤畫在元素內部，白色膠囊疊上去就變成
          #dbdbdb 灰底（實測：拿掉陰影即純白）。截圖時暫時移除陰影並鎖定白底。 */
-      var _logoWallCaptureEls = [];
+      _logoWallCaptureEls = [];
       window.__bnLogoWallShadowSpecs = [];
       if(_bnFixedWhiteBackgroundTemplate){
         document.querySelectorAll('.logo範圍').forEach(function(zn){
@@ -2443,34 +2479,10 @@
         });
       }
 
-      var _wantLayers = !!e.data.layers;
-      captureCanvas(function(dataUrl, bgUrl, fgUrl){
-        window.__bnContentWarningCaptureActive=false;
-        _contentWarningCaptureEls.forEach(function(o){
-          if(!o.el || !o.el.isConnected) return;
-          if(o.target) o.el.classList.add('bn-content-warning-target');
-          else o.el.style.display=o.display;
-        });
-        _editEls.forEach(function(o){ o.el.style.display = o.disp; });
-        _captureAdjustEls.forEach(function(o){ o.el.style.setProperty('top', o.top, o.priority || ''); });
-        _emptyZoneEls.forEach(function(o){ o.el.style.background = o.bg; o.el.style.opacity = o.op; o.el.style.border = o.bd; });
-        _objectFitAdjustEls.forEach(function(o){
-          o.el.style.position = o.position; o.el.style.width = o.width; o.el.style.height = o.height;
-          o.el.style.left = o.left; o.el.style.top = o.top;
-          o.el.style.maxWidth = o.maxWidth; o.el.style.maxHeight = o.maxHeight;
-        });
-        _transformAdjustEls.forEach(function(o){ o.el.style.setProperty('transform', o.transform, o.priority || ''); });
-        _iconRasterEls.forEach(function(o){ o.el.style.setProperty('color', o.color, o.priority || ''); if(o.cnv.parentNode) o.cnv.parentNode.removeChild(o.cnv); });
-        _gradRasterEls.forEach(function(o){ o.el.style.setProperty('background', o.background, o.priority || ''); if(o.cnv.parentNode) o.cnv.parentNode.removeChild(o.cnv); });
-        _logoWallCaptureEls.forEach(function(o){
-          o.el.style.removeProperty('background-color');
-          if(o.prevBg) o.el.style.setProperty('background-color', o.prevBg, o.prevBgPri||'');
-          o.el.style.removeProperty('box-shadow');
-          if(o.prevShadow) o.el.style.setProperty('box-shadow', o.prevShadow, o.prevShadowPri||'');
-        });
-        window.__bnLogoWallShadowSpecs = null;
-        window.parent.postMessage({type:'bn-snapshot',msgId:e.data.msgId,dataUrl:dataUrl,bgUrl:bgUrl||null,fgUrl:fgUrl||null},'*');
-      }, _wantLayers);
+
+          captureCanvas(captureFinish,!!e.data.layers,captureContext);
+        }catch(error){captureFinish(null,null,null,error);}
+      }).catch(function(error){captureFinish(null,null,null,error);});
     }
   });
 
@@ -3938,71 +3950,134 @@
     });
   }
 
-  /* 匯出前確保商品圖片已解碼，而且 productRect fit 已經套上。
-     下載流程會重新送一次 bn-product-add；若截圖早於 img.onload，瀏覽器預覽
-     已經是「商品範圍對齊」的畫面，但 html2canvas 會先抓到 object-fit:contain
-     的暫態，旋轉商品尤其容易因此出現位置／大小差異。 */
-  function waitForProductImages(done){
-    var imgs = Array.prototype.slice.call(document.querySelectorAll('.bn-prod-box img'));
-    if(!imgs.length){ done(); return; }
-    var waits = imgs.map(function(img){
-      function relayout(){
-        if(!img || !img.isConnected || !img.naturalWidth) return;
-        if(img._bnFit) bnLayoutProductImg(img);
-        else bnProductImgLoaded(img);
+  /* 2026-10-30: bounded, origin-clean capture shared by every layout. */
+  var _bnCaptureRendererPromise = null;
+  function bnCaptureError(code, message, stage){
+    var err = new Error(message); err.code = code; err.stage = stage || ''; return err;
+  }
+  function bnCaptureProgress(context, stage, message){
+    if(context.done) return;
+    context.stage = stage;
+    try{ (context.source || window.parent).postMessage({type:'bn-capture-progress',msgId:context.msgId,stage:stage,message:message},'*'); }catch(_){}
+  }
+  function bnCaptureWait(promise, ms, error, context){
+    return new Promise(function(resolve,reject){
+      var settled=false, remaining=context ? context.deadline-Date.now() : ms;
+      var timer=setTimeout(function(){ finish(error); }, Math.max(1,Math.min(ms,remaining)));
+      function finish(err,value){ if(settled)return; settled=true;clearTimeout(timer);err?reject(err):resolve(value); }
+      Promise.resolve(promise).then(function(value){finish(null,value);},function(err){finish(err);});
+    });
+  }
+  function bnCapturePaintTick(){
+    return new Promise(function(resolve){
+      var done=false,timer=setTimeout(finish,100);
+      function finish(){if(done)return;done=true;clearTimeout(timer);resolve();}
+      requestAnimationFrame(function(){requestAnimationFrame(finish);});
+    });
+  }
+  function bnCaptureVisible(el,root){
+    for(var node=el;node&&node.nodeType===1;node=node.parentElement){
+      var cs=window.getComputedStyle(node);
+      if(cs.display==='none'||cs.visibility==='hidden'||cs.visibility==='collapse'||Number(cs.opacity)===0) return false;
+      if(node===root)break;
+    }
+    return true;
+  }
+  function bnCaptureAbs(src){try{return new URL(src,document.baseURI).href;}catch(_){return src;}}
+  function bnCaptureImage(img,label,context){
+    return new Promise(function(resolve,reject){
+      var done=false;
+      var timer=setTimeout(function(){finish(bnCaptureError('IMAGE_TIMEOUT',label+'尚未載入完成，請稍後重試。','images'));},Math.max(1,Math.min(18000,context.deadline-Date.now())));
+      function finish(err){
+        if(done)return;done=true;clearTimeout(timer);img.removeEventListener('load',loaded);img.removeEventListener('error',failed);
+        err?reject(err):resolve(img);
       }
-      if(img.complete && img.naturalWidth){
-        relayout();
-        if(typeof img.decode === 'function'){
-          return img.decode().catch(function(){ });
-        }
-        return Promise.resolve();
+      function failed(){finish(bnCaptureError('IMAGE_LOAD',label+'載入失敗；請重新上傳圖片或確認圖片網址可讀取。','images'));}
+      function loaded(){
+        if(!img.naturalWidth||!img.naturalHeight){failed();return;}
+        var decoded=typeof img.decode==='function'?img.decode():Promise.resolve();
+        bnCaptureWait(decoded,5000,bnCaptureError('IMAGE_DECODE',label+'解碼逾時，請重新上傳圖片。','images'),context).then(function(){finish();},failed);
       }
-      return new Promise(function(resolve){
-        var settled = false;
-        var timer = setTimeout(finish, 5000);
-        function finish(){
-          if(settled) return;
-          settled = true;
-          clearTimeout(timer);
-          img.removeEventListener('load', onLoad);
-          img.removeEventListener('error', onLoad);
-          relayout();
-          resolve();
-        }
-        function onLoad(){
-          if(typeof img.decode === 'function'){
-            img.decode().catch(function(){ }).then(finish);
-          }else finish();
-        }
-        img.addEventListener('load', onLoad, {once:true});
-        img.addEventListener('error', onLoad, {once:true});
-        if(img.complete) onLoad();
+      img.addEventListener('load',loaded);img.addEventListener('error',failed);
+      if(img.complete){if(img.naturalWidth)loaded();else failed();}
+    });
+  }
+  function bnCaptureAssetLabel(el){
+    if(el.id==='底圖'||el.matches('.bg,.背景色,.底色'))return '背景圖片';
+    if(el.closest('.bn-prod-box'))return '商品圖片';
+    if(el.closest('.bn-char-box'))return '人物圖片';
+    if(el.classList.contains('bn-logo-img')||el.closest('.bn-logo-box,[class*="logo範圍"],[class*="LOGO範圍"]'))return 'LOGO 圖片';
+    return '版位圖片';
+  }
+  function bnCaptureCSSUrls(value){
+    var urls=[],re=/url\(\s*(?:"([^"]*)"|'([^']*)'|([^)]*))\s*\)/g,m;
+    while((m=re.exec(value||''))){var src=(m[1]!==undefined?m[1]:m[2]!==undefined?m[2]:m[3]).trim();if(src)urls.push(src);}
+    return urls;
+  }
+  function bnPrepareCaptureAssets(context){
+    var root=document.getElementById('canvas');
+    if(!root)return Promise.reject(bnCaptureError('NO_CANVAS','找不到版位畫布，請重新整理後再試。','prepare'));
+    bnCaptureProgress(context,'images','正在確認商品、背景、LOGO 與人物圖片…');
+    var jobs=[],sourceJobs=Object.create(null);context.assets=Object.create(null);context.assetSizes=Object.create(null);
+    function cacheSource(src,label,originalImage){
+      var absolute=bnCaptureAbs(src);if(sourceJobs[absolute])return sourceJobs[absolute];
+      var job=Promise.resolve().then(function(){
+        if(context.done)throw bnCaptureError('CANCELLED','截圖已結束。','images');
+        if(/^data:image\//i.test(absolute)&&originalImage)return bnCaptureImage(originalImage,label,context);
+        var image=new Image();
+        if(/^https?:/i.test(absolute))image.crossOrigin='anonymous';
+        image.src=absolute;return bnCaptureImage(image,label,context);
+      }).then(function(image){
+        if(context.done)throw bnCaptureError('CANCELLED','截圖已結束。','images');
+        context.assetSizes[absolute]={w:image.naturalWidth,h:image.naturalHeight};
+        if(/^data:image\//i.test(absolute)){context.assets[absolute]=absolute;return;}
+        try{
+          var c=document.createElement('canvas');c.width=image.naturalWidth;c.height=image.naturalHeight;
+          c.getContext('2d').drawImage(image,0,0);context.assets[absolute]=c.toDataURL('image/png');
+        }catch(_){throw bnCaptureError('IMAGE_ORIGIN',label+'不允許匯出；請下載該圖片後，以本機檔案重新上傳。','images');}
       });
+      sourceJobs[absolute]=job;return job;
+    }
+    root.querySelectorAll('img').forEach(function(img){
+      if(!bnCaptureVisible(img,root))return;
+      var src=img.currentSrc||img.getAttribute('src');if(!src)return;
+      var label=bnCaptureAssetLabel(img);
+      jobs.push(bnCaptureImage(img,label,context).then(function(){
+        if(img.closest('.bn-prod-box')){if(img._bnFit)bnLayoutProductImg(img);else bnProductImgLoaded(img);}
+        return cacheSource(src,label,img);
+      }).then(function(){
+        if(img.src&&context.assets[bnCaptureAbs(src)])context.assets[bnCaptureAbs(img.src)]=context.assets[bnCaptureAbs(src)];
+      }));
     });
-    Promise.all(waits).then(function(){
-      /* 讓 ResizeObserver／圖片 fit 的最後一輪 layout 先完成，再交給
-         html2canvas 複製 DOM。 */
-      requestAnimationFrame(function(){ requestAnimationFrame(done); });
+    [root].concat(Array.prototype.slice.call(root.querySelectorAll('*'))).forEach(function(el){
+      if(!bnCaptureVisible(el,root))return;
+      bnCaptureCSSUrls(window.getComputedStyle(el).backgroundImage).forEach(function(src){jobs.push(cacheSource(src,bnCaptureAssetLabel(el)));});
     });
+    return Promise.all(jobs).then(function(){
+      bnCaptureProgress(context,'fonts','正在確認字型與畫布位置…');
+      var ready=document.fonts&&document.fonts.ready?document.fonts.ready:Promise.resolve();
+      return bnCaptureWait(ready,8000,bnCaptureError('FONT_TIMEOUT','字型仍在載入，請稍後重試；未變更目前作品。','fonts'),context);
+    }).then(bnCapturePaintTick);
+  }
+  function bnLoadCaptureRenderer(context){
+    if(window.html2canvas)return Promise.resolve();
+    if(_bnCaptureRendererPromise)return _bnCaptureRendererPromise;
+    bnCaptureProgress(context,'renderer','正在載入截圖引擎…');
+    _bnCaptureRendererPromise=new Promise(function(resolve,reject){
+      var script=document.createElement('script'),done=false;
+      var timer=setTimeout(function(){finish(bnCaptureError('RENDERER_TIMEOUT','截圖引擎載入逾時；請確認 js/vendor/html2canvas.min.js 已一起更新。','renderer'));},8000);
+      function finish(error){if(done)return;done=true;clearTimeout(timer);script.onload=script.onerror=null;if(error){script.remove();_bnCaptureRendererPromise=null;reject(error);}else resolve();}
+      script.onload=function(){window.html2canvas?finish():finish(bnCaptureError('RENDERER_MISSING','截圖引擎未正確載入。','renderer'));};
+      script.onerror=function(){finish(bnCaptureError('RENDERER_LOAD','截圖引擎載入失敗；請確認 js/vendor/html2canvas.min.js 已一起更新。','renderer'));};
+      script.src=new URL('vendor/html2canvas.min.js',_bnRuntimeScriptBase).href;
+      document.head.appendChild(script);
+    });
+    return _bnCaptureRendererPromise;
+  }
+  function captureCanvas(cb,wantLayers,context){
+    bnLoadCaptureRenderer(context).then(function(){if(!context.done)doCapture(cb,wantLayers,context);}).catch(function(error){cb(null,null,null,error);});
   }
 
-  function captureCanvas(cb, wantLayers){
-    function runAfterFonts(){
-      waitForProductImages(function(){
-        if(window.html2canvas){doCapture(cb, wantLayers);return;}
-        var s=document.createElement('script');
-        s.src='https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
-        s.onload=function(){doCapture(cb, wantLayers);}; s.onerror=function(){if(cb)cb(null);};
-        document.head.appendChild(s);
-      });
-    }
-    if(document.fonts && document.fonts.ready){
-      document.fonts.ready.then(runAfterFonts).catch(runAfterFonts);
-    } else {
-      runAfterFonts();
-    }
-  }
   /* html2canvas 會把圓角元素的 box-shadow 畫進元素內部（首頁LOGO牆膠囊變灰底），
      所以截圖時先移除陰影，截完後用 canvas 原生 shadow 只補畫在元素外側。 */
   function _bnPaintLogoWallShadows(ctx, cv, scale, W, H){
@@ -4033,107 +4108,93 @@
       ctx.restore();
     });
   }
-  function doCapture(cb, wantLayers){
+  function doCapture(cb,wantLayers,context){
     var cv=document.getElementById('canvas');
-    if(!cv){if(cb)cb(null);return;}
-    var W = parseFloat(cv.style.width)  || cv.offsetWidth;
-    var H = parseFloat(cv.style.height) || cv.offsetHeight;
-    if(!W||!H){if(cb)cb(null);return;}
-
-    /* 截圖策略：所見即所得
-       直接對目前已渲染的畫面截圖，不移動 canvas、不重算任何位置。
-       用目前的 scale 反推，讓 html2canvas 輸出符合設計原始尺寸。*/
-
-    var scaleMatch = cv.style.transform && cv.style.transform.match(/scale\(([\d.]+)\)/);
-    var scale = scaleMatch ? parseFloat(scaleMatch[1]) : 1;
-
-    var overlay = document.getElementById('_bn_bg_overlay');
-    if(overlay) overlay.style.display = 'none';
-
-    requestAnimationFrame(function(){
-      requestAnimationFrame(function(){
-        html2canvas(cv,{
-          scale: 1 / scale,   /* 把螢幕縮放還原回設計原始尺寸 */
-          useCORS: true,
-          allowTaint: true,
-          backgroundColor: (_bnFixedWhiteBackgroundTemplate || _bnWhiteCanvasUnderCircleTemplate) ? '#ffffff' : null,
-          width: W,
-          height: H,
-          logging: false
-        })
-        .then(function(c){
-          var out = document.createElement('canvas');
-          out.width = W; out.height = H;
-          var outCtx = out.getContext('2d');
-          outCtx.drawImage(c, 0, 0, out.width, out.height);
-          _bnPaintLogoWallShadows(outCtx, cv, scale, W, H);
-          var mainUrl = out.toDataURL('image/png');
-
-          if(!wantLayers){
-            if(overlay) overlay.style.display = '';
-            if(cb) cb(mainUrl);
-            return;
-          }
-
-          /* ★ 分層截圖（2026-08，給「先壓背景、商品圖不壓」的選擇性壓縮用）：
-             背景層 = 底圖照片/背景色 + 保護色塊 + 漸層（吃掉大部分 JPEG 體積）
-             前景層 = 商品圖、logo、文字、CTA（需要保持銳利的部分，透明 PNG）
-             兩層都跟主圖同尺寸，父層合成時只降背景解析度即可。
-             任何一步失敗就只回傳主圖，父層自動退回舊的整張壓縮流程。 */
-          var BG_SET = {'背景色':1,'bg':1,'底色':1,'上保護':1,'下保護':1,'左側保護':1,'右側保護':1,
-                        '上方保護':1,'下方保護':1,'文案保護':1,'漸層左':1,'漸層右':1,'漸層上':1,'漸層下':1};
-          function isBgEl(el){
-            if(el.id === '底圖') return true;
-            if(!el.classList) return false;
-            for(var k in BG_SET){ if(el.classList.contains(k)) return true; }
-            return false;
-          }
-          var kids = Array.prototype.slice.call(cv.children);
-          var hcOpts = {scale:1/scale, useCORS:true, allowTaint:true, backgroundColor: (_bnFixedWhiteBackgroundTemplate || _bnWhiteCanvasUnderCircleTemplate) ? '#ffffff' : null, width:W, height:H, logging:false};
-          function toUrl(c2, withShadow){
-            var o = document.createElement('canvas');
-            o.width = W; o.height = H;
-            var oc = o.getContext('2d');
-            oc.drawImage(c2, 0, 0, W, H);
-            if(withShadow) _bnPaintLogoWallShadows(oc, cv, scale, W, H);
-            return o.toDataURL('image/png');
-          }
-          var _hid = [];
-          function hideIf(fn){
-            kids.forEach(function(el){
-              if(fn(el)){ _hid.push({el:el, vis:el.style.visibility}); el.style.visibility='hidden'; }
-            });
-          }
-          function unhide(){
-            _hid.forEach(function(o){ o.el.style.visibility = o.vis; });
-            _hid = [];
-          }
-
-          hideIf(function(el){ return !isBgEl(el); });     /* 只留背景層 */
-          html2canvas(cv, hcOpts).then(function(cBg){
-            var bgUrl = toUrl(cBg);
-            unhide();
-            hideIf(isBgEl);                                 /* 只留前景層 */
-            var oldCvBg = cv.style.background;
-            cv.style.background = 'transparent';            /* 前景層不能帶底色 */
-            return html2canvas(cv, hcOpts).then(function(cFg){
-              unhide();
-              cv.style.background = oldCvBg;
-              if(overlay) overlay.style.display = '';
-              if(cb) cb(mainUrl, bgUrl, toUrl(cFg, true));
-            });
-          }).catch(function(){
-            unhide();
-            if(overlay) overlay.style.display = '';
-            if(cb) cb(mainUrl);                             /* 分層失敗 → 只給主圖 */
-          });
-        })
-        .catch(function(){
-          if(overlay) overlay.style.display = '';
-          if(cb) cb(null);
-        });
+    var W=cv&&(parseFloat(cv.style.width)||cv.offsetWidth),H=cv&&(parseFloat(cv.style.height)||cv.offsetHeight);
+    if(!cv||!W||!H){cb(null,null,null,bnCaptureError('CANVAS_SIZE','畫布尺寸尚未就緒，請稍後重試。','render'));return;}
+    W=Math.round(W);H=Math.round(H);
+    if(W<1||H<1||W>32767||H>32767||W*H>64000000){cb(null,null,null,bnCaptureError('CANVAS_SIZE','畫布尺寸超出匯出範圍。','render'));return;}
+    var BG_SET={'背景色':1,'bg':1,'底色':1,'上保護':1,'下保護':1,'左側保護':1,'右側保護':1,'上方保護':1,'下方保護':1,'文案保護':1,'漸層左':1,'漸層右':1,'漸層上':1,'漸層下':1};
+    var scale=cv.getBoundingClientRect().width/Math.max(1,cv.offsetWidth)||1;
+    function isBg(el){if(el.id==='底圖')return true;for(var key in BG_SET)if(el.classList&&el.classList.contains(key))return true;return false;}
+    function remap(value){
+      return String(value||'').replace(/url\(\s*(?:"([^"]*)"|'([^']*)'|([^)]*))\s*\)/g,function(all,a,b,c){
+        var src=(a!==undefined?a:b!==undefined?b:c).trim(),mapped=context.assets[bnCaptureAbs(src)];return mapped?'url("'+mapped.replace(/"/g,'%22')+'")':all;
       });
-    });
+    }
+    /* html2canvas 1.4.1 cannot parse calc() background-position. Resolve the
+       browser's center-based background math to px in the clone only. */
+    function backgroundPixels(el,css,bg){
+      var urls=bnCaptureCSSUrls(bg);
+      if(urls.length!==1||!/^url\(/i.test(bg))return;
+      var size=context.assetSizes[bnCaptureAbs(urls[0])];if(!size||!size.w||!size.h)return;
+      var bw=el.clientWidth||parseFloat(css.width),bh=el.clientHeight||parseFloat(css.height);
+      if(!bw||!bh)return;
+      var spec=css.backgroundSize.trim(),parts=spec.split(/\s+/),iw,ih,k;
+      function length(value,span){if(!value||value==='auto')return null;return /%$/.test(value)?parseFloat(value)*span/100:parseFloat(value);}
+      if(spec==='cover'||spec==='contain'){k=(spec==='cover'?Math.max:Math.min)(bw/size.w,bh/size.h);iw=size.w*k;ih=size.h*k;}
+      else{iw=length(parts[0],bw);ih=length(parts[1]||'auto',bh);if(iw===null&&ih===null){iw=size.w;ih=size.h;}else if(iw===null)iw=ih*size.w/size.h;else if(ih===null)ih=iw*size.h/size.w;}
+      if(!isFinite(iw)||!isFinite(ih)||iw<=0||ih<=0)return;
+      var position=css.backgroundPosition.match(/calc\([^)]*\)|[^\s]+/g)||['50%','50%'];
+      function offset(value,free){
+        if(value==='center')return free/2;if(value==='right'||value==='bottom')return free;if(value==='left'||value==='top')return 0;
+        var total=0,re=/([+-]?\s*\d+(?:\.\d+)?)(%|px)/g,m,matched=false;
+        while((m=re.exec(value))){matched=true;var n=parseFloat(m[1].replace(/\s/g,''));total+=m[2]==='%'?free*n/100:n;}
+        return matched?total:parseFloat(value)||0;
+      }
+      el.style.setProperty('background-size',iw+'px '+ih+'px','important');
+      el.style.setProperty('background-position',offset(position[0],bw-iw)+'px '+offset(position[1]||'50%',bh-ih)+'px','important');
+    }
+    function options(layer){return {
+      scale:1,width:W,height:H,windowWidth:Math.max(W,window.innerWidth),windowHeight:Math.max(H,window.innerHeight),
+      scrollX:0,scrollY:0,useCORS:true,allowTaint:false,imageTimeout:8000,logging:false,
+      backgroundColor:layer==='foreground'?null:(_bnFixedWhiteBackgroundTemplate||_bnWhiteCanvasUnderCircleTemplate?'#ffffff':null),
+      onclone:function(doc){
+        if(context.done)throw bnCaptureError('CANCELLED','截圖已結束。','render');
+        var clone=doc.getElementById('canvas');if(!clone)throw bnCaptureError('NO_CANVAS','找不到截圖畫布。','render');
+        clone.style.setProperty('transform','none','important');clone.style.setProperty('transform-origin','0 0','important');
+        clone.style.setProperty('width',W+'px','important');clone.style.setProperty('height',H+'px','important');
+        var overlay=doc.getElementById('_bn_bg_overlay');if(overlay)overlay.style.display='none';
+        clone.querySelectorAll('[data-corner],[data-rotate-handle],[data-rotate-badge],.bn-content-warning-tip').forEach(function(el){el.style.display='none';});
+        [clone].concat(Array.prototype.slice.call(clone.querySelectorAll('*'))).forEach(function(el){
+          if(el.tagName==='IMG'){
+            var mapped=context.assets[bnCaptureAbs(el.currentSrc||el.src)]||context.assets[bnCaptureAbs(el.src)];
+            if(mapped){el.removeAttribute('srcset');el.removeAttribute('sizes');el.removeAttribute('crossorigin');el.src=mapped;}
+          }
+          var css=doc.defaultView.getComputedStyle(el),bg=css.backgroundImage,newBg=remap(bg);
+          backgroundPixels(el,css,bg);
+          if(bg!==newBg)el.style.setProperty('background-image',newBg,'important');
+        });
+        if(layer!=='main'){
+          Array.prototype.forEach.call(clone.children,function(el){if(layer==='background'?!isBg(el):isBg(el))el.style.visibility='hidden';});
+          if(layer==='foreground')clone.style.setProperty('background','transparent','important');
+        }
+      }
+    };}
+    function renderLayer(layer){
+      if(context.done)return Promise.reject(bnCaptureError('CANCELLED','截圖已結束。','render'));
+      bnCaptureProgress(context,'render-'+layer,layer==='main'?'正在截圖…':layer==='background'?'正在整理背景層…':'正在整理商品與文字層…');
+      var job=Promise.resolve().then(function(){return window.html2canvas(cv,options(layer));});
+      return bnCaptureWait(job,layer==='main'?15000:7000,bnCaptureError('RENDER_TIMEOUT','截圖引擎處理逾時，請稍後再試。','render-'+layer),context).then(function(rendered){
+        if(context.done)throw bnCaptureError('CANCELLED','截圖已結束。','render');
+        var out=document.createElement('canvas');out.width=W;out.height=H;
+        var ctx=out.getContext('2d');ctx.drawImage(rendered,0,0,W,H);
+        if(layer!=='background')_bnPaintLogoWallShadows(ctx,cv,scale,W,H);
+        try{
+          var src=out.toDataURL('image/png');if(!src||src==='data:,')throw new Error('empty');return src;
+        }catch(error){throw bnCaptureError('CANVAS_READ','圖片無法匯出；請確認圖片來源允許讀取，或改用本機檔案上傳。','render');}
+      });
+    }
+    renderLayer('main').then(function(mainUrl){
+      context.mainUrl=mainUrl;
+      if(!wantLayers){cb(mainUrl);return;}
+      return renderLayer('background').then(function(bg){
+        return renderLayer('foreground').then(function(fg){cb(mainUrl,bg,fg);});
+      }).catch(function(error){
+        context.layerWarning={code:error.code||'LAYER_FAILED',message:error.message};
+        if(!context.done)cb(mainUrl);
+      });
+    }).catch(function(error){if(!context.done)cb(null,null,null,error);});
   }
 
   function applyColor(cls,color){

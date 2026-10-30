@@ -6,6 +6,9 @@
   if (window.__BN_EDITOR_PLUGIN__) return;
   window.__BN_EDITOR_PLUGIN__ = true;
 
+  var _bnEditorScriptNode=document.currentScript;
+  var _bnEditorScriptBase=new URL('.',(_bnEditorScriptNode&&_bnEditorScriptNode.src)||new URL('js/bn-editor-plugin.js',document.baseURI).href).href;
+
   function ready(fn) {
     if (document.readyState !== 'loading') fn();
     else document.addEventListener('DOMContentLoaded', fn);
@@ -2829,6 +2832,7 @@
        用 bn-product-update-image（keepScale）就地換圖，框的大小依新圖外接矩形等比調整。 */
     var _rotateJobs = {};
     var _rotatePromises = {};
+    var _rotateCommittedAngles = {};
     function setProductRotation(pid, deg, done, rotationAnchorMode){
       var p=window._bnProducts.find(function(x){return x.id===pid;});
       if(!p){ if(done) done(); return Promise.resolve(); }
@@ -2848,17 +2852,24 @@
       var rot = window._bnGroundShadow.normalizeRotate(deg);
       p.meta = p.meta || {};
       if(!p.baseSrc){ p.baseSrc = p.meta.baseSrc || p.src; p.meta.baseSrc = p.baseSrc; }
+      if(_rotateCommittedAngles[pid]===undefined)_rotateCommittedAngles[pid]=Number(p.meta.rotate)||0;
       p.meta.rotate = rot;
       var cfg = p.meta.groundShadow || {enabled:false};
+      var rotationDraft=JSON.parse(JSON.stringify(p));
       var seq = (_rotateJobs[pid] = (_rotateJobs[pid] || 0) + 1);
-      var job = window._bnGroundShadow.applyToProduct(p, cfg).then(function(){
-        if(_rotateJobs[pid] !== seq) return; /* 拖曳中連續送出時只採用最後一次 */
+      var job = window._bnGroundShadow.applyToProduct(rotationDraft, cfg).then(function(){
+        if(_rotateJobs[pid] !== seq) return; /* 舊工作不能改寫正式商品，連續旋轉只套最後一次。 */
+        p.src=rotationDraft.src;p.baseSrc=rotationDraft.baseSrc;p.ratio=rotationDraft.ratio;
+        p.meta=Object.assign({},p.meta,rotationDraft.meta);
+        _rotateCommittedAngles[pid]=rot;
         markStateDirty();
         renderProdList();
         /* 旋轉一律以中心點同步；rotationAnchorMode 保留在訊息格式中，
            讓舊版 iframe 也能收到完整資料，但不再採用 bottom 錨點。 */
         broadcast({type:'bn-product-update-image', id:p.id, src:p.src, ratio:p.ratio, keepScale:true, rotate:p.meta.rotate, rotationAnchorMode:'center', productRect:p.meta && p.meta.productRect});
       })['catch'](function(err){
+        if(_rotateJobs[pid]!==seq)return;
+        p.meta.rotate=_rotateCommittedAngles[pid]||0;
         console.warn('[bn-editor] 旋轉重算失敗', err);
         /* 失敗時把畫布上暫時的 CSS 旋轉還原 */
         broadcast({type:'bn-product-update-image', id:p.id, src:p.src, ratio:p.ratio, rotate:p.meta.rotate, productRect:p.meta && p.meta.productRect});
@@ -2875,12 +2886,12 @@
     /* 下載前等待旋轉圖片完成合成與廣播，避免父層已經拿到新角度，
        但 iframe 還停在 CSS 即時預覽／舊圖片的中間狀態。 */
     window._bnWaitForProductRotations = function(timeoutMs){
-      var jobs = Object.keys(_rotatePromises).map(function(id){ return _rotatePromises[id]; });
-      if(!jobs.length) return Promise.resolve();
-      var all = Promise.all(jobs.map(function(job){ return Promise.resolve(job)['catch'](function(){ }); }));
-      var waitMs = Math.max(1000, Number(timeoutMs) || 8000);
-      var timeout = new Promise(function(resolve){ setTimeout(resolve, waitMs); });
-      return Promise.race([all, timeout]);
+      var jobs=Object.keys(_rotatePromises).map(function(id){return _rotatePromises[id];});
+      if(!jobs.length)return Promise.resolve();
+      return new Promise(function(resolve,reject){
+        var timer=setTimeout(function(){reject(new Error('商品旋轉尚未完成，請稍候再下載。'));},Math.max(1000,Number(timeoutMs)||12000));
+        Promise.all(jobs).then(function(){clearTimeout(timer);resolve();},function(error){clearTimeout(timer);reject(error);});
+      });
     };
     /* 畫布把手送來的是「這次拖曳的增量」，總角度以 _bnProducts 為準，
        這樣就算 iframe 重新載入、沒拿到目前角度也不會歸零。 */
@@ -3138,6 +3149,7 @@
     }
 
     function downloadAll(_layoutSynced){
+      if(_layoutSynced!==true&&window._bnDownloadBusy)return;
       /* 字數硬擋／內容警語未確認：直接擋在 modal，不呼叫 setProgress，
          避免 setProgress 內的 bnUpdateDownloadOverlay 通知外層 BOD A
          顯示「LOADING · 曝光資源下載」浮層。 */
@@ -3150,24 +3162,28 @@
       /* 多圖恢復 ZIP：1 張直接 PNG；2 張以上先逐張截圖，最後打包 ZIP。 */
       var iframes=Array.from(document.querySelectorAll('.preview-block iframe'));
       if(!iframes.length){setProgress('沒有版位可下載');return;}
+      window._bnDownloadBusy=true;
 
       /* 必須在 _bnExporting / _bnSuppressProductLayoutWrite 鎖定前取回最新位置，
          否則最後一次拖曳可能尚未進入 ZIP 內附的暫存 JSON。 */
       if(_layoutSynced !== true && typeof window._bnSyncLayoutSnapshot === 'function'){
+        if(typeof window.bnShowDownloadOverlay==='function')window.bnShowDownloadOverlay('正在同步商品旋轉與最新畫布位置…');
         var syncBtn=document.getElementById('bn-dl-all');
         if(syncBtn) syncBtn.disabled=true;
         setProgress('正在同步最新畫布位置…');
         var waitRotation = (typeof window._bnWaitForProductRotations === 'function')
-          ? window._bnWaitForProductRotations(8000)
+          ? window._bnWaitForProductRotations(12000)
           : Promise.resolve();
         Promise.resolve(waitRotation).then(function(){
           return window._bnSyncLayoutSnapshot(900);
         }).then(function(){
           if(syncBtn) syncBtn.disabled=false;
           downloadAll(true);
-        }).catch(function(){
-          if(syncBtn) syncBtn.disabled=false;
-          downloadAll(true);
+        }).catch(function(error){
+          if(syncBtn)syncBtn.disabled=false;
+          window._bnDownloadBusy=false;
+          if(typeof window.bnHideDownloadOverlay==='function')window.bnHideDownloadOverlay();
+          setProgress('尚未開始下載：'+String(error&&error.message||'畫布仍在更新，請稍後再試。'));
         });
         return;
       }
@@ -3184,6 +3200,10 @@
       var total=iframes.length;
       var done=0, ok=0, fail=0;
       var failedNames=[];
+      var failedReasons=[];
+      var exportFinished=false;
+      window._bnLastDownloadReport={started:Date.now(),finished:null,layouts:[]};
+      var exportReport=window._bnLastDownloadReport;
       var files=[];
       window._bnExporting = true;
       window._bnSuppressProductLayoutWrite = true;
@@ -3292,21 +3312,15 @@
       }
 
       function loadJSZip(cb){
-        if(window.JSZip){ cb(); return; }
-
-        var existed=document.querySelector('script[data-bn-jszip="1"]');
-        if(existed){
-          existed.addEventListener('load', cb, {once:true});
-          existed.addEventListener('error', function(){ cb(new Error('JSZip 載入失敗')); }, {once:true});
-          return;
-        }
-
-        var s=document.createElement('script');
-        s.dataset.bnJszip='1';
-        s.src='https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
-        s.onload=function(){ cb(); };
-        s.onerror=function(){ cb(new Error('JSZip 載入失敗')); };
-        document.head.appendChild(s);
+        if(window.JSZip){cb();return;}
+        var script=document.createElement('script'),settled=false;
+        var timer=setTimeout(function(){finish(new Error('JSZip 載入逾時，請確認 js/vendor/jszip.min.js 已一起更新'));},8000);
+        function finish(err){if(settled)return;settled=true;clearTimeout(timer);script.onload=script.onerror=null;if(err)script.remove();cb(err);}
+        script.dataset.bnJszip='1';
+        script.src=new URL('vendor/jszip.min.js',_bnEditorScriptBase).href;
+        script.onload=function(){finish(window.JSZip?null:new Error('JSZip 未正確載入'));};
+        script.onerror=function(){finish(new Error('請確認 js/vendor/jszip.min.js 已一起更新'));};
+        document.head.appendChild(script);
       }
 
       function dataUrlToBase64(dataUrl){
@@ -3396,7 +3410,7 @@
         if(s1 === s2) return (q1 + q2) / 2;
         /* 線性插值：(q - q1) / (q2 - q1) = (targetBytes - s1) / (s2 - s1) */
         var predictQ = q1 + (targetBytes - s1) * (q2 - q1) / (s2 - s1);
-        return Math.max(0.1, Math.min(0.99, predictQ));
+        return Math.max(BN_JPEG_MIN_QUALITY, Math.min(0.98, predictQ));
       }
 
       function compressSelectiveBgFirst(layers, targetKb, cb){
@@ -3562,51 +3576,44 @@
       }
 
       function finishExport(){
-        /* 不論成功或失敗，流程結束就把打包遮罩收起來。 */
-        if(typeof window.bnHideDownloadOverlay === 'function') window.bnHideDownloadOverlay();
-        /* 匯出完成後用凍結色反覆還原；ZIP 下載會載入 JSZip 並造成部分 iframe/ready 流程重播舊狀態，
-           這裡保護 15 秒，避免背景色被預設藍覆蓋。 */
-        var safeColorData = window._bnFrozenColorData || exportColorData;
-        function restoreExportColors(){
-          if(safeColorData && window.colorState){
-            try{ Object.assign(window.colorState, safeColorData); }catch(_){}
-            if(_bnIsUsableColor(window._bnCanvasBgHardLock)) window.colorState.canvasBg = window._bnCanvasBgHardLock;
-            else if(_bnIsUsableColor(safeColorData.canvasBg)) _bnLockCanvasBg(safeColorData.canvasBg);
-            window._bnLastUserColorState = _bnClone(window.colorState);
-            window._bnPersistentCanvasBg = window.colorState.canvasBg;
-            window._bnBgColorExportGuardUntil = Date.now() + 30000;
-            if(typeof window.renderColorPickers === 'function') window.renderColorPickers();
-            if(typeof window.broadcastColors === 'function') window.broadcastColors();
+        if(exportFinished)return;exportFinished=true;
+        try{
+          var safeColorData=window._bnFrozenColorData||exportColorData;
+          if(safeColorData&&window.colorState){
+            Object.assign(window.colorState,safeColorData);
+            if(_bnIsUsableColor(window._bnCanvasBgHardLock))window.colorState.canvasBg=window._bnCanvasBgHardLock;
+            window._bnLastUserColorState=_bnClone(window.colorState);
+            window._bnPersistentCanvasBg=window.colorState.canvasBg;
+            if(typeof window.renderColorPickers==='function')window.renderColorPickers();
           }
-          resyncAllAfterExport();
+        }catch(err){console.warn('[bn-export] cleanup',err);}
+        finally{
+          window._bnBgColorExportGuardUntil=Date.now();
+          window._bnExporting=false;window._bnSuppressProductLayoutWrite=false;window._bnDownloadBusy=false;
+          delete window._bnFrozenColorData;
+          clearTimeout(_exportUnlockTimer);
+          if(btn)btn.disabled=false;
+          window._bnLastDownloadReport.finished=Date.now();
+          window._bnLastDownloadReport.success=ok;
+          window._bnLastDownloadReport.failed=fail;
+          if(typeof window.bnHideDownloadOverlay==='function')window.bnHideDownloadOverlay();
+          try{document.dispatchEvent(new CustomEvent('bn-state-dirty'));}catch(_){}
         }
-        restoreExportColors();
-        [150, 500, 1200, 2500, 5000].forEach(function(delay){ setTimeout(restoreExportColors, delay); });
-        clearTimeout(_exportUnlockTimer);
-        _exportUnlockTimer = setTimeout(function(){
-          window._bnExporting = false;
-          window._bnSuppressProductLayoutWrite = false;
-          try{ document.dispatchEvent(new CustomEvent('bn-state-dirty')); }catch(_){ }
-          setTimeout(function(){
-            delete window._bnFrozenColorData;
-            try{ if(window._bnStatePlugin && typeof window._bnStatePlugin.save === 'function') window._bnStatePlugin.save(); }catch(_){ }
-          }, 6000);
-        }, 1500);
       }
 
       function makeZip(){
         if(total===1){
           btn.disabled=false;
           finishExport();
-          if(ok){ setTimeout(function(){setProgress('');},2500); }
-          else { setProgress('下載失敗：'+(failedNames[0]||'')+'（截圖逾時或回傳空白）'); }
+          if(ok){setTimeout(function(){if(window._bnLastDownloadReport===exportReport)setProgress('');},2500);}
+          else { setProgress('下載失敗：'+(failedNames[0]||'')+'（'+(failedReasons[0]||'版位截圖未完成，請重試')+'）'); }
           return;
         }
 
         if(!files.length){
           btn.disabled=false;
           finishExport();
-          setProgress('ZIP 未產生：全部截圖都失敗或逾時（'+failedNames.join('、')+'）');
+          setProgress('ZIP 未產生：'+failedNames.join('、')+'（'+(failedReasons[0]||'截圖未完成，請重試')+'）');
           return;
         }
 
@@ -3616,7 +3623,7 @@
           if(err || !window.JSZip){
             btn.disabled=false;
             finishExport();
-            setProgress('ZIP 失敗：JSZip 載入失敗');
+            setProgress('ZIP 失敗：'+(err&&err.message||'JSZip 載入失敗'));
             return;
           }
 
@@ -3656,35 +3663,31 @@
         });
       }
 
-      function captureOne(iframeEl, fileName, cb, wantLayers){
+      function captureOne(iframeEl,fileName,cb,wantLayers){
         var msgId='dl_'+Date.now()+'_'+Math.random().toString(36).slice(2);
-        var settled=false;
-        var timer;
-
+        var settled=false,timer,started=Date.now();
         function settle(res){
-          if(settled) return;
-          settled=true;
-          clearTimeout(timer);
-          window.removeEventListener('message',onMsg);
-          cb(res||null);
+          if(settled)return;settled=true;clearTimeout(timer);window.removeEventListener('message',onMsg);
+          var result=res||{dataUrl:null,error:{code:'NO_SNAPSHOT',message:'版位沒有回傳截圖，請重新整理後再試。'}};
+          window._bnLastDownloadReport.layouts.push({file:fileName,layers:!!wantLayers,elapsed:Date.now()-started,error:result.error||null,report:result.report||null});
+          try{cb(result);}catch(err){
+            finishExport();setProgress('下載失敗：'+fileName+'（'+String(err.message||err)+'）');
+          }
         }
-
-        function onMsg(e){
-          if(!e.data || e.data.type!=='bn-snapshot' || e.data.msgId!==msgId) return;
-          settle(e.data.dataUrl ? e.data : null);
+        function onMsg(event){
+          if(event.source!==iframeEl.contentWindow||!event.data||event.data.msgId!==msgId)return;
+          if(event.data.type==='bn-capture-progress'){
+            setProgress('處理 '+fileName.replace(/\.png$/i,'')+'：'+(event.data.message||'正在截圖…'));return;
+          }
+          if(event.data.type==='bn-snapshot')settle(event.data);
         }
-
         window.addEventListener('message',onMsg);
-
-        try{
-          iframeEl.contentWindow.postMessage({type:'bn-capture',msgId:msgId,layers:!!wantLayers},'*');
-        }catch(e){
-          settle(null);
-          return;
-        }
-
-        /* 單一版位最多等 12 秒；失敗就跳過，整包繼續 */
-        timer=setTimeout(function(){ settle(null); },12000);
+        timer=setTimeout(function(){
+          try{iframeEl.contentWindow.postMessage({type:'bn-capture-cancel',msgId:msgId},'*');}catch(_){}
+          settle({dataUrl:null,error:{code:'IFRAME_TIMEOUT',message:'版位沒有在期限內回應；已取消本次截圖，可重新下載。'}});
+        },50000);
+        try{iframeEl.contentWindow.postMessage({type:'bn-capture',msgId:msgId,layers:!!wantLayers},'*');}
+        catch(error){settle({dataUrl:null,error:{code:'IFRAME_ACCESS',message:'無法連接版位，請重新整理後再試。'}});}
       }
 
       function next(idx){
@@ -3717,10 +3720,11 @@
               }else{
                 fail++;
                 failedNames.push(baseName);
+                failedReasons.push(res&&res.error&&res.error.message||'截圖未完成，請重新下載');
               }
 
               if(total===1){
-                setProgress(outUrl ? '已下載 1 / 1' : '下載失敗：'+baseName+'（截圖逾時或回傳空白）');
+                setProgress(outUrl ? '已下載 1 / 1' : '下載失敗：'+baseName+'（'+(failedReasons[failedReasons.length-1]||'截圖未完成')+'）');
               }else{
                 setProgress('打包中 '+done+' / '+total+'（成功 '+ok+'，失敗 '+fail+'）'
                   + (failedNames.length ? '　失敗清單：'+failedNames.join('、') : ''));
@@ -3756,16 +3760,21 @@
                   return;
                 }
                 setProgress('壓縮 '+baseName+' 至 '+kbLimit+'KB 以下…');
-                compressDataUrlToTargetKb(dataUrl, kbLimit, function(jpgUrl, didCompress){
-                  afterMainReady(jpgUrl, baseName + (didCompress ? '.jpg' : '.png'));
-                }, {bgUrl: res && res.bgUrl, fgUrl: res && res.fgUrl}, {keepSize: keepSize0});
+                function compressWithLayers(layerResult){
+                  compressDataUrlToTargetKb(dataUrl,kbLimit,function(jpgUrl,didCompress){
+                    afterMainReady(jpgUrl,baseName+(didCompress?'.jpg':'.png'));
+                  },{bgUrl:layerResult&&layerResult.bgUrl,fgUrl:layerResult&&layerResult.fgUrl},{keepSize:keepSize0});
+                }
+                /* 主圖未超過 KB 時只截一次；確定需壓縮才產生背景／前景層。 */
+                if(res&&res.bgUrl&&res.fgUrl)compressWithLayers(res);
+                else captureOne(iframe,baseName+'.png',function(layers){compressWithLayers(layers);},true);
               }else{
                 afterMainReady(dataUrl, outName);
               }
             }else{
               afterCompress(null, baseName+'.png');
             }
-          }, !!kbLimit0);
+          }, false);
         });
       }
 

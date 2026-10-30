@@ -1,0 +1,30 @@
+﻿Shopee 下載流程驗證紀錄
+日期：2026-10-30
+
+Chromium 瀏覽器，使用實際 html2canvas 1.4.1 與 JSZip，啟用瀏覽器跨來源檢查。
+
+1. normal HBN download, local renderer, one pass below KB limit, terminal overlay/flags restored
+2. actual product wheel zoom + adjusted background scale/position downloads and preserves all source styles
+3. canvas preview scale is normalized only in the clone; exported dimensions and marker pixels stay exact
+4. background/foreground layers, transparent foreground, original styles and background unchanged
+5. six background fit/basis combinations with center offset match browser-rendered sample pixels
+6. render rejection restores every edited element, reports a cause, and next download succeeds
+7. optional layer failure keeps main image and never leaves original background transparent/hidden
+8. missing background has explicit error, clears busy state, immediately retries successfully
+9. remote background without CORS fails clearly; allowed CORS is embedded safely and downloads
+10. IMG background path after center zoom and offsets, with products and logos
+11. only oversized main images request layers; KB compression retains original pixel dimensions
+12. multiple-layout ZIP uses local JSZip and includes both images and editable JSON
+13. one failed layout does not stall the remaining ZIP; failure count and finished overlay are correct
+14. SearchICON downloads original PNG and additional 84x84 PNG
+15. missing local renderer closes overlay and failed loader can be retried
+16. late completion of older rotation cannot overwrite latest image or export state
+17. 34 catalog layout names exercise shared capture branches using synthetic layout fixtures
+18. reproduced old 12-second failure; same 13-second render succeeds after fix; never-ready fonts fail and unlock
+19. no browser JavaScript exceptions and no CDN/network dependency for render or ZIP
+
+額外回歸：背景 UI 原尺寸／箭頭／舊位置轉換、人物兩個位置連動及解鎖、IG 遮罩、點選顯示控制點、04／09 教學操作與還原、HTML 外掛載入均通過。
+
+測試範圍：下載流程使用本對話的最新版 index.html、bn-editor-plugin.js 與 layout-runtime.js。以同一個共用 runtime、34 個版位名稱和程式繪製的商品／背景測試其分支。各版位完整 HTML／CSS、公司字型與圖片不在目前附件中，因此不表示逐一驗證了所有正式作品的視覺細節。
+
+已在未修改的舊流程重現兩項問題：中心定位背景會回傳空白截圖；13 秒截圖在外層 12 秒先判定失敗。修正後相同背景與 13 秒截圖可以下載。
