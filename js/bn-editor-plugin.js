@@ -3410,7 +3410,7 @@
         if(s1 === s2) return (q1 + q2) / 2;
         /* 線性插值：(q - q1) / (q2 - q1) = (targetBytes - s1) / (s2 - s1) */
         var predictQ = q1 + (targetBytes - s1) * (q2 - q1) / (s2 - s1);
-        return Math.max(BN_JPEG_MIN_QUALITY, Math.min(0.98, predictQ));
+        return Math.max(0.1, Math.min(0.99, predictQ));
       }
 
       function compressSelectiveBgFirst(layers, targetKb, cb){
@@ -3760,21 +3760,16 @@
                   return;
                 }
                 setProgress('壓縮 '+baseName+' 至 '+kbLimit+'KB 以下…');
-                function compressWithLayers(layerResult){
-                  compressDataUrlToTargetKb(dataUrl,kbLimit,function(jpgUrl,didCompress){
-                    afterMainReady(jpgUrl,baseName+(didCompress?'.jpg':'.png'));
-                  },{bgUrl:layerResult&&layerResult.bgUrl,fgUrl:layerResult&&layerResult.fgUrl},{keepSize:keepSize0});
-                }
-                /* 主圖未超過 KB 時只截一次；確定需壓縮才產生背景／前景層。 */
-                if(res&&res.bgUrl&&res.fgUrl)compressWithLayers(res);
-                else captureOne(iframe,baseName+'.png',function(layers){compressWithLayers(layers);},true);
+                compressDataUrlToTargetKb(dataUrl, kbLimit, function(jpgUrl, didCompress){
+                  afterMainReady(jpgUrl, baseName + (didCompress ? '.jpg' : '.png'));
+                }, {bgUrl: res && res.bgUrl, fgUrl: res && res.fgUrl}, {keepSize: keepSize0});
               }else{
                 afterMainReady(dataUrl, outName);
               }
             }else{
               afterCompress(null, baseName+'.png');
             }
-          }, false);
+          }, !!kbLimit0);
         });
       }
 
