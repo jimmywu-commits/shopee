@@ -1238,6 +1238,8 @@ function parseHashKeywords(raw){
   var s = (raw || '').replace(/^#/,'').trim().toLowerCase();
   if(!s) return [];
   if(isJbpModeHash(s) || isAllModeHash(s)) return [];
+  /* #logo 是首頁 LOGO 牆的專用入口，避免匹配其他含 LOGO 的版位；其餘 hash 沿用原規則。 */
+  if(s === 'logo') return ['logo牆'];
   var found = [];
   var sorted = _hashGroupKeys.slice().sort(function(a,b){ return b.length - a.length; });
   sorted.forEach(function(k){ if(s.indexOf(k) !== -1){ found.push(k); s = s.replace(k,''); } });
