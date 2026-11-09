@@ -100,6 +100,14 @@
     if(light.logos){ light.logos.forEach(function(l){ if(l && l.src) l.src='__BN_IDB__'; }); }
     if(light.character && light.character.src){ light.character.src='__BN_IDB__'; }
     if(light.character2 && light.character2.src){ light.character2.src='__BN_IDB__'; }
+    /* 代言人照／簽名檔：圖片（含旋轉前原圖）只存在 IndexedDB 完整版 */
+    ['endorserPhoto','endorserSign'].forEach(function(key){
+      var slot = light[key];
+      if(!slot || !slot.src) return;
+      slot.src = '__BN_IDB__';
+      if(slot.baseSrc) slot.baseSrc = '__BN_IDB__';
+      if(slot.meta && slot.meta.baseSrc) slot.meta.baseSrc = '__BN_IDB__';
+    });
     return light;
   }
 
@@ -130,7 +138,7 @@
     var merged = clone(full);
     merged.ts = light.ts || merged.ts;
     ['portableVersion','layoutManifest','texts','colors','inputMeta','toolbar','layouts','bgCheckers',
-      'checked','checkedByFile','logoLayouts','logoLayoutsByFile','productLayoutLocks'].forEach(function(k){
+      'checked','checkedByFile','logoLayouts','logoLayoutsByFile','productLayoutLocks','endorserNote'].forEach(function(k){
       if(light[k] !== undefined) merged[k] = clone(light[k]);
     });
 
@@ -161,6 +169,22 @@
       if(!lightChar || !mergedChar) return;
       Object.keys(lightChar).forEach(function(k){
         if(k !== 'src' && lightChar[k] !== undefined) mergedChar[k] = clone(lightChar[k]);
+      });
+    });
+    /* 代言人照／簽名檔：同一張圖（id 相同）才合併位置、角度等輕量欄位；圖片沿用完整版 */
+    ['endorserPhoto','endorserSign'].forEach(function(key){
+      var lightSlot = light[key];
+      var mergedSlot = merged[key];
+      if(!lightSlot || !mergedSlot || lightSlot.id !== mergedSlot.id) return;
+      Object.keys(lightSlot).forEach(function(k){
+        if(k === 'src' || k === 'baseSrc' || lightSlot[k] === undefined) return;
+        if(k === 'meta'){
+          var meta = clone(lightSlot.meta) || {};
+          if(meta.baseSrc === '__BN_IDB__') meta.baseSrc = mergedSlot.meta && mergedSlot.meta.baseSrc;
+          mergedSlot.meta = meta;
+          return;
+        }
+        mergedSlot[k] = clone(lightSlot[k]);
       });
     });
 
@@ -668,6 +692,9 @@
          若把它們也存入 toolbar 並在載入時 dispatch input/change，
          會用舊色盤值覆蓋 colorState.canvasBg，造成背景色跳回預設藍。 */
       if(key === 'cp-hex-input' || key === 'cp-native') return;
+      /* 代言人小字與字色另存在 endorserNote；放進 toolbar 會在還原時再觸發 input，
+         把預設色票誤當成「手動選色」。 */
+      if(/^bn-endorser-/.test(key)) return;
       var v;
       if(el.type === 'checkbox' || el.type === 'radio') v = !!el.checked;
       else v = el.value;
@@ -694,6 +721,7 @@
       var el = document.getElementById(key) || document.querySelector('[name="'+String(key).replace(/"/g,'\\"')+'"]');
       if(!el || el.type === 'file') return;
       if(key === 'cp-hex-input' || key === 'cp-native') return;
+      if(/^bn-endorser-/.test(key)) return;
       var item = controls[key] || {};
       if(el.type === 'checkbox' || el.type === 'radio') el.checked = !!item.value;
       else if(item.value !== undefined) el.value = item.value;
@@ -753,6 +781,9 @@
       character: addPortableLayouts(global._bnCharacter, layoutIndex),
       character2: addPortableLayouts(global._bnCharacter2, layoutIndex),
       charPairFirst: global._bnCharPairFirst || null,
+      endorserPhoto: addPortableLayouts(global._bnEndorserPhoto || null, layoutIndex),
+      endorserSign: addPortableLayouts(global._bnEndorserSign || null, layoutIndex),
+      endorserNote: addPortableLayouts(global._bnEndorserNote || {text:'', color:'', layouts:{}}, layoutIndex),
       products:(global._bnProducts||[]).map(function(p){
         return addPortableLayouts({id:p.id,src:p.src,baseSrc:p.baseSrc,ratio:p.ratio,name:p.name,
           sizeScale:p.sizeScale||1,position:p.position||0,zOrder:p.zOrder||0,
@@ -787,6 +818,8 @@
     if(state._heavyStripped) return true;
     if(state.character && state.character.src === '__BN_IDB__') return true;
     if(state.character2 && state.character2.src === '__BN_IDB__') return true;
+    if(state.endorserPhoto && state.endorserPhoto.src === '__BN_IDB__') return true;
+    if(state.endorserSign && state.endorserSign.src === '__BN_IDB__') return true;
     var bg = state.background || {};
     if(bg.legacySrc === '__BN_IDB__') return true;
     var st = bg.states || {};
@@ -895,6 +928,32 @@
       }
       if(typeof global._bnRenderCharacter==='function') global._bnRenderCharacter();
       if(typeof global._bnBroadcastCharacter==='function') global._bnBroadcastCharacter();
+    }
+    if('endorserPhoto' in state || 'endorserSign' in state || 'endorserNote' in state){
+      /* null 代表存檔時沒有這張圖，允許還原成「移除」；輕量版的佔位符不能蓋掉真正的圖。 */
+      ['endorserPhoto','endorserSign'].forEach(function(key){
+        if(!(key in state)) return;
+        var slot = state[key];
+        if(slot && slot.src === '__BN_IDB__') return;
+        var globalKey = key === 'endorserPhoto' ? '_bnEndorserPhoto' : '_bnEndorserSign';
+        global[globalKey] = slot ? restorePortableLayouts(slot, layoutIndex, state.layoutManifest) : null;
+      });
+      if(state.endorserNote && typeof state.endorserNote === 'object'){
+        var restoredNote = restorePortableLayouts(state.endorserNote, layoutIndex, state.layoutManifest) || {};
+        delete restoredNote.layoutsByFile;
+        global._bnEndorserNote = {
+          text: typeof restoredNote.text === 'string' ? restoredNote.text : '',
+          color: typeof restoredNote.color === 'string' ? restoredNote.color : '',
+          layouts: restoredNote.layouts && typeof restoredNote.layouts === 'object' ? restoredNote.layouts : {},
+          /* 上次套用的 BODA 工單內容：同一份工單重送時不覆蓋手動調整 */
+          woSig: typeof restoredNote.woSig === 'string' ? restoredNote.woSig : '',
+          woNote: typeof restoredNote.woNote === 'string' ? restoredNote.woNote : '',
+          /* LPBN 自己調過代言人時記下當時的代言人照 id：之後改 HBN 不再蓋掉 LPBN 那組 */
+          lpbnOwnPhotoId: restoredNote.lpbnOwnPhotoId != null ? String(restoredNote.lpbnOwnPhotoId) : ''
+        };
+      }
+      if(typeof global._bnRenderEndorser==='function') global._bnRenderEndorser();
+      if(typeof global._bnBroadcastEndorser==='function') global._bnBroadcastEndorser();
     }
     if(state.layouts && typeof global.setLayoutState==='function'){
       global.setLayoutState(state.layouts);

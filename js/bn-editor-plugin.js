@@ -45,6 +45,24 @@
 #bn-char2-open-btn{display:block;width:100%;padding:8px;background:var(--bg2,#1c2333);border:1.5px dashed #e2874a;border-radius:7px;color:#e2874a;font-size:11px;cursor:pointer;text-align:center;transition:.15s}
 #bn-char2-open-btn:hover{border-color:#e2874a;background:rgba(226,135,74,.08)}
 #bn-char2-open-btn.has-char{border-style:solid}
+.bn-endorser-btns{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.bn-endorser-up{display:block;width:100%;padding:8px 4px;background:var(--bg2,#1c2333);border:1.5px dashed #a855f7;border-radius:7px;color:#c084fc;font-size:11px;cursor:pointer;text-align:center;transition:.15s}
+.bn-endorser-up:hover{background:rgba(168,85,247,.08)}
+.bn-endorser-up.has-img{border-style:solid}
+.bn-prod-item.bn-endorser-item{border:1px solid rgba(168,85,247,.35)}
+.bn-endorser-note-wrap{margin-top:8px;display:flex;flex-direction:column;gap:4px}
+.bn-endorser-note-wrap label{display:flex;justify-content:space-between;gap:6px;font-size:11px;color:var(--text2,#8b949e)}
+#bn-endorser-note-count{font-size:10px;color:var(--text3,#6e7681)}
+#bn-endorser-note-count.over{color:var(--red,#da3633)}
+#bn-endorser-note-inp{width:100%;box-sizing:border-box;resize:none;min-height:46px;padding:6px 8px;background:var(--bg2,#1c2333);border:1px solid var(--border,#30363d);border-radius:6px;color:var(--text,#e6edf3);font-size:12px;line-height:1.5;font-family:inherit}
+#bn-endorser-note-inp:focus{outline:none;border-color:#a855f7}
+.bn-endorser-note-color{display:flex;align-items:center;gap:6px;font-size:10px;color:var(--text3,#6e7681)}
+.bn-endorser-note-color button{background:transparent;border:1px solid var(--border,#30363d);border-radius:4px;color:var(--text3,#6e7681);font-size:10px;padding:2px 7px;cursor:pointer}
+.bn-endorser-note-color button.on{border-color:#a855f7;color:#c084fc}
+.bn-endorser-note-color input[type=color]{width:26px;height:20px;padding:0;border:1px solid var(--border,#30363d);border-radius:4px;background:transparent;cursor:pointer}
+.bn-endorser-hint{font-size:10px;color:var(--text3,#6e7681);margin-top:6px;line-height:1.5}
+.bn-endorser-hint.on{color:#c084fc}
+.bn-endorser-editing .hbn-plugin-modal [data-act="shadow"]{display:none!important}
 #bn-download-bar{padding:10px 14px;border-top:1px solid var(--border,#30363d);flex-shrink:0}
 .bn-dl-btn{display:block;width:100%;padding:9px;background:linear-gradient(135deg,#1d4ed8,#0d47a1);border:none;border-radius:7px;color:#fff;font-size:12px;font-weight:700;cursor:pointer;transition:opacity .12s}
 .bn-dl-btn:hover{opacity:.88}
@@ -141,14 +159,28 @@
        只有兩個人物都存在時才有意義，這時候兩者一定緊鄰在一起、不會被商品
        插在中間（商品這時本來就完全不顯示，跟商品比前後沒有意義）。 */
     window._bnCharPairFirst = window._bnCharPairFirst || '_bnCharacter';
+    /* 代言人：代言人照、簽名檔各一個欄位（結構同人物圖，另有 meta.rotate／baseSrc），
+       代言人小字 {text,color,layouts:{bnid:layout}}。 */
+    window._bnEndorserPhoto = window._bnEndorserPhoto || null;
+    window._bnEndorserSign = window._bnEndorserSign || null;
+    window._bnEndorserNote = window._bnEndorserNote || {text:'', color:'', layouts:{}};
 
     /* 取得目前人物數量(0/1/2)，供商品可見度規則使用 */
     function getCharacterCount(){
       return (window._bnCharacter?1:0) + (window._bnCharacter2?1:0);
     }
-    /* 依人物數量換算商品最多能顯示幾張：0張人物->3(全開)，1張->2，2張->0 */
+    function hasEndorserImage(){
+      return !!(window._bnEndorserPhoto || window._bnEndorserSign);
+    }
+    /* 人物圖或代言人存在時，商品才要限制顯示件數 */
+    function productLimitActive(){
+      return getCharacterCount() > 0 || hasEndorserImage();
+    }
+    /* 依人物數量換算商品最多能顯示幾張：0張人物->3(全開)，1張->2，2張->0。
+       代言人照＋簽名檔「取代 2 品」：有代言人時最多 1 件，再加人物圖就 0 件。 */
     function getMaxProductsVisible(){
       var n = getCharacterCount();
+      if(hasEndorserImage()) return n === 0 ? 1 : 0;
       if(n === 0) return 999;
       if(n === 1) return 2;
       return 0;
@@ -345,14 +377,25 @@
           product.layouts[key] = cloned;
           broadcastTo(key, {type:'bn-product-layout-apply', id:product.id, layout:cloned});
         });
-        ['_bnCharacter','_bnCharacter2'].forEach(function(slotKey){
+        ['_bnCharacter','_bnCharacter2','_bnEndorserPhoto','_bnEndorserSign'].forEach(function(slotKey){
           var slot=window[slotKey];if(!slot)return;
           if(!slot.layouts)slot.layouts={};
-          var ref=findLockedProductLayout(slot,key),sourceId=ref?ref.id:key,layout=ref?ref.layout:slot.layouts[key];
+          var isEndorser=slotKey.indexOf('_bnEndorser')===0;
+          var ref=(isEndorser&&endorserMasterSourceFor(slot,key))||findLockedProductLayout(slot,key);
+          var sourceId=ref?ref.id:key,layout=ref?ref.layout:slot.layouts[key];
           if(!layout)return;
           var cloned=productLayoutForTarget(layout,sourceId,key);slot.layouts[key]=cloned;
           broadcastTo(key,{type:'bn-character-layout-apply',id:slot.id,layout:cloned});
         });
+        /* 代言人小字也一起從該跟的指標版位拿位置 */
+        var lockNote=window._bnEndorserNote;
+        if(lockNote&&lockNote.layouts&&lockNote.text){
+          var noteRef=endorserMasterSourceFor(lockNote,key);
+          if(noteRef){
+            var noteCloned=JSON.parse(JSON.stringify(noteRef.layout));lockNote.layouts[key]=noteCloned;
+            broadcastTo(key,{type:'bn-endorser-note-layout-apply',layout:noteCloned});
+          }
+        }
       }
       if(typeof window._bnRefreshProductLayoutLockUI === 'function'){
         window._bnRefreshProductLayoutLockUI();
@@ -374,6 +417,99 @@
         slot.layouts[tid] = cloned;
         broadcastTo(tid, {type:'bn-character-layout-apply', id:slot.id, layout:cloned});
       });
+    }
+
+    /* ── 代言人連動：HBN 是主要指標、LPBN 是第二指標，其他版位自動配合 ──
+       - 改 HBN：全部鎖定版位跟著（LPBN 那組在 LPBN 自己調過之前也跟 HBN）。
+       - 改 LPBN：LPBN 那組跟著（寬高比 < 3.2 比 HBN 方的版位：FB_POST、ddcard、IG、Coin、SBA_APP…），
+         之後再改 HBN 不會蓋掉 LPBN 那組；換一張代言人照才重新全部跟 HBN。
+       - 改其他版位：只動自己和同尺寸的方／橫版。 */
+    function endorserLayoutFile(id){
+      var l = getLayoutById(id) || {};
+      return String(l.file || l.name || '');
+    }
+    function endorserMasterOf(id){
+      var n = endorserLayoutFile(id);
+      if(/^hbn_/i.test(n)) return 'hbn';
+      if(/^lpbn_/i.test(n)) return 'lpbn';
+      return '';
+    }
+    function endorserGroupOf(id){
+      var m = endorserMasterOf(id); if(m) return m;
+      var s = getLayoutCanvasSize(id);
+      return (s.w > 0 && s.h > 0 && s.w / s.h < 3.2) ? 'lpbn' : 'hbn';
+    }
+    function endorserLpbnOwn(){
+      var n = window._bnEndorserNote, p = window._bnEndorserPhoto;
+      return !!(n && p && n.lpbnOwnPhotoId && n.lpbnOwnPhotoId === p.id);
+    }
+    function markEndorserLpbnOwn(){
+      var p = window._bnEndorserPhoto;
+      if(p) endorserNoteState().lpbnOwnPhotoId = p.id;
+    }
+    /* 只有這些版位會放代言人（同 layout-runtime 的 _bnEndorserTemplate） */
+    function endorserLayoutSupported(id){
+      return /^(?:ddcard|ig|hbn_|lpbn_|coin_pagebn|fb_post|scbn|活動總覽|sba_|ams\s*bn-)/i
+        .test(endorserLayoutFile(id).replace(/^.*[\\/]/, ''));
+    }
+    function endorserSyncTargets(sourceBnid){
+      var src = String(sourceBnid);
+      var ids = getProductSyncLayoutIds().filter(function(id){
+        return String(id) !== src && productLayoutIsLocked(id) && endorserLayoutSupported(id);
+      });
+      var master = endorserMasterOf(src);
+      if(!master){
+        var pairs = getPairedLayoutIds(src).map(String);
+        return ids.filter(function(id){ return pairs.indexOf(String(id)) !== -1; });
+      }
+      if(master === 'lpbn') return ids.filter(function(id){ return endorserGroupOf(id) === 'lpbn'; });
+      var lpbnOwn = endorserLpbnOwn();
+      return ids.filter(function(id){
+        var grp = endorserGroupOf(id);
+        return grp === 'hbn' || (grp === 'lpbn' && !lpbnOwn);
+      });
+    }
+    function syncEndorserSlotLayout(slotKey, sourceBnid, layout){
+      var slot = window[slotKey];
+      if(!slot || !layout || !productLayoutSyncEligible(sourceBnid) || !productLayoutIsLocked(sourceBnid)) return;
+      if(!slot.layouts) slot.layouts = {};
+      endorserSyncTargets(sourceBnid).forEach(function(tid){
+        var cloned = productLayoutForTarget(layout, sourceBnid, tid);
+        slot.layouts[tid] = cloned;
+        broadcastTo(tid, {type:'bn-character-layout-apply', id:slot.id, layout:cloned});
+      });
+    }
+    /* 重新鎖上某個版位時，代言人要從它該跟的指標版位拿位置 */
+    function endorserMasterSourceFor(entity, targetId){
+      if(!entity || !entity.layouts) return null;
+      var want = (endorserGroupOf(targetId) === 'lpbn' && endorserLpbnOwn()) ? 'lpbn' : 'hbn';
+      var ids = getProductSyncLayoutIds();
+      for(var i = 0; i < ids.length; i++){
+        var id = ids[i];
+        if(String(id) === String(targetId) || !productLayoutIsLocked(id)) continue;
+        if(endorserMasterOf(id) === want && entity.layouts[id]) return {id:id, layout:entity.layouts[id]};
+      }
+      return null;
+    }
+    /* 舊版暫存（代言人照沒有 efr）：HBN／LPBN 的 iframe 就緒時請它用新規則重新回報一次，
+       其他版位就會照新規則自動配合，不用人工重調。 */
+    function endorserMigrationSourceId(){
+      /* 只讓一個指標版位負責轉換：有載入的 HBN 優先（照版位清單順序），沒有才用 LPBN */
+      var ids = getProductSyncLayoutIds().filter(function(id){
+        return productLayoutIsLocked(id) && document.getElementById('iframe-' + id);
+      });
+      var hbn = ids.filter(function(id){ return endorserMasterOf(id) === 'hbn'; });
+      if(hbn.length) return String(hbn[0]);
+      var lpbn = ids.filter(function(id){ return endorserMasterOf(id) === 'lpbn'; });
+      return lpbn.length ? String(lpbn[0]) : '';
+    }
+    function requestEndorserMigrationIfNeeded(id){
+      var photo = window._bnEndorserPhoto;
+      if(!photo || !photo.layouts || !endorserMasterOf(id) || !productLayoutIsLocked(id)) return;
+      var own = photo.layouts[String(id)];
+      if(!own || own.efr) return;
+      if(endorserMigrationSourceId() !== String(id)) return;
+      broadcastTo(id, {type:'bn-endorser-repost'});
     }
 
     /* Logo 版型自動切換：
@@ -528,13 +664,27 @@
         var slotKey = null;
         if(window._bnCharacter && window._bnCharacter.id === d.id) slotKey = '_bnCharacter';
         else if(window._bnCharacter2 && window._bnCharacter2.id === d.id) slotKey = '_bnCharacter2';
+        /* 代言人照／簽名檔在畫布上也是 .bn-char-box，位置回報走同一則訊息 */
+        else slotKey = endorserSlotById(d.id);
         if(!slotKey) return;
         var slot = window[slotKey];
         if(!slot.layouts) slot.layouts = {};
         var ckey = d.bnid ? String(d.bnid) : 'default';
+        /* 代言人：快照不是使用者操作。這格已經是從別的版位連動過來的位置時，
+           晚到的舊快照不能把它倒回去（否則重新整理後會用回舊位置）。 */
+        if(ENDORSER_SLOTS.indexOf(slotKey) !== -1 && isLayoutSnapshotUpdate(d)){
+          var prevEndorser = slot.layouts[ckey];
+          if(prevEndorser && prevEndorser.src && d.layout.src && String(prevEndorser.src) !== String(d.layout.src)) return;
+        }
         slot.layouts[ckey] = d.layout;
         if(isLayoutSnapshotUpdate(d))return;
-        syncCharacterLayoutToPairs(slotKey, ckey, d.layout);
+        if(ENDORSER_SLOTS.indexOf(slotKey) !== -1){
+          /* 使用者在 LPBN 調過：LPBN 那組從此有自己的版本（舊暫存轉換不算） */
+          if(!d.migrate && endorserMasterOf(ckey) === 'lpbn') markEndorserLpbnOwn();
+          syncEndorserSlotLayout(slotKey, ckey, d.layout);
+        } else {
+          syncCharacterLayoutToPairs(slotKey, ckey, d.layout);
+        }
         markStateDirty();
         return;
       }
@@ -1038,7 +1188,7 @@
       var zSorted = zSortedIn || window._bnProducts.slice().sort(function(a,b){ return (a.zOrder||0)-(b.zOrder||0); });
       var maxVisible = getMaxProductsVisible();
       var visibleIds = zSorted.slice(0, maxVisible).map(function(p){ return p.id; });
-      broadcast({type:'bn-character-visibility', hasChar: getCharacterCount()>0, maxVisible:maxVisible, visibleIds:visibleIds,
+      broadcast({type:'bn-character-visibility', hasChar: productLimitActive(), maxVisible:maxVisible, visibleIds:visibleIds,
         /* 向下相容：topId 給還沒更新的舊版 layout-runtime.js 當備援 */
         topId: visibleIds.length ? visibleIds[0] : null});
       broadcastCharacterPairOrder();
@@ -1171,6 +1321,583 @@
       });
     }
 
+    /* ══ 代言人照＋簽名檔＋代言人小字 ══
+       管理方式跟商品圖一樣（縮圖／▲▼／編輯／旋轉角度／移除），但兩張圖都不加影子：
+       上傳與工單匯入不烘貼地陰影，編輯視窗也把「加 / 編輯影子」藏起來。
+       旋轉沿用商品的管線（baseSrc → 旋轉 → 裁透明邊），影子設定一律關閉。
+       畫布規則（預設位置、前後順序、小字字級與黑白字）在 layout-runtime.js。 */
+    var ENDORSER_SLOTS = ['_bnEndorserPhoto', '_bnEndorserSign'];
+    var ENDORSER_LABEL = {_bnEndorserPhoto:'代言人照', _bnEndorserSign:'簽名檔'};
+    var ENDORSER_NOTE_LINE_MAX = 8;   /* MSBN B-1 代言人小字：兩排，每排 8 字（中文 1、英數 0.5） */
+    var ENDORSER_NOTE_LINES = 2;
+    var _endorserRotateJobs = {};
+    var _endorserRotatePromises = {};
+    var _editingEndorserSlot = null;
+
+    function endorserSlotById(id){
+      if(!id) return null;
+      for(var i = 0; i < ENDORSER_SLOTS.length; i++){
+        var s = window[ENDORSER_SLOTS[i]];
+        if(s && s.id === id) return ENDORSER_SLOTS[i];
+      }
+      return null;
+    }
+    function endorserNoteState(){
+      var n = window._bnEndorserNote;
+      if(!n || typeof n !== 'object') n = window._bnEndorserNote = {text:'', color:'', layouts:{}};
+      if(!n.layouts || typeof n.layouts !== 'object') n.layouts = {};
+      if(typeof n.text !== 'string') n.text = n.text == null ? '' : String(n.text);
+      if(typeof n.color !== 'string') n.color = '';
+      return n;
+    }
+    function endorserSlotMessage(slotKey){
+      var slot = window[slotKey];
+      if(!slot) return {type:'bn-endorser-remove', slot:slotKey};
+      return {type:'bn-endorser-add', slot:slotKey, id:slot.id, src:slot.src, ratio:slot.ratio,
+        layoutById:slot.layouts || null,
+        aboveMain: slotKey === '_bnEndorserPhoto' ? slot.aboveMain === true : true,
+        rotate:(slot.meta && slot.meta.rotate) || 0};
+    }
+    function endorserNoteMessage(){
+      var n = endorserNoteState();
+      return {type:'bn-endorser-note', text:n.text || '', color:n.color || '', layoutById:n.layouts || {}};
+    }
+    /* 給單一 iframe（下載前／iframe 就緒）補送完整代言人狀態。
+       includeRemoves：下載時連「沒有的欄位」也送 remove，清掉 iframe 裡殘留的舊圖。 */
+    function sendEndorserStateTo(send, includeRemoves){
+      ENDORSER_SLOTS.forEach(function(slotKey){
+        if(window[slotKey] || includeRemoves) send(endorserSlotMessage(slotKey));
+      });
+      if(endorserNoteState().text || includeRemoves) send(endorserNoteMessage());
+    }
+    function broadcastEndorser(slotKey){
+      /* 先送商品可見度，畫布才知道還顯示哪件商品（決定代言人預設放哪一側） */
+      broadcastCharacterVisibility();
+      broadcast(endorserSlotMessage(slotKey));
+    }
+    function broadcastAllEndorser(){
+      broadcastCharacterVisibility();
+      ENDORSER_SLOTS.forEach(function(slotKey){ broadcast(endorserSlotMessage(slotKey)); });
+      broadcast(endorserNoteMessage());
+    }
+    function broadcastEndorserNote(){ broadcast(endorserNoteMessage()); }
+
+    /* 代言人照只裁透明外框、不裁白邊（照片的白底是畫面的一部分，同 BODA 的 alphaOnly），
+       超大原圖縮到最長邊 1400px；沒有透明像素的照片存成 JPEG，避免暫存檔暴增。 */
+    function endorserAlphaTrim(img){
+      var nw = img.naturalWidth || 1, nh = img.naturalHeight || 1;
+      var sc = Math.min(1, 1400 / Math.max(nw, nh));
+      var w = Math.max(1, Math.round(nw * sc)), h = Math.max(1, Math.round(nh * sc));
+      var c = document.createElement('canvas'); c.width = w; c.height = h;
+      var ctx = c.getContext('2d', {willReadFrequently:true});
+      ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(img, 0, 0, w, h);
+      var d;
+      try{ d = ctx.getImageData(0, 0, w, h).data; }catch(_){ return {src:img.src, ratio:nw / nh}; }
+      var x0 = w, y0 = h, x1 = -1, y1 = -1, translucent = false;
+      for(var y = 0; y < h; y++){
+        for(var x = 0; x < w; x++){
+          var a = d[(y * w + x) * 4 + 3];
+          if(a < 250) translucent = true;
+          if(a > 8){ if(x < x0) x0 = x; if(x > x1) x1 = x; if(y < y0) y0 = y; if(y > y1) y1 = y; }
+        }
+      }
+      if(x1 < 0){ x0 = 0; y0 = 0; x1 = w - 1; y1 = h - 1; }
+      var tw = x1 - x0 + 1, th = y1 - y0 + 1;
+      if(tw === w && th === h && sc === 1) return {src:img.src, ratio:w / h};
+      var o = document.createElement('canvas'); o.width = tw; o.height = th;
+      o.getContext('2d').drawImage(c, x0, y0, tw, th, 0, 0, tw, th);
+      return {src:translucent ? o.toDataURL('image/png') : o.toDataURL('image/jpeg', 0.92), ratio:tw / th};
+    }
+    /* 簽名檔沿用商品的 autoTrim（依四角底色裁掉留白）。 */
+    function makeEndorserSlotFromSrc(slotKey, src, name, prev){
+      return loadImg(src).then(function(img){
+        var trimmed = slotKey === '_bnEndorserSign' ? autoTrim(img) : endorserAlphaTrim(img);
+        return {
+          id: prev ? prev.id : ((slotKey === '_bnEndorserSign' ? 'endorser_sign_' : 'endorser_photo_') + Date.now() + '_' + Math.random().toString(36).slice(2, 6)),
+          src: trimmed.src, baseSrc: trimmed.src, ratio: trimmed.ratio || 1,
+          name: name || ENDORSER_LABEL[slotKey],
+          aboveMain: prev ? prev.aboveMain === true : false, /* 預設在商品後面（同 MSBN） */
+          layouts: {},  /* 換圖回到預設位置 */
+          meta: {rotate:0, baseSrc:trimmed.src}
+        };
+      });
+    }
+
+    /* ── 工單匯入時分辨哪張是代言人照、哪張是簽名檔 ──
+       1. 檔名：有「簽名／sign」是簽名檔；有「代言／照／photo」是代言人照。
+       2. 圖片：簽名檔通常是單色細筆畫（亮度變化小）、筆畫面積小、偏橫；照片相反。
+       3. 都分不出來時照欄位順序：「代言人照＋簽名檔」→ 第 1 張照片、第 2 張簽名。 */
+    function endorserNameRole(name){
+      var n = String(name || '').toLowerCase();
+      if(/簽名|簽|sign|signature|autograph/.test(n)) return 'sign';
+      if(/代言|照|photo|portrait|人像|形象/.test(n)) return 'photo';
+      return '';
+    }
+    function analyzeEndorserImage(src){
+      return loadImg(src).then(function(img){
+        var nw = img.naturalWidth || 1, nh = img.naturalHeight || 1;
+        var sc = Math.min(1, 160 / Math.max(nw, nh));
+        var w = Math.max(1, Math.round(nw * sc)), h = Math.max(1, Math.round(nh * sc));
+        var c = document.createElement('canvas'); c.width = w; c.height = h;
+        var ctx = c.getContext('2d', {willReadFrequently:true});
+        ctx.drawImage(img, 0, 0, w, h);
+        var d = ctx.getImageData(0, 0, w, h).data, total = w * h, transparent = 0, i;
+        for(i = 3; i < d.length; i += 4) if(d[i] < 20) transparent++;
+        var alphaBg = transparent / total > 0.05;
+        var ink = 0, sum = 0, sumSq = 0, sat = 0;
+        for(i = 0; i < d.length; i += 4){
+          if(d[i+3] < 20) continue;
+          var r = d[i], g = d[i+1], b = d[i+2];
+          var L = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+          var spread = Math.max(r, g, b) - Math.min(r, g, b);
+          /* 沒有透明背景的圖（例如白紙掃描的簽名）把近白色當成底 */
+          if(!alphaBg && L > 232 && spread < 24) continue;
+          ink++; sum += L; sumSq += L * L; sat += spread;
+        }
+        var mean = ink ? sum / ink : 0;
+        return {ratio:nw / nh, coverage:ink / total,
+          lumSD:ink ? Math.sqrt(Math.max(0, sumSq / ink - mean * mean)) : 0,
+          sat:ink ? sat / ink : 0};
+      })['catch'](function(){ return null; });
+    }
+    function endorserSignatureScore(f){
+      if(!f) return 0;
+      var s = 0;
+      if(f.lumSD < 22) s += 2; else if(f.lumSD < 38) s += 1; else if(f.lumSD > 55) s -= 1;
+      if(f.coverage < 0.3) s += 1; else if(f.coverage > 0.5) s -= 1;
+      if(f.ratio > 1.25) s += 1; else if(f.ratio < 0.9) s -= 1;
+      if(f.sat > 60) s -= 1;
+      return s;
+    }
+    function classifyEndorserItems(items){
+      items = (items || []).slice(0, 2);
+      if(!items.length) return Promise.resolve({photo:null, sign:null, method:''});
+      var roles = items.map(function(it){ return endorserNameRole(it.name); });
+      function pick(photoIdx, method){
+        return {photo:photoIdx === null ? null : items[photoIdx],
+          sign:items.length === 2 ? items[photoIdx === null ? 0 : 1 - photoIdx] : (photoIdx === null ? items[0] : null),
+          method:method};
+      }
+      if(items.length === 1 && roles[0]) return Promise.resolve(pick(roles[0] === 'photo' ? 0 : null, 'name'));
+      if(items.length === 2 && roles[0] !== roles[1] && (roles[0] || roles[1])){
+        var known = roles[0] ? 0 : 1;
+        return Promise.resolve(pick(roles[known] === 'photo' ? known : 1 - known, 'name'));
+      }
+      return Promise.all(items.map(function(it){ return analyzeEndorserImage(it.src); })).then(function(feats){
+        var scores = feats.map(endorserSignatureScore);
+        if(items.length === 1) return pick(scores[0] >= 2 ? null : 0, 'image');
+        if(Math.abs(scores[0] - scores[1]) >= 2) return pick(scores[0] > scores[1] ? 1 : 0, 'image');
+        return pick(0, 'order');
+      });
+    }
+
+    /* ── 旋轉：跟商品同一條管線，影子關閉 ── */
+    function setEndorserRotation(slotKey, deg, done, opts){
+      var slot = window[slotKey];
+      if(!slot){ if(done) done(); return Promise.resolve(); }
+      var keepScale = !(opts && opts.keepScale === false);
+      if(!window._bnGroundShadow){
+        return loadScriptOnce('js/bn-shadow-plugin.js').then(function(){ return setEndorserRotation(slotKey, deg, done, opts); })['catch'](function(){
+          alert('bn-shadow-plugin.js 載入失敗');
+          if(done) done();
+        });
+      }
+      var rot = window._bnGroundShadow.normalizeRotate(deg);
+      slot.meta = slot.meta || {};
+      if(!slot.baseSrc) slot.baseSrc = slot.meta.baseSrc || slot.src;
+      var prevRot = Number(slot.meta.rotate) || 0;
+      var draft = {src:slot.src, baseSrc:slot.baseSrc, ratio:slot.ratio, meta:{rotate:rot, baseSrc:slot.baseSrc}};
+      var seq = (_endorserRotateJobs[slotKey] = (_endorserRotateJobs[slotKey] || 0) + 1);
+      var job = window._bnGroundShadow.applyToProduct(draft, {enabled:false}).then(function(){
+        if(_endorserRotateJobs[slotKey] !== seq || window[slotKey] !== slot) return;
+        slot.src = draft.src; slot.ratio = draft.ratio;
+        slot.meta.rotate = rot; slot.meta.baseSrc = slot.baseSrc;
+        renderEndorserUI();
+        broadcast({type:'bn-endorser-update-image', slot:slotKey, id:slot.id, src:slot.src, ratio:slot.ratio, rotate:rot, keepScale:keepScale});
+        markStateDirty();
+      })['catch'](function(err){
+        if(_endorserRotateJobs[slotKey] !== seq) return;
+        console.warn('[bn-editor] 代言人旋轉重算失敗', err);
+        broadcast({type:'bn-endorser-update-image', slot:slotKey, id:slot.id, src:slot.src, ratio:slot.ratio, rotate:prevRot});
+      }).then(function(){ if(done) done(); });
+      _endorserRotatePromises[slotKey] = job;
+      job.then(function(){ if(_endorserRotatePromises[slotKey] === job) delete _endorserRotatePromises[slotKey]; });
+      return job;
+    }
+    window.addEventListener('message', function(ev){
+      var d = ev.data || {};
+      if(d.type === 'bn-endorser-rotate'){
+        if(window._bnExporting) return;
+        var rk = endorserSlotById(d.id) || (ENDORSER_SLOTS.indexOf(d.slot) !== -1 ? d.slot : null);
+        var rs = rk && window[rk];
+        if(!rs) return;
+        var cur = Number(rs.meta && rs.meta.rotate) || 0;
+        setEndorserRotation(rk, d.absolute ? (Number(d.rotate) || 0) : cur + (Number(d.delta) || 0));
+        return;
+      }
+      if(d.type === 'bn-endorser-note-layout-update'){
+        if(window._bnSuppressProductLayoutWrite || window._bnExporting) return;
+        var n = endorserNoteState();
+        var nk = d.bnid ? String(d.bnid) : 'default';
+        if(d.snapshotOnly && d.layout){
+          var prevNote = n.layouts[nk];
+          if(prevNote && prevNote.src && d.layout.src && String(prevNote.src) !== String(d.layout.src)) return;
+        }
+        if(d.layout) n.layouts[nk] = d.layout; else delete n.layouts[nk];
+        /* 各版位自己算的預設位置／換圖後的相對位置只記下來，不連動其他版位 */
+        if(d.snapshotOnly) return;
+        if(!d.migrate && endorserMasterOf(nk) === 'lpbn') markEndorserLpbnOwn();
+        syncEndorserNoteLayoutToPairs(nk, d.layout);
+        markStateDirty();
+      }
+    });
+    /* 小字位置跟代言人照、簽名檔同一套連動（HBN 主要指標、LPBN 第二指標，其他版位自動配合）。 */
+    function syncEndorserNoteLayoutToPairs(sourceBnid, layout){
+      if(!layout || !productLayoutSyncEligible(sourceBnid) || !productLayoutIsLocked(sourceBnid)) return;
+      var n = endorserNoteState();
+      endorserSyncTargets(sourceBnid).forEach(function(tid){
+        var cloned = JSON.parse(JSON.stringify(layout));
+        n.layouts[tid] = cloned;
+        broadcastTo(tid, {type:'bn-endorser-note-layout-apply', layout:cloned});
+      });
+    }
+
+    /* ── 編輯（裁切／去背／擦除），不提供影子 ── */
+    document.addEventListener('click', function(e){
+      if(!_editingEndorserSlot) return;
+      var btn = e.target && e.target.closest ? e.target.closest('.hbn-plugin-modal [data-act="shadow"]') : null;
+      if(!btn) return;
+      e.stopPropagation(); e.preventDefault();
+    }, true);
+    function setEndorserEditing(slotKey){
+      _editingEndorserSlot = slotKey || null;
+      document.documentElement.classList.toggle('bn-endorser-editing', !!slotKey);
+    }
+    function watchEndorserEditorClose(){
+      var modal = document.querySelector('.hbn-plugin-modal');
+      if(!modal){ setEndorserEditing(null); return; }
+      var mo = new MutationObserver(function(){
+        if(modal.classList.contains('open')) return;
+        mo.disconnect();
+        setEndorserEditing(null);
+      });
+      mo.observe(modal, {attributes:true, attributeFilter:['class']});
+    }
+    function openEndorserEditor(slotKey){
+      if(!window[slotKey]) return;
+      if(!window.HBNProductEditorPlugin){
+        loadScriptOnce('js/editor-plugin.js').then(function(){ doOpenEndorserEditor(slotKey); })['catch'](function(){ alert('editor-plugin.js 載入失敗'); });
+        return;
+      }
+      doOpenEndorserEditor(slotKey);
+    }
+    function doOpenEndorserEditor(slotKey){
+      var slot = window[slotKey];
+      if(!slot || !window.HBNProductEditorPlugin) return;
+      var wrap = document.getElementById('bn-edit-wrap');
+      if(!wrap){
+        wrap = document.createElement('div');
+        wrap.id = 'bn-edit-wrap';
+        wrap.style.cssText = 'position:fixed;left:-9999px;top:-9999px;width:400px;height:400px;';
+        document.body.appendChild(wrap);
+      }
+      wrap.innerHTML = '';
+      var box = document.createElement('div');
+      box.className = 'editor-item';
+      /* 有旋轉時在「沒旋轉的原圖」上編輯，做完再重新旋轉 */
+      var base = slot.baseSrc || (slot.meta && slot.meta.baseSrc) || slot.src;
+      var rotated = !!(Number(slot.meta && slot.meta.rotate) || 0);
+      var openSrc = rotated ? base : slot.src;
+      box.dataset.baseSrc = openSrc;
+      box.style.cssText = 'position:relative;width:400px;height:400px;';
+      var img = document.createElement('img');
+      img.src = openSrc;
+      img.style.cssText = 'width:100%;height:100%;object-fit:contain;display:block;';
+      box.appendChild(img);
+      wrap.appendChild(box);
+      var observer = new MutationObserver(function(){
+        if(!img.src || img.src === openSrc || img.src.indexOf('data:') !== 0) return;
+        observer.disconnect();
+        if(window[slotKey] !== slot) return;
+        var edited = img.src;
+        loadImg(edited).then(function(ei){
+          slot.baseSrc = edited;
+          slot.meta = slot.meta || {};
+          slot.meta.baseSrc = edited;
+          var rot = Number(slot.meta.rotate) || 0;
+          if(rot) return setEndorserRotation(slotKey, rot, null, {keepScale:false});
+          slot.src = edited;
+          var outRatio = box.dataset && box.dataset.outputRatio ? parseFloat(box.dataset.outputRatio) : NaN;
+          slot.ratio = isFinite(outRatio) && outRatio > 0 ? outRatio : ((ei.naturalWidth / ei.naturalHeight) || slot.ratio);
+          renderEndorserUI();
+          broadcast({type:'bn-endorser-update-image', slot:slotKey, id:slot.id, src:slot.src, ratio:slot.ratio, rotate:0});
+          markStateDirty();
+        })['catch'](function(){ alert(ENDORSER_LABEL[slotKey] + '編輯結果讀取失敗'); });
+      });
+      observer.observe(img, {attributes:true, attributeFilter:['src']});
+      setEndorserEditing(slotKey);
+      window.HBNProductEditorPlugin.open(img);
+      watchEndorserEditorClose();
+    }
+
+    /* ── 左側清單 ── */
+    function swapEndorserSlots(){
+      var photo = window._bnEndorserPhoto, sign = window._bnEndorserSign;
+      /* 角色互換後位置回到預設（照片／簽名的預設大小不同），旋轉角度保留 */
+      window._bnEndorserPhoto = sign ? Object.assign({}, sign, {layouts:{}, aboveMain:false}) : null;
+      window._bnEndorserSign = photo ? Object.assign({}, photo, {layouts:{}}) : null;
+      renderEndorserUI();
+      broadcastAllEndorser();
+      markStateDirty();
+    }
+    function buildEndorserRowEl(slotKey){
+      var slot = window[slotKey];
+      var isPhoto = slotKey === '_bnEndorserPhoto';
+      var row = document.createElement('div');
+      row.className = 'bn-prod-item bn-endorser-item';
+      row.style.flexWrap = 'wrap'; row.style.gap = '4px';
+
+      var img = document.createElement('img'); img.src = slot.src;
+      var info = document.createElement('div');
+      info.style.cssText = 'flex:1;display:flex;flex-direction:column;gap:2px;min-width:0;';
+      var name = document.createElement('span');
+      name.textContent = slot.name || ENDORSER_LABEL[slotKey];
+      name.title = slot.name || '';
+      name.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;';
+      var role = document.createElement('span');
+      role.textContent = isPhoto
+        ? ('代言人照（' + (slot.aboveMain === true ? '在商品前面' : '在商品後面') + '）')
+        : '簽名檔（蓋在最上層）';
+      role.style.cssText = 'font-size:9px;font-weight:700;color:#c084fc;';
+      info.appendChild(name); info.appendChild(role);
+      row.appendChild(img); row.appendChild(info);
+
+      if(isPhoto){
+        var move = document.createElement('div'); move.className = 'bn-prod-move';
+        var up = document.createElement('button'); up.textContent = '▲'; up.title = '往前（蓋住目前最上層的商品）';
+        var down = document.createElement('button'); down.textContent = '▼'; down.title = '往後（被目前最上層的商品蓋住）';
+        up.disabled = slot.aboveMain === true;
+        down.disabled = slot.aboveMain !== true;
+        up.style.opacity = up.disabled ? '0.3' : '1';
+        down.style.opacity = down.disabled ? '0.3' : '1';
+        function setAbove(v){
+          if(!window[slotKey]) return;
+          window[slotKey].aboveMain = v;
+          renderEndorserUI();
+          broadcast({type:'bn-endorser-order', aboveMain:v});
+          markStateDirty();
+        }
+        up.addEventListener('click', function(){ setAbove(true); });
+        down.addEventListener('click', function(){ setAbove(false); });
+        move.appendChild(up); move.appendChild(down);
+        row.appendChild(move);
+      }
+
+      var editBtn = document.createElement('button'); editBtn.textContent = '編輯';
+      editBtn.title = '裁切・去背・擦除（不加影子）';
+      editBtn.addEventListener('click', function(){ openEndorserEditor(slotKey); });
+      row.appendChild(editBtn);
+
+      var rotWrap = document.createElement('label');
+      rotWrap.title = '旋轉角度（-180～180°）。也可以直接拖畫布上的旋轉把手，按住 Shift 以 15° 為單位。';
+      rotWrap.style.cssText = 'display:inline-flex;align-items:center;gap:2px;font-size:10px;color:#8b949e;';
+      var rotInp = document.createElement('input');
+      rotInp.type = 'number'; rotInp.min = '-180'; rotInp.max = '180'; rotInp.step = '1';
+      rotInp.value = String(Math.round(Number(slot.meta && slot.meta.rotate) || 0));
+      rotInp.style.cssText = 'width:46px;padding:2px 4px;font-size:11px;background:#0d1117;color:#e6e8ef;border:1px solid #30363d;border-radius:4px;';
+      var rotUnit = document.createElement('span'); rotUnit.textContent = '°';
+      rotWrap.appendChild(rotInp); rotWrap.appendChild(rotUnit);
+      var rotTimer = null;
+      rotInp.addEventListener('input', function(){
+        var v = Number(rotInp.value);
+        if(!isFinite(v)) return;
+        clearTimeout(rotTimer);
+        rotTimer = setTimeout(function(){
+          rotInp.disabled = true;
+          setEndorserRotation(slotKey, v, function(){ rotInp.disabled = false; });
+        }, 250);
+      });
+      row.appendChild(rotWrap);
+
+      var swapBtn = document.createElement('button'); swapBtn.textContent = '⇄';
+      swapBtn.title = isPhoto ? '自動判斷錯了：改成簽名檔（跟簽名檔對調）' : '自動判斷錯了：改成代言人照（跟代言人照對調）';
+      swapBtn.addEventListener('click', swapEndorserSlots);
+      row.appendChild(swapBtn);
+
+      var rmBtn = document.createElement('button'); rmBtn.textContent = '移除'; rmBtn.className = 'rm';
+      rmBtn.addEventListener('click', function(){
+        window[slotKey] = null;
+        renderEndorserUI();
+        broadcastEndorser(slotKey);
+        markStateDirty();
+      });
+      row.appendChild(rmBtn);
+      return row;
+    }
+
+    function endorserCharUnits(ch){
+      var c = ch.charCodeAt(0);
+      return (c <= 0xFF || (c >= 0xFF61 && c <= 0xFF9F)) ? 0.5 : 1;
+    }
+    function endorserLineUnits(line){
+      var n = 0;
+      for(var i = 0; i < line.length; i++) n += endorserCharUnits(line[i]);
+      return n;
+    }
+    /* 一排超過 8 字時自動流到下一排（同 MSBN 兩行欄位）；不刪字，超過兩排時字數提示變紅。 */
+    function normalizeEndorserNoteText(text){
+      var lines = String(text == null ? '' : text).replace(/\r\n?/g, '\n').split('\n');
+      var out = [];
+      lines.forEach(function(line){
+        var cur = '', units = 0;
+        for(var i = 0; i < line.length; i++){
+          var u = endorserCharUnits(line[i]);
+          if(units + u > ENDORSER_NOTE_LINE_MAX && cur){ out.push(cur); cur = ''; units = 0; }
+          cur += line[i]; units += u;
+        }
+        out.push(cur);
+      });
+      return out.join('\n');
+    }
+    function renderEndorserNoteUI(){
+      var n = endorserNoteState();
+      var inp = document.getElementById('bn-endorser-note-inp');
+      if(inp && document.activeElement !== inp && inp.value !== n.text) inp.value = n.text;
+      var cnt = document.getElementById('bn-endorser-note-count');
+      if(cnt){
+        var lines = (n.text || '').split('\n');
+        var over = lines.length > ENDORSER_NOTE_LINES || lines.some(function(l){ return endorserLineUnits(l) > ENDORSER_NOTE_LINE_MAX; });
+        cnt.textContent = n.text
+          ? lines.map(function(l){ return endorserLineUnits(l) + '/' + ENDORSER_NOTE_LINE_MAX; }).join('・') + (over ? '・超過兩排' : '')
+          : '兩排，每排 8 字';
+        cnt.classList.toggle('over', over);
+      }
+      var auto = document.getElementById('bn-endorser-note-auto');
+      var color = document.getElementById('bn-endorser-note-color');
+      if(auto) auto.classList.toggle('on', !n.color);
+      if(color && n.color && color.value.toLowerCase() !== n.color.toLowerCase()) color.value = n.color;
+    }
+    function initEndorserNoteUI(){
+      var inp = document.getElementById('bn-endorser-note-inp');
+      var auto = document.getElementById('bn-endorser-note-auto');
+      var color = document.getElementById('bn-endorser-note-color');
+      var timer = null;
+      function commit(){
+        var raw = inp.value;
+        var normalized = normalizeEndorserNoteText(raw);
+        if(normalized !== raw){
+          var caret = inp.selectionStart;
+          var atEnd = caret === raw.length;
+          inp.value = normalized;
+          var pos = atEnd ? normalized.length : Math.min(normalized.length, caret + (normalized.length - raw.length));
+          try{ inp.setSelectionRange(pos, pos); }catch(_){ }
+        }
+        endorserNoteState().text = normalized;
+        renderEndorserNoteUI();
+        clearTimeout(timer);
+        timer = setTimeout(function(){ broadcastEndorserNote(); markStateDirty(); }, 120);
+      }
+      if(inp){
+        /* 注音／拼音選字中不改值，選完（compositionend）才整理換行 */
+        inp.addEventListener('input', function(e){ if(e.isComposing) return; commit(); });
+        inp.addEventListener('compositionend', commit);
+      }
+      if(auto) auto.addEventListener('click', function(){
+        endorserNoteState().color = '';
+        renderEndorserNoteUI(); broadcastEndorserNote(); markStateDirty();
+      });
+      if(color) color.addEventListener('input', function(){
+        endorserNoteState().color = color.value;
+        renderEndorserNoteUI(); broadcastEndorserNote(); markStateDirty();
+      });
+    }
+    function renderEndorserUI(){
+      var photoBtn = document.getElementById('bn-endorser-photo-btn');
+      var signBtn = document.getElementById('bn-endorser-sign-btn');
+      if(photoBtn){
+        photoBtn.textContent = window._bnEndorserPhoto ? '⟳ 更換代言人照' : '＋ 上傳代言人照';
+        photoBtn.classList.toggle('has-img', !!window._bnEndorserPhoto);
+      }
+      if(signBtn){
+        signBtn.textContent = window._bnEndorserSign ? '⟳ 更換簽名檔' : '＋ 上傳簽名檔';
+        signBtn.classList.toggle('has-img', !!window._bnEndorserSign);
+      }
+      var list = document.getElementById('bn-endorser-list');
+      if(list){
+        list.innerHTML = '';
+        ENDORSER_SLOTS.forEach(function(slotKey){ if(window[slotKey]) list.appendChild(buildEndorserRowEl(slotKey)); });
+      }
+      var hint = document.getElementById('bn-endorser-hint');
+      if(hint) hint.classList.toggle('on', hasEndorserImage());
+      renderEndorserNoteUI();
+      if(typeof renderProdList === 'function') renderProdList();
+    }
+    function initEndorserUpload(slotKey){
+      var key = slotKey === '_bnEndorserSign' ? 'sign' : 'photo';
+      var btn = document.getElementById('bn-endorser-' + key + '-btn');
+      var inp = document.getElementById('bn-endorser-' + key + '-inp');
+      if(!btn || !inp) return;
+      btn.addEventListener('click', function(){ inp.click(); });
+      inp.addEventListener('change', function(){
+        var file = this.files && this.files[0];
+        this.value = '';
+        if(!file) return;
+        readFile(file).then(function(src){
+          return makeEndorserSlotFromSrc(slotKey, src, file.name, window[slotKey]);
+        }).then(function(slot){
+          window[slotKey] = slot;
+          renderEndorserUI();
+          broadcastEndorser(slotKey);
+          markStateDirty();
+        })['catch'](function(){ alert(ENDORSER_LABEL[slotKey] + '讀取失敗，請換一張圖片再試'); });
+      });
+    }
+
+    /* ── BODA 工單：工單總覽「代言人照+簽名檔路徑」與「代言人小字」 ──
+       同一包素材重送時（BODA 每讀完一批圖片、或重新整理後曝光資源載入時都會再推一次）
+       不覆蓋使用者在這裡的手動調整；只有工單內容變了、或目前完全沒有代言人圖時才重新套用。
+       上次套用的工單內容記在 _bnEndorserNote.woSig／woNote，跟暫存一起保存，重新整理後也認得。 */
+    function endorserItemsSignature(items){
+      return (items || []).map(workorderAssetKey).join('||');
+    }
+    function endorserWorkorderNeedsApply(payload){
+      var items = normalizeWorkorderAssets(payload && payload.endorsers, 'endorser');
+      if(!payload || payload.replaceEndorser !== true || !items.length) return false;
+      return endorserItemsSignature(items) !== (endorserNoteState().woSig || '') || !hasEndorserImage();
+    }
+    function endorserWorkorderNoteText(payload){
+      var raw = payload && typeof payload.endorserNote === 'string' ? payload.endorserNote.trim() : '';
+      return raw ? normalizeEndorserNoteText(raw) : '';
+    }
+    function endorserWorkorderNoteNeedsApply(payload){
+      var text = endorserWorkorderNoteText(payload);
+      var n = endorserNoteState();
+      return !!text && (text !== (n.woNote || '') || !n.text);
+    }
+    function buildWorkorderEndorserSlots(payload){
+      var items = normalizeWorkorderAssets(payload.endorsers, 'endorser');
+      return classifyEndorserItems(items).then(function(roles){
+        return Promise.all([
+          roles.photo ? makeEndorserSlotFromSrc('_bnEndorserPhoto', roles.photo.src, roles.photo.name, null) : null,
+          roles.sign ? makeEndorserSlotFromSrc('_bnEndorserSign', roles.sign.src, roles.sign.name, null) : null
+        ]).then(function(slots){
+          return {photo:slots[0], sign:slots[1], method:roles.method, sig:endorserItemsSignature(items)};
+        });
+      });
+    }
+
+    /* 暴露給 bn-state-plugin／工單外掛 */
+    window._bnRenderEndorser = function(){ renderEndorserUI(); };
+    window._bnBroadcastEndorser = function(){ broadcastAllEndorser(); };
+    window._bnSetEndorserNote = function(text){
+      endorserNoteState().text = normalizeEndorserNoteText(text);
+      renderEndorserUI();
+      broadcastEndorserNote();
+      markStateDirty();
+    };
+    window._bnClassifyEndorserItems = classifyEndorserItems;
+
     /* ══ 商品上傳（Modal） ══ */
     var modal, staged=[], heroIdx=0, rankOrder=null, currentStep=1, dragSrc=null;
     var productOptionsTourState=null;
@@ -1192,6 +1919,22 @@
         '  <input type="file" id="bn-char2-inp" accept="image/*" style="display:none">',
         '  <div id="bn-char-hint" style="display:none;font-size:10px;color:var(--text3,#6e7681);margin-top:4px;line-height:1.5">已上傳 1 張人物圖：商品圖最多只會顯示「目前最上層」的 2 件，其餘暫時隱藏；上傳第 2 張人物圖後，商品圖會完全不顯示。移除人物圖後會自動恢復顯示。人物圖卡片會顯示在上方清單裡，跟目前最上層的商品一起排前後順序。</div>',
         '</div>',
+        '<div class="s-section" style="margin-top:8px">代言人（照片＋簽名檔，不加影子）</div>',
+        '<div class="bn-section" id="bn-endorser-section">',
+        '  <div class="bn-endorser-btns">',
+        '    <button id="bn-endorser-photo-btn" class="bn-endorser-up">＋ 上傳代言人照</button>',
+        '    <button id="bn-endorser-sign-btn" class="bn-endorser-up">＋ 上傳簽名檔</button>',
+        '  </div>',
+        '  <input type="file" id="bn-endorser-photo-inp" accept="image/*" style="display:none">',
+        '  <input type="file" id="bn-endorser-sign-inp" accept="image/*" style="display:none">',
+        '  <div class="bn-prod-list" id="bn-endorser-list"></div>',
+        '  <div class="bn-endorser-note-wrap">',
+        '    <label for="bn-endorser-note-inp"><span>代言人小字</span><span id="bn-endorser-note-count">兩排，每排 8 字</span></label>',
+        '    <textarea id="bn-endorser-note-inp" rows="2" placeholder="例：陳美鳳唯一推薦（Enter 換第二排）"></textarea>',
+        '    <div class="bn-endorser-note-color"><span>字色</span><button type="button" id="bn-endorser-note-auto" class="on" title="依小字底下的顏色自動用黑字或白字（同 MSBN）">自動黑白</button><input type="color" id="bn-endorser-note-color" value="#111827" title="手動指定字色"></div>',
+        '  </div>',
+        '  <div id="bn-endorser-hint" class="bn-endorser-hint">有代言人照或簽名檔時，商品圖只顯示目前最上層的 1 件（代言人照＋簽名檔取代 2 品）。只放在 ddcard、IG、HBN、LPBN、Coin、FB POST、SCBN、活動總覽、SBA、AMS。代言人照、簽名檔、小字各自拖曳；簽名檔和小字以代言人照為基準連動到其他版位，三者在每個版位都一樣靠近。</div>',
+        '</div>',
         '<div class="s-section" style="margin-top:8px">背景圖</div>',
         '<div class="bn-section">',
         '  <button id="bn-bg-open-btn">⬆ 上傳背景圖</button>',
@@ -1210,6 +1953,10 @@
       buildModal();
       initCharacterUpload('_bnCharacter');
       initCharacterUpload('_bnCharacter2');
+      initEndorserUpload('_bnEndorserPhoto');
+      initEndorserUpload('_bnEndorserSign');
+      initEndorserNoteUI();
+      renderEndorserUI();
 
       /* 背景圖上傳事件 */
       var bgInp = document.getElementById('bn-bg-inp');
@@ -2656,13 +3403,24 @@
        沒有收到這則 postMessage 時，Shopee 仍完全照原本的獨立工具運作。 */
     var _bnWorkorderAssetSignature = '';
     var _bnWorkorderAssetApplySeq = 0;
+    /* BODA 每批素材會重送好幾次，代言人原圖動輒數 MB；同一張圖的指紋只算一次。 */
+    var _bnWorkorderHashCache = new Map();
     function workorderAssetHash(value){
-      var text = String(value || ''), hash = 2166136261;
+      var text = String(value || '');
+      var cached = _bnWorkorderHashCache.get(text);
+      if(cached) return cached;
+      var hash = 2166136261;
       for(var i=0;i<text.length;i++){
         hash ^= text.charCodeAt(i);
         hash = Math.imul(hash, 16777619);
       }
-      return (hash >>> 0).toString(16);
+      var out = (hash >>> 0).toString(16);
+      if(text.length > 4096){
+        /* 一包素材最多約 8 張（商品 3、LOGO 3、代言人 2），只留最近的 10 張，避免舊圖一直佔記憶體 */
+        if(_bnWorkorderHashCache.size >= 10) _bnWorkorderHashCache.delete(_bnWorkorderHashCache.keys().next().value);
+        _bnWorkorderHashCache.set(text, out);
+      }
+      return out;
     }
     function workorderAssetKey(item){
       item = item || {};
@@ -2687,7 +3445,10 @@
         replaceLogos: !!payload.replaceLogos,
         replaceProducts: !!payload.replaceProducts,
         logos: normalizeWorkorderAssets(payload.logos, 'logo').map(workorderAssetKey),
-        products: normalizeWorkorderAssets(payload.products, 'product').map(workorderAssetKey)
+        products: normalizeWorkorderAssets(payload.products, 'product').map(workorderAssetKey),
+        replaceEndorser: !!payload.replaceEndorser,
+        endorsers: normalizeWorkorderAssets(payload.endorsers, 'endorser').map(workorderAssetKey),
+        endorserNote: String(payload.endorserNote || '')
       });
     }
     function workorderAssetStateMatches(currentItems, expectedItems, kind){
@@ -2712,7 +3473,10 @@
       var products = normalizeWorkorderAssets(payload.products, 'product');
       var replaceLogos = payload.replaceLogos === true;
       var replaceProducts = payload.replaceProducts === true;
-      if(!replaceLogos && !replaceProducts) return Promise.resolve(false);
+      /* 代言人照＋簽名檔／代言人小字：只有工單內容變了、或目前沒有時才套用（不覆蓋手動調整） */
+      var replaceEndorser = endorserWorkorderNeedsApply(payload);
+      var endorserNoteText = endorserWorkorderNoteNeedsApply(payload) ? endorserWorkorderNoteText(payload) : '';
+      if(!replaceLogos && !replaceProducts && !replaceEndorser && !endorserNoteText) return Promise.resolve(false);
 
       var seq = ++_bnWorkorderAssetApplySeq;
       var productJobs = replaceProducts ? Promise.all(products.map(function(item){
@@ -2731,9 +3495,15 @@
         return item.ratio ? Promise.resolve(item.ratio) : workorderAssetRatio(item.src);
       })) : Promise.resolve([]);
 
-      return Promise.all([productJobs, logoJobs]).then(function(jobResults){
+      var endorserJob = replaceEndorser ? buildWorkorderEndorserSlots(payload)['catch'](function(err){
+        console.warn('[bn-editor] 工單代言人圖讀取失敗', err);
+        return null;
+      }) : Promise.resolve(null);
+
+      return Promise.all([productJobs, logoJobs, endorserJob]).then(function(jobResults){
         var productResults = jobResults[0];
         var logoRatios = jobResults[1];
+        var endorserResult = jobResults[2];
         if(seq !== _bnWorkorderAssetApplySeq) return false;
 
         if(replaceLogos){
@@ -2781,6 +3551,21 @@
           });
           broadcastZOrder();
           renderProdList();
+        }
+
+        if(endorserResult && (endorserResult.photo || endorserResult.sign)){
+          window._bnEndorserPhoto = endorserResult.photo;
+          window._bnEndorserSign = endorserResult.sign;
+          window._bnEndorserClassifyMethod = endorserResult.method;
+          endorserNoteState().woSig = endorserResult.sig;
+        }
+        if(endorserNoteText){
+          endorserNoteState().text = endorserNoteText;
+          endorserNoteState().woNote = endorserNoteText;
+        }
+        if((endorserResult && (endorserResult.photo || endorserResult.sign)) || endorserNoteText){
+          renderEndorserUI();
+          broadcastAllEndorser();
         }
 
         markStateDirty();
@@ -2886,7 +3671,8 @@
     /* 下載前等待旋轉圖片完成合成與廣播，避免父層已經拿到新角度，
        但 iframe 還停在 CSS 即時預覽／舊圖片的中間狀態。 */
     window._bnWaitForProductRotations = function(timeoutMs){
-      var jobs=Object.keys(_rotatePromises).map(function(id){return _rotatePromises[id];});
+      var jobs=Object.keys(_rotatePromises).map(function(id){return _rotatePromises[id];})
+        .concat(Object.keys(_endorserRotatePromises).map(function(k){return _endorserRotatePromises[k];}));
       if(!jobs.length)return Promise.resolve();
       return new Promise(function(resolve,reject){
         var timer=setTimeout(function(){reject(new Error('商品旋轉尚未完成，請稍候再下載。'));},Math.max(1000,Number(timeoutMs)||12000));
@@ -3148,6 +3934,32 @@
       if(typeof window.broadcastColors === 'function') window.broadcastColors();
     }
 
+    /* ── 主工具（BOD A）回收模式 ──
+       「下載工單＋圖片＋暫存檔」要把曝光資源的成品一起放進它的 ZIP（活動頁資料夾）。
+       走跟「下載全部勾選畫版」完全相同的截圖／KB 壓縮／SearchICON 84x84 流程，
+       只是最後不產生 BN_Export.zip，改把 [{name,dataUrl}] 交回 callback。
+       回收期間 _bnSilentHostLoading=true，本頁的下載浮層不再把 start／finish 推給父頁，
+       否則父頁自己的 ZIP Loading 會被中途收掉。 */
+    var _bnCollectCb = null;
+    function _bnSettleCollect(err, files, report){
+      var cb = _bnCollectCb;
+      if(!cb) return false;
+      _bnCollectCb = null;
+      window._bnSilentHostLoading = false;
+      try{ cb(err || null, files || [], report || null); }catch(_){ }
+      return true;
+    }
+    window._bnCollectExportFiles = function(cb){
+      if(typeof cb !== 'function') return false;
+      if(window._bnDownloadBusy || _bnCollectCb){ cb(new Error('曝光資源正在下載中，請稍後再試')); return false; }
+      _bnCollectCb = cb;
+      window._bnSilentHostLoading = true;
+      try{ downloadAll(); }
+      catch(e){ _bnSettleCollect(e); return false; }
+      /* downloadAll 可能在前置檢查就同步結束（例如字數超標）；那種情況 _bnSettleCollect 已經被呼叫。 */
+      return true;
+    };
+
     function downloadAll(_layoutSynced){
       if(_layoutSynced!==true&&window._bnDownloadBusy)return;
       /* 字數硬擋／內容警語未確認：直接擋在 modal，不呼叫 setProgress，
@@ -3156,12 +3968,13 @@
       if(typeof window.bnCanDownload === 'function' && !window.bnCanDownload()){
         var _el=document.getElementById('bn-dl-progress');
         if(_el){ _el.textContent='文字超出字數上限或內容提醒尚未確認，請修改後再下載'; setTimeout(function(){ if(_el) _el.textContent=''; }, 4000); }
+        _bnSettleCollect(new Error('曝光資源文字超出字數上限或內容提醒尚未確認'));
         return;
       }
 
       /* 多圖恢復 ZIP：1 張直接 PNG；2 張以上先逐張截圖，最後打包 ZIP。 */
       var iframes=Array.from(document.querySelectorAll('.preview-block iframe'));
-      if(!iframes.length){setProgress('沒有版位可下載');return;}
+      if(!iframes.length){setProgress('沒有版位可下載');_bnSettleCollect(new Error('曝光資源沒有勾選任何版位'));return;}
       window._bnDownloadBusy=true;
 
       /* 必須在 _bnExporting / _bnSuppressProductLayoutWrite 鎖定前取回最新位置，
@@ -3184,6 +3997,7 @@
           window._bnDownloadBusy=false;
           if(typeof window.bnHideDownloadOverlay==='function')window.bnHideDownloadOverlay();
           setProgress('尚未開始下載：'+String(error&&error.message||'畫布仍在更新，請稍後再試。'));
+          _bnSettleCollect(error || new Error('畫布仍在更新，請稍後再試'));
         });
         return;
       }
@@ -3264,9 +4078,12 @@
         var exportZSorted = exportProducts.slice().sort(function(a,b){ return (a.zOrder||0)-(b.zOrder||0); });
         var exportMaxVisible = getMaxProductsVisible();
         var exportVisibleIds = exportZSorted.slice(0, exportMaxVisible).map(function(p){ return p.id; });
-        sendToIframe(iframeEl, {type:'bn-character-visibility', hasChar: getCharacterCount()>0,
+        sendToIframe(iframeEl, {type:'bn-character-visibility', hasChar: productLimitActive(),
           maxVisible:exportMaxVisible, visibleIds:exportVisibleIds,
           topId: exportVisibleIds.length ? exportVisibleIds[0] : null});
+        /* 代言人照／簽名檔／小字：跟人物圖一樣在下載前補送給這個 iframe（放在可見度之後，
+           沒有存過位置時才會依「還顯示著的商品」決定預設擺放側）。 */
+        sendEndorserStateTo(function(msg){ sendToIframe(iframeEl, msg); }, true);
         var exportActiveCharKeys = ['_bnCharacter','_bnCharacter2'].filter(function(k){ return window[k]; });
         var exportPairFirst = null;
         if(exportActiveCharKeys.length === 2){
@@ -3602,6 +4419,20 @@
       }
 
       function makeZip(){
+        /* 回收模式：不做 ZIP，把截好的檔案交回主工具。 */
+        if(_bnCollectCb){
+          btn.disabled=false;
+          finishExport();
+          var collectReport={ ok:ok, fail:fail, total:total, failedNames:failedNames.slice(), failedReasons:failedReasons.slice() };
+          if(!files.length){
+            setProgress('沒有版位截圖成功：'+failedNames.join('、'));
+            _bnSettleCollect(new Error('沒有任何版位截圖成功（'+(failedReasons[0]||'截圖未完成')+'）'), [], collectReport);
+          }else{
+            setProgress('已交給主工具打包：成功 '+ok+' / '+total+(fail?'，失敗 '+fail+' 個已跳過（'+failedNames.join('、')+'）':''));
+            _bnSettleCollect(null, files, collectReport);
+          }
+          return;
+        }
         if(total===1){
           btn.disabled=false;
           finishExport();
@@ -3712,7 +4543,7 @@
             function afterCompress(outUrl, outName){
               if(outUrl){
                 ok++;
-                if(total===1){
+                if(total===1 && !_bnCollectCb){
                   triggerDownload(outUrl, outName);
                 }else{
                   files.push({name:outName, dataUrl:outUrl});
@@ -3745,7 +4576,7 @@
                 resizeDataUrlSquare(dataUrl, 84, function(resized84){
                   if(resized84){
                     var name84 = baseName + '_84x84.png';
-                    if(total===1){ triggerDownload(resized84, name84); }
+                    if(total===1 && !_bnCollectCb){ triggerDownload(resized84, name84); }
                     else { files.push({name:name84, dataUrl:resized84}); }
                   }
                   afterCompress(mainUrl, mainName);
@@ -3816,9 +4647,12 @@
         var zSortedReady = window._bnProducts.slice().sort(function(a,b){return (a.zOrder||0)-(b.zOrder||0);});
         var maxVisibleReady = getMaxProductsVisible();
         var visibleIdsReady = zSortedReady.slice(0, maxVisibleReady).map(function(p){return p.id;});
-        broadcastTo(id, {type:'bn-character-visibility', hasChar: getCharacterCount()>0,
+        broadcastTo(id, {type:'bn-character-visibility', hasChar: productLimitActive(),
           maxVisible: maxVisibleReady, visibleIds: visibleIdsReady,
           topId: visibleIdsReady.length ? visibleIdsReady[0] : null});
+        /* 代言人：新 iframe 就緒後也要補送；舊版暫存由 HBN／LPBN 用新規則重報一次 */
+        sendEndorserStateTo(function(msg){ broadcastTo(id, msg); }, false);
+        requestEndorserMigrationIfNeeded(id);
         /* 兩個人物的前後順序也要補送給新就緒的 iframe */
         var activeCharKeysReady = ['_bnCharacter','_bnCharacter2'].filter(function(k){ return window[k]; });
         var pairFirstReady = null;
@@ -3860,7 +4694,8 @@
         workorderAssetStateMatches(window._bnLogos, payload.logos, 'logo');
       var productStateSame = !payload || payload.replaceProducts !== true ||
         workorderAssetStateMatches(window._bnProducts, payload.products, 'product');
-      if(sameSignature && logoStateSame && productStateSame) return Promise.resolve(false);
+      var endorserStateSame = !endorserWorkorderNeedsApply(payload) && !endorserWorkorderNoteNeedsApply(payload);
+      if(sameSignature && logoStateSame && productStateSame && endorserStateSame) return Promise.resolve(false);
       _bnWorkorderAssetSignature = signature;
       return applyBodaWorkorderAssets(payload);
     };

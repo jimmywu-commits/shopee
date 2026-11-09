@@ -1392,6 +1392,9 @@ var PREVIEW_MAX = 800;   /* 寬或高最多 Npx，可在後台調整 */
 /* 嵌入主工具時同步載入狀態，獨立開啟時仍只顯示本頁浮動視窗。 */
 function bnNotifyHostLoading(phase, percent, label, note) {
   try {
+    /* 主工具用 _bnCollectExportFiles 回收成品時，由主工具自己的 Loading 管進度；
+       這裡的 start／finish 不能再推給父頁，否則父頁的 ZIP 流程會被中途收掉 Loading。 */
+    if (window._bnSilentHostLoading) return;
     if (window.parent && window.parent !== window) {
       window.parent.postMessage({ source:'BODA_EXPOSURE_LOADING', phase:phase, percent:percent, label:label, note:note }, '*');
     }
@@ -2341,6 +2344,33 @@ function applySharedCtaText(v, silent){
 }
 window._bnApplySharedCtaText = applySharedCtaText;
 
+/* BODA 共用文字色（主標／副標／日期／品牌）：與 _bnApplySharedCanvasBg 同一個模式——
+   主頁同網域時直接呼叫，跨網域時送 wo-shared-text-palette。
+   套用後一樣跑禁色／吃色防護、重算自動 CTA、記住目前配色並存檔，但不回推給父頁（避免來回）。
+   以前沒有這個入口：主頁送的 wo-shared-text-palette 沒人接（跨網域完全無效），
+   只能直接改 colorState，也不會觸發存檔，重新整理後可能又回到舊色。 */
+function applySharedTextPalette(palette){
+  if(!colorState || !palette || typeof palette !== 'object') return false;
+  var changed = false;
+  ['mainText','subText','dateText','brandText'].forEach(function(key){
+    var v = palette[key];
+    if(!isHexCanvasBg(v)) return;
+    v = String(v).toLowerCase();
+    if(String(colorState[key] || '').toLowerCase() !== v) changed = true;
+    colorState[key] = v;
+    if(window._bnLastUserColorState) window._bnLastUserColorState[key] = v;
+    if(window._bnFrozenColorData) window._bnFrozenColorData[key] = v;
+  });
+  if(!changed) return false;
+  renderColorPickers();   /* 禁色、吃色防護與自動 CTA 底色／字色都在這裡處理 */
+  bnUpdateAutoTextColorDots();
+  bnRunSilentSharedBg(rememberCurrentColorState);
+  broadcastColors();
+  try { document.dispatchEvent(new CustomEvent('bn-state-dirty')); } catch(_) {}
+  return true;
+}
+window._bnApplySharedTextPalette = applySharedTextPalette;
+
 /* bn-state-plugin 回灌本機暫存的顏色後呼叫：共用 CTA 底色／字色優先；
    共用值還沒建立時，把自己既有的手動 CTA 底色／字色發佈出去。 */
 window._bnNormalizeColorStateRules = function(){
@@ -2396,6 +2426,10 @@ function getTextData() {
    色票選色器
 ════════════════════════════════════════ */
 var BN_RESTRICTED_COLOR_KEYS = ['brandText','mainText','subText','dateText','ctaBg','searchImageCtaBg'];
+/* 主標／品牌字（同一組）允許純黑、純白：取色工具深底就是配白主標，曝光資源必須照單全收，
+   兩邊的主標色才能像底色一樣雙向同步；否則選白會被換成替代藍，看起來像「沒同步」。
+   副標／日期／CTA 底仍維持原本的禁色規則。要恢復禁用，把這個陣列清空即可（layout-runtime.js 同名陣列也要清）。 */
+var BN_PURE_BW_ALLOWED_TEXT_KEYS = ['brandText','mainText'];
 var BN_CTA_BACKGROUND_COLOR_KEYS = ['ctaBg','searchImageCtaBg'];
 var BN_CTA_EXTENDED_GRAY_COLORS = ['#2d3748','#4a5568','#718096'];
 var BN_RESTRICTED_COLOR_FALLBACKS = {
@@ -2453,6 +2487,7 @@ function bnIsGrayColor(value){
   return Math.max.apply(Math,rgb)-Math.min.apply(Math,rgb)<=24;
 }
 function bnIsRestrictedColorForKey(key,value){
+  if(BN_PURE_BW_ALLOWED_TEXT_KEYS.indexOf(key)>=0) return false;
   if(BN_CTA_BACKGROUND_COLOR_KEYS.indexOf(key)>=0){
     var rgb=bnRestrictedColorRgb(value);
     if(rgb && Math.min.apply(Math,rgb)>=245) return false;
@@ -2639,7 +2674,7 @@ function bnFitLightness(h, s, l, dir, refRgb, target){
   return { rgb:bnHsl100ToRgb(h, s, bnClampColorNumber(l, 0, 100)), l:l, ok:false };
 }
 
-/* 深底主標：color-tool 用純白，但編輯器文字色禁用純白，改用帶底色色相的近白。 */
+/* 帶底色色相的近白（2026-11-06 前用於深底主標；主標放行純白後，深底主標改與 color-tool 一樣用純白）。 */
 function bnNearWhiteForHue(h){
   return bnHsl100ToRgb(h, 20, 94);
 }
@@ -2671,9 +2706,10 @@ function bnAccentOptions(bgRgb, light){
   return [options[0]].concat(options.slice(1).sort(byPref));
 }
 
-/* 主標／副標／日期（比照 color-tool）：
+/* 主標／副標／日期（與 color-tool suggest() 同一套，結果必須一模一樣，三處才會同色）：
    淺底（黑字比白字清楚）→ 主標同色相降明度（S 上限 85、L−40）調到 CR ≥ 3；
-   深底 → 主標近白（禁純白）。副標 = 跳色第一候選；日期 = 副標同色。 */
+   深底 → 主標純白（以前用近白，但取色工具是純白，BODA 又把純白推回來，品牌名就停在近白、跟主標不同色）。
+   副標 = 跳色第一候選；日期 = 副標同色。visualBg 目前未使用。 */
 function bnBuildAutoTextPalette(canvasBg, visualBg){
   var bgRgb = bnRestrictedColorRgb(canvasBg) || [107, 192, 236];
   var hsl = bnRgbToHsl(bgRgb);
@@ -2685,7 +2721,7 @@ function bnBuildAutoTextPalette(canvasBg, visualBg){
   if(light){
     main = bnFitLightness(H, bnClampColorNumber(Math.max(S, 35), 0, 85), L - 40, -1, bgRgb, 3).rgb;
   }else{
-    main = bnNearWhiteForHue(H);
+    main = [255, 255, 255];
   }
   var options = bnAccentOptions(bgRgb, light);
   var sub = options[0].rgb;
@@ -2697,20 +2733,25 @@ function bnBuildAutoTextPalette(canvasBg, visualBg){
   };
 }
 
-/* CTA 底色（比照 color-tool finish()）：品牌橘對背景 CR ≥ 3 用品牌橘；
-   不足則用副標色（需 CR ≥ 3）；再不足用主標色。 */
+/* CTA 底色：預設跟「主標」同色（2026-11 起；之前是跟副標，更早是先品牌橘）。
+   配色分工：副標色 → 促標底色、圓標底色（匯入工單）；主標色 → CTA 底色。
+   保底順序（每一步都要對背景 CR ≥ 3）：主標色 → 副標色 → 品牌橘 → 主標色。
+   主標若是黑／灰（CTA 底禁用），深底時改用純白；對背景不夠就跳到下一步。
+   取色工具 color-tool.html 的 finish()、BODA index.html 的 getExposureAutoCtaBg() 是同一套，三處要一起改。 */
 function bnAutoCtaBackground(canvasBg, mainText, subText){
   var bgRgb = bnRestrictedColorRgb(canvasBg);
   var brand = bnRestrictedColorRgb(BN_CTA_BRAND_COLOR);
-  if(!bgRgb) return BN_CTA_BRAND_COLOR;
-  if(bnContrastRatio(brand, bgRgb) >= 3) return BN_CTA_BRAND_COLOR;
   var subRgb = bnRestrictedColorRgb(subText);
-  if(subRgb && bnContrastRatio(subRgb, bgRgb) >= 3) return bnRgbToHex(subRgb);
   var mainRgb = bnRestrictedColorRgb(mainText);
-  if(mainRgb){
-    var mainHex = bnRgbToHex(mainRgb);
-    return bnIsRestrictedColorForKey('ctaBg', mainHex) ? '#ffffff' : mainHex;
+  if(!bgRgb) return mainRgb ? bnRgbToHex(mainRgb) : (subRgb ? bnRgbToHex(subRgb) : BN_CTA_BRAND_COLOR);
+  var mainHex = mainRgb ? bnRgbToHex(mainRgb) : '';
+  if(mainRgb && bnContrastRatio(mainRgb, bgRgb) >= 3){
+    if(!bnIsRestrictedColorForKey('ctaBg', mainHex)) return mainHex;
+    if(bnContrastRatio([255,255,255], bgRgb) >= 3) return '#ffffff';
   }
+  if(subRgb && bnContrastRatio(subRgb, bgRgb) >= 3) return bnRgbToHex(subRgb);
+  if(bnContrastRatio(brand, bgRgb) >= 3) return BN_CTA_BRAND_COLOR;
+  if(mainHex) return bnIsRestrictedColorForKey('ctaBg', mainHex) ? '#ffffff' : mainHex;
   return subText || BN_CTA_BRAND_COLOR;
 }
 
@@ -2735,6 +2776,13 @@ function bnSyncAutoCtaBackground(){
 }
 function applyAutoTextPalette(canvasBg, visualBg){
   if(!colorState) return null;
+  /* 嵌在 BODA 時：文字配色一律用「共用背景色」計算——取色工具與 BODA 看到的就是這個顏色，三處用同一個輸入才會同色。
+     以前背景圖改用左半邊平均色配色，但共用背景色是整張圖平均色：主頁／取色工具算出另一組，
+     主頁再把主標蓋過來、副標卻留著，曝光資源自己的主標／副標／品牌名就對不起來。獨立使用時維持原本取樣。 */
+  if(BN_HOST === 'boda' && isHexCanvasBg(colorState.canvasBg)){
+    canvasBg = colorState.canvasBg;
+    visualBg = colorState.canvasBg;
+  }
   var palette = bnBuildAutoTextPalette(canvasBg, visualBg || canvasBg);
   if(/^#[0-9a-fA-F]{6}$/.test(canvasBg || '') && !colorState.canvasBg) colorState.canvasBg = canvasBg;
   colorState.mainText = palette.mainText;
@@ -3122,7 +3170,10 @@ function renderColorPickers() {
     s.className = 'cp-swatch';
     s.style.background = c;
     s.title = c;
-    s.addEventListener('click', function(){ applyColor(c); });
+    /* base＝原本的色票；color＝目前實際顯示、按下會套用的顏色（會被規則換掉時改成替代色，見 bnRefreshSwatchesForKey）。 */
+    s.dataset.base = c;
+    s.dataset.color = c;
+    s.addEventListener('click', function(){ applyColor(this.dataset.color || c); });
     sw.appendChild(s);
   });
 
@@ -3142,12 +3193,17 @@ function renderColorPickers() {
         s.className = 'cp-swatch';
         s.style.background = c;
         s.title = c;
-        s.addEventListener('click', function(){ applyColor(c); });
+        s.dataset.base = c;
+        s.dataset.color = c;
+        s.addEventListener('click', function(){ applyColor(this.dataset.color || c); });
         row.appendChild(s);
       });
       sg.appendChild(row);
     });
   }
+  /* 面板開著時色票被重建（例如主頁推來新的顏色），要重新套用目前欄位的可用色篩選。 */
+  var cpPanelEl = document.getElementById('cp-panel');
+  if (cpActiveKey && cpPanelEl && cpPanelEl.classList.contains('open')) bnRefreshSwatchesForKey(cpActiveKey);
 
   /* hex input 事件（只綁一次，避免 renderColorPickers 重複呼叫時累積多個 handler 造成閃色）*/
   var hexInpEl = document.getElementById('cp-hex-input');
@@ -3175,6 +3231,98 @@ function renderColorPickers() {
   }
 }
 
+/* ── 色票可用性：依「目前要改的欄位＋目前底色」判斷 ──
+   按下去會被規則換掉的色票不顯示原色，改顯示可以直接用的替代色（按了就是畫面上看到的顏色）：
+   1. 禁色（固定）：副標／日期禁純黑、純白；CTA 底色禁黑、近黑、灰（白、近白可用）。
+   2. 防吃色（看底色）：文字（品牌名／主標／副標／日期）與 CTA 底色對畫布背景、CTA 字色對 CTA 底色，CR < 1.3 會被換色。
+   背景色沒有這類規則，色票全部照原樣。替代色＝同色相調整明度（CTA 底的黑／灰先補彩度），
+   並要求對比 ≥ 3（文字最低可讀標準），不會剛好卡在會被換掉的邊緣。 */
+function bnSwatchReferenceColor(key){
+  if(!colorState) return null;
+  if(key === 'ctaText') return colorState.ctaBg || null;
+  if(TEXT_COLOR_KEYS.indexOf(key) >= 0 || BN_CTA_BACKGROUND_COLOR_KEYS.indexOf(key) >= 0) return colorState.canvasBg || null;
+  return null;
+}
+function bnSwatchUsableFor(key, hex, ref){
+  if(BN_RESTRICTED_COLOR_KEYS.indexOf(key) >= 0 && bnIsRestrictedColorForKey(key, hex)) return false;
+  if(ref && bnIsEatenBy(hex, ref)) return false;
+  return true;
+}
+function bnSwatchSubstituteFor(key, hex, ref, taken){
+  var rgb = bnRestrictedColorRgb(hex);
+  if(!rgb) return null;
+  var hsl = bnRgbToHsl(rgb);
+  var h = hsl.h, s = hsl.s * 100, l = hsl.l * 100;
+  if(BN_CTA_BACKGROUND_COLOR_KEYS.indexOf(key) >= 0 && s < 40){
+    if(s < 5) h = 222;   /* 黑／灰沒有色相：改用「文字常用」深藍灰那一系的藍 */
+    s = 55;
+  }
+  var refRgb = ref ? bnRestrictedColorRgb(ref) : null;
+  var refL = refRgb ? bnRgbToHsl(refRgb).l * 100 : 50;
+  var away = l >= refL ? 1 : -1;   /* 先往遠離底色明度的方向調，對比才會拉開 */
+  var dirs = [away, -away];
+  for(var d = 0; d < dirs.length; d++){
+    for(var step = 0; step <= 100; step++){
+      var nl = l + dirs[d] * step;
+      if(nl < 0 || nl > 100) break;
+      var cand = bnRgbToHex(bnHsl100ToRgb(h, s, nl));
+      if(cand === hex || (taken && taken[cand])) continue;
+      if(!bnSwatchUsableFor(key, cand, ref)) continue;
+      if(refRgb && bnContrastRatio(bnRestrictedColorRgb(cand), refRgb) < BN_TEXT_MIN_CONTRAST) continue;
+      return cand;
+    }
+  }
+  return null;
+}
+/* 套到面板上的每個色票；找不到替代色（極少見）才隱藏。 */
+function bnRefreshSwatchesForKey(key){
+  var ref = bnSwatchReferenceColor(key);
+  var cur = String((colorState && colorState[key]) || '').toLowerCase();
+  var plan = Array.prototype.slice.call(document.querySelectorAll('#cp-panel .cp-swatch')).map(function(el){
+    var base = String(el.dataset.base || el.title || '').toLowerCase();
+    return { el: el, base: base, usable: bnSwatchUsableFor(key, base, ref) };
+  });
+  var taken = {};
+  var replacedBases = {};
+  plan.forEach(function(p){ if(p.usable) taken[p.base] = true; });
+  plan.forEach(function(p){
+    var color = p.base, title = p.base;
+    if(!p.usable){
+      replacedBases[p.base] = true;
+      color = bnSwatchSubstituteFor(key, p.base, ref, taken);
+      if(color){
+        taken[color] = true;
+        title = color + '（原色 ' + p.base + ' 在目前底色／欄位會被規則換掉，改用這個）';
+      }
+    }
+    var el = p.el;
+    el.classList.remove('bn-color-blocked');
+    el.removeAttribute('aria-disabled');
+    if(!color){ el.style.display = 'none'; el.dataset.color = ''; return; }
+    el.style.display = '';
+    el.dataset.color = color;
+    el.style.background = color;
+    el.title = title;
+    el.classList.toggle('active', color === cur);
+  });
+  /* 有替換時在色票上方說明一行（例如「淺色」那排在淺底會變成較深的同色系，不說明會以為色票錯了）。 */
+  var replacedCount = Object.keys(replacedBases).length;
+  var note = document.getElementById('cp-swatch-note');
+  if(!note){
+    var swWrap = document.getElementById('cp-swatches');
+    if(swWrap && swWrap.parentNode){
+      note = document.createElement('div');
+      note.id = 'cp-swatch-note';
+      note.style.cssText = 'font-size:10px;line-height:1.4;color:#fbbf24;margin:4px 0 4px';
+      swWrap.parentNode.insertBefore(note, swWrap);
+    }
+  }
+  if(note){
+    note.textContent = replacedCount ? ('有 ' + replacedCount + ' 個色票在目前底色會吃色或屬禁色，已換成同色系可直接用的顏色') : '';
+    note.style.display = replacedCount ? '' : 'none';
+  }
+}
+
 function openPanel(key, e) {
   e.stopPropagation(); /* 先擋掉，避免被 document.click 立刻關閉 */
   cpActiveKey = key;
@@ -3182,19 +3330,16 @@ function openPanel(key, e) {
   var panel  = document.getElementById('cp-panel');
   var cur    = colorState[key];
   var native = document.getElementById('cp-native');
-  var restricted = BN_RESTRICTED_COLOR_KEYS.indexOf(key)>=0;
+  var restricted = BN_RESTRICTED_COLOR_KEYS.indexOf(key)>=0 && BN_PURE_BW_ALLOWED_TEXT_KEYS.indexOf(key)<0;
   var restrictedCtaBg = BN_CTA_BACKGROUND_COLOR_KEYS.indexOf(key)>=0;
 
   document.getElementById('cp-hex-input').value = cur;
   var hexLabel = document.getElementById('cp-hex-label');
   if(hexLabel) hexLabel.textContent = restrictedCtaBg ? '色碼（禁用黑／灰，白色可用）' : (restricted ? '色碼（禁用黑／白）' : '色碼');
   if (native) native.value = /^#[0-9a-fA-F]{6}$/.test(cur) ? cur : '#000000';
-  document.querySelectorAll('.cp-swatch').forEach(function(s) {
-    var blocked = restricted && bnIsRestrictedColorForKey(key,s.title);
-    s.classList.toggle('bn-color-blocked',blocked);
-    s.setAttribute('aria-disabled',blocked?'true':'false');
-    s.classList.toggle('active', s.title.toLowerCase() === cur.toLowerCase());
-  });
+  /* 以前會被禁色擋下的色票只是變暗打叉、會被防吃色換掉的完全沒標示（按了才跳「已自動改色」）；
+     現在依目前欄位與底色，把這些色票直接換成可以用的替代色。 */
+  bnRefreshSwatchesForKey(key);
 
   /* 定位：點擊右側，防超出視窗 */
   var x = e.clientX + 14;
@@ -3253,6 +3398,12 @@ function applyColor(color) {
     writeSharedCtaText(colorState.ctaText);
     postSharedCtaTextToParent(colorState.ctaText);
   }
+  /* 手動改主標／副標／日期／品牌字色 → 通知 BODA（取色工具、匯入工單跟著走）。
+     一般的 wo-exposure-palette 廣播分不出是使用者改的還是換底後自動重算，所以另外送一包。 */
+  if (['mainText','subText','dateText','brandText'].indexOf(cpActiveKey) >= 0 &&
+      /^#[0-9a-fA-F]{6}$/.test(colorState[cpActiveKey] || '') && window.parent && window.parent !== window) {
+    try { window.parent.postMessage({ type:'wo-exposure-color', key:cpActiveKey, color:String(colorState[cpActiveKey]).toLowerCase() }, '*'); } catch(_) {}
+  }
   rememberCurrentColorState();
 
   /* 更新圓點（sidebar 和 inline 共用同一個 id） */
@@ -3281,9 +3432,9 @@ function applyColor(color) {
   if (hexInp) hexInp.value = color;
   if (native) native.value = /^#[0-9a-fA-F]{6}$/.test(color) ? color : '#000000';
 
-  /* 更新色票 active 狀態 */
+  /* 更新色票 active 狀態（用實際顯示的顏色比；替代色的 title 帶有說明文字） */
   document.querySelectorAll('.cp-swatch').forEach(function(s) {
-    s.classList.toggle('active', s.title.toLowerCase() === color.toLowerCase());
+    s.classList.toggle('active', String(s.dataset.color || s.title).toLowerCase() === String(color).toLowerCase());
   });
 
   /* 同步到所有 iframe */
@@ -3856,6 +4007,9 @@ window.addEventListener('message', function (e) {
   }
   if (e.data.type === 'wo-cta-text') {
     applySharedCtaText(e.data.manual ? e.data.color : '', true);
+  }
+  if (e.data.type === 'wo-shared-text-palette' && e.data.palette) {
+    applySharedTextPalette(e.data.palette);
   }
   if (e.data.type === 'wo-level-ask' && window.parent && window.parent !== window) {
     var lvId = typeof window._bnGetCurrentLevelId === 'function' ? window._bnGetCurrentLevelId() : null;

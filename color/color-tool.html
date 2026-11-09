@@ -495,8 +495,18 @@ function finish(sg,subRgb,ov={}){
   const bg=sg.bg, brand=sg.brand, main=ov.main||sg.main; subRgb=ov.sub||subRgb;
   const crS=contrast(subRgb,bg);
   const warn=subRgb, warnSrc='與副標同色';
-  let ctabg=brand,ctaSrc='品牌色';
-  if(contrast(brand,bg)<3){ if(crS>=3){ctabg=subRgb;ctaSrc='副標色（品牌色對底色不足）';} else {ctabg=main;ctaSrc='主標色（品牌色對底色不足）';} }
+  /* CTA 底色：跟主標同色（副標色則餵給促標底色、圓標底色）。
+     保底順序（每步對底色 CR ≥ 3）：主標 → 副標 → 品牌色 → 主標。
+     主標若是黑／灰（曝光資源的 CTA 底禁用），深底改用純白；與 shopee/index.html bnAutoCtaBackground()、
+     BODA index.html getExposureAutoCtaBg() 同一套，三處要一起改。 */
+  const crM=contrast(main,bg);
+  const ctaBlocked=c=>{const mx=Math.max(c[0],c[1],c[2]),mn=Math.min(c[0],c[1],c[2]);return mn<245&&(mx<=32||mx-mn<=24);};
+  let ctabg,ctaSrc;
+  if(crM>=3&&!ctaBlocked(main)){ctabg=main;ctaSrc='主標色';}
+  else if(crM>=3&&contrast([255,255,255],bg)>=3){ctabg=[255,255,255];ctaSrc='白色（主標色是黑／灰，CTA 底禁用）';}
+  else if(crS>=3){ctabg=subRgb;ctaSrc='副標色（主標色對底色不足）';}
+  else if(contrast(brand,bg)>=3){ctabg=brand;ctaSrc='品牌色（主標、副標對底色不足）';}
+  else {ctabg=main;ctaSrc='主標色（對底色不足）';}
   // CTA 字：標準為白字；只有 CTA 底偏淺（白字 CR < 3）才換：深底用底色本身（如 Paula's 米底紅字）→ 主標色 → 黑
   let ctatxt=[255,255,255], ctaTxtSrc='白字（標準）';
   if(contrast(ctatxt,ctabg)<3){
@@ -564,20 +574,51 @@ function renderSim(){
   ]);
   renderRefs(res.ref);
 }
-/* 角色色卡：點色碼複製；點色塊開啟選色器可手動覆寫（key='bg' 直接改底色） */
+/* 角色色卡：點色碼複製；點色塊開啟選色器可手動覆寫（key='bg' 直接改底色）。
+   色卡只在第一次（或欄位組成改變時）建立，之後一律「原地」更新顏色與文字。
+   以前每次重畫都整排砍掉重建：選色器一拖就觸發重畫（60ms 後），開著選色視窗的那個 input 被刪掉，
+   瀏覽器就把選色視窗關掉——使用者還沒選好就跳掉。 */
 function roleCards(rb,items){
-  const ov=simState.ov; rb.innerHTML='';
-  for(const [key,nm,c,ref,need,desc] of items){
-    const h=hex(c); const edited=!!ov[key]; const d=document.createElement('div'); d.className='role'+(edited?' edited':'');
-    let cr='';
-    if(ref){const v=contrast(c,ref);cr=`CR <span class="${v>=need?'ok':(v>=need-1?'warnc':'bad')}">${v.toFixed(1)}</span> / 需 ${need}`;}
-    d.innerHTML=`<div class="top"><span class="nm">${nm}</span><span><code title="點擊複製">${h}</code>${edited?'<button class="undo" title="還原建議色">↺</button>':''}</span></div><div class="box" style="background:${h}" title="點擊手動換色"><input type="color" value="${h}"></div><div class="cr">${desc}${cr?'<br>'+cr:''}</div>`;
-    d.querySelector('code').onclick=()=>navigator.clipboard.writeText(h).then(()=>{$('#simMsg').textContent='已複製 '+h;});
-    const inp=d.querySelector('input'); let t=null;
-    inp.oninput=e=>{ const v=e.target.value.toUpperCase(); clearTimeout(t); t=setTimeout(()=>{ if(key==='bg'){setSimBg(v);} else {ov[key]=hexToRgb(v);renderSim();} },60); };
-    const u=d.querySelector('.undo'); if(u) u.onclick=()=>{delete ov[key];renderSim();};
-    rb.appendChild(d);
+  const cards={};
+  Array.from(rb.children).forEach(el=>{ if(el.dataset&&el.dataset.key) cards[el.dataset.key]=el; });
+  const sameLayout=items.length===rb.children.length&&items.every(it=>cards[it[0]]);
+  if(!sameLayout){
+    rb.innerHTML='';
+    for(const item of items){ const d=createRoleCard(item[0]); rb.appendChild(d); cards[item[0]]=d; }
   }
+  for(const item of items) fillRoleCard(cards[item[0]],item);
+}
+function createRoleCard(key){
+  const d=document.createElement('div'); d.className='role'; d.dataset.key=key;
+  d.innerHTML=`<div class="top"><span class="nm"></span><span><code title="點擊複製"></code></span></div><div class="box" title="點擊手動換色"><input type="color"></div><div class="cr"></div>`;
+  const code=d.querySelector('code');
+  code.onclick=()=>{ const h=code.textContent; navigator.clipboard.writeText(h).then(()=>{$('#simMsg').textContent='已複製 '+h;}); };
+  const inp=d.querySelector('input'); let t=null;
+  /* 事件裡一律讀當下的 simState：換底色時 runSim 會換一個新的 simState，舊的 ov 已經不是現在用的那份。 */
+  const apply=v=>{ if(key==='bg'){ setSimBg(v); } else { simState.ov[key]=hexToRgb(v); renderSim(); } };
+  inp.oninput=e=>{ const v=e.target.value.toUpperCase(); clearTimeout(t); t=setTimeout(()=>apply(v),60); };
+  /* 選色視窗關閉時補套最後一次的顏色（避免最後一下剛好還在 60ms 延遲裡） */
+  inp.onchange=e=>{ clearTimeout(t); const v=e.target.value.toUpperCase(); if(v!==String(code.textContent).toUpperCase()) apply(v); };
+  return d;
+}
+function fillRoleCard(d,[key,nm,c,ref,need,desc]){
+  const h=hex(c); const edited=!!simState.ov[key];
+  d.className='role'+(edited?' edited':'');
+  d.querySelector('.nm').textContent=nm;
+  const code=d.querySelector('code'); code.textContent=h;
+  let u=d.querySelector('.undo');
+  if(edited&&!u){
+    u=document.createElement('button'); u.className='undo'; u.title='還原建議色'; u.textContent='↺';
+    u.onclick=()=>{ delete simState.ov[key]; renderSim(); };
+    code.parentNode.appendChild(u);
+  } else if(!edited&&u){ u.remove(); }
+  d.querySelector('.box').style.background=h;
+  const inp=d.querySelector('input');
+  /* 使用者正在這個選色器裡選色時不要動它的值（選色視窗會跳動）；其他色卡照常更新。 */
+  if(document.activeElement!==inp) inp.value=h.toLowerCase();
+  let cr='';
+  if(ref){const v=contrast(c,ref);cr=`CR <span class="${v>=need?'ok':(v>=need-1?'warnc':'bad')}">${v.toFixed(1)}</span> / 需 ${need}`;}
+  d.querySelector('.cr').innerHTML=`${desc}${cr?'<br>'+cr:''}`;
 }
 function renderRefs(r){
   $('#rfPrice').style.background=hex(r.priceBg);
@@ -656,7 +697,16 @@ runSim();
 const _isBodaHost = (new URLSearchParams(location.search)).get('host') === 'boda';
 let _bodaLinked = true;
 let _settingBgFromParent = false;
-window._colorToolSetBg = function(h) { const v = validHex(h); if (v) { _settingBgFromParent = true; setSimBg(v); _settingBgFromParent = false; } };
+/* 主頁推來的底色跟目前一樣時不要重算：runSim 會清掉所有手動色（主標／副標／CTA），
+   但曝光資源同底色時不會重算，兩邊就分歧了。曝光資源第一次載入、匯入工單、還原暫存檔都會重推同一個底色。 */
+function _simBgHex() { return simState && simState.sg ? hex(simState.sg.bg).toUpperCase() : ''; }
+function _applyBgFromParent(h) {
+  const v = validHex(h);
+  if (!v || v === _simBgHex()) return;
+  _settingBgFromParent = true;
+  try { setSimBg(v); } finally { _settingBgFromParent = false; }
+}
+window._colorToolSetBg = _applyBgFromParent;
 /* 共用 CTA 底色：BODA 推來 #rrggbb＝手動覆寫 CTA 底色；''＝清除覆寫、回到建議色。 */
 let _settingCtaFromParent = false;
 let _pendingCtaFromParent;
@@ -685,6 +735,66 @@ function _applyCtaTextFromParent(h, manual) {
   } finally { _settingCtaTextFromParent = false; }
 }
 window._colorToolSetCtaText = _applyCtaTextFromParent;
+/* 主標字色（曝光資源手動改色、暫存檔配色）：與建議色相同就回到自動，不同就記成手動覆寫（顯示「手動」可還原）。
+   主頁推來的不再回報，避免來回。 */
+let _settingMainFromParent = false;
+let _pendingMainFromParent;
+function _applyMainFromParent(h) {
+  const v = validHex(h || '');
+  if (!v) return;
+  if (!simState) { _pendingMainFromParent = v; return; }
+  _settingMainFromParent = true;
+  try {
+    if (hex(simState.sg.main).toUpperCase() === v) delete simState.ov.main;
+    else simState.ov.main = hexToRgb(v);
+    renderSim();
+  } finally { _settingMainFromParent = false; }
+}
+window._colorToolSetMainText = _applyMainFromParent;
+/* 副標字色（曝光資源手動改色、暫存檔配色）：剛好是某個副標候選色就選那個候選；
+   都不是就記成手動覆寫。主頁推來的不回報，避免來回。 */
+let _settingSubFromParent = false;
+let _pendingSubFromParent;
+function _applySubFromParent(h) {
+  const v = validHex(h || '');
+  if (!v) return;
+  if (!simState) { _pendingSubFromParent = v; return; }
+  _settingSubFromParent = true;
+  try {
+    const match = (simState.sg.options || []).find(o => hex(o.rgb).toUpperCase() === v);
+    if (match) { simState.subKey = match.key; delete simState.ov.sub; }
+    else simState.ov.sub = hexToRgb(v);
+    renderSim();
+  } finally { _settingSubFromParent = false; }
+}
+window._colorToolSetSubText = _applySubFromParent;
+/* 曝光資源有防吃色（文字和底色太接近、CR < 1.3）與禁色（副標／日期不可純黑白）規則，會自動換色。
+   工具這邊選的主標／副標被它換掉時，在卡片上標出曝光資源實際用色。 */
+const _exposureActual = { main: '', sub: '' };
+function _renderExposureNotes() {
+  const box = $('#simRoles');
+  if (!box || !simState || !simState.res) return;
+  [['主標', 'main'], ['副標', 'sub']].forEach(function(pair) {
+    const card = Array.from(box.querySelectorAll('.role')).find(r => (r.querySelector('.nm') || {}).textContent === pair[0]);
+    if (!card) return;
+    const old = card.querySelector('.exp-note');
+    if (old) old.remove();
+    const actual = _exposureActual[pair[1]];
+    if (!actual || actual === hex(simState.res[pair[1]]).toUpperCase()) return;
+    const note = document.createElement('div');
+    note.className = 'exp-note';
+    note.style.cssText = 'margin-top:4px;font-size:11px;line-height:1.4;color:#b45309;';
+    note.innerHTML = '曝光資源的防吃色／禁色規則改用 <code style="font-size:11px">' + actual + '</code>';
+    (card.querySelector('.cr') || card).appendChild(note);
+  });
+}
+window._colorToolSetExposureActual = function(map) {
+  map = map || {};
+  _exposureActual.main = validHex(map.main || '') || '';
+  _exposureActual.sub = validHex(map.sub || '') || '';
+  _renderExposureNotes();
+};
+window._colorToolSetExposureMain = function(h) { _exposureActual.main = validHex(h || '') || ''; _renderExposureNotes(); };
 window._colorToolGetCsvString = function() { if (!simState || !simState.res) return ''; return '﻿' + toCsv(buildSheet()); };
 window._colorToolGetResult = function() { return simState && simState.res ? simState.res : null; };
 window._colorToolIsLinked = function() { return _bodaLinked; };
@@ -723,8 +833,11 @@ if (_isBodaHost) {
     if (!e.data || typeof e.data !== 'object') return;
     if (e.data.type === 'wo-color-tool-set-bg') {
       if (!_bodaLinked) return;
-      const v = validHex(e.data.hex);
-      if (v) { _settingBgFromParent = true; setSimBg(v); _settingBgFromParent = false; }
+      _applyBgFromParent(e.data.hex);
+    }
+    if (e.data.type === 'wo-color-tool-set-sub-text') {
+      if (!_bodaLinked) return;
+      _applySubFromParent(e.data.hex);
     }
     if (e.data.type === 'wo-color-tool-set-cta') {
       if (!_bodaLinked) return;
@@ -734,15 +847,64 @@ if (_isBodaHost) {
       if (!_bodaLinked) return;
       _applyCtaTextFromParent(e.data.hex, !!e.data.manual);
     }
+    if (e.data.type === 'wo-color-tool-set-main-text') {
+      if (!_bodaLinked) return;
+      _applyMainFromParent(e.data.hex);
+    }
   });
   /* CTA 底色的手動覆寫／還原 → 通知 BODA（匯入工單／曝光資源跟著走）。
      BODA 推來的設定不回報；底色由 BODA 推來時 runSim 會清掉覆寫，也不回報（BODA 會再補推共用值）。 */
   let _lastPostedCta = null;
   let _lastPostedCtaText = null;
+  let _lastPostedMain = null;
+  let _lastPostedSub = null;
+  /* 「還原建議色」是使用者明確要回到建議色：通知 BODA 時帶 reset，主頁會解除暫存檔配色鎖，
+     不然鎖會把建議色擋回暫存檔的顏色。副標選項也一起回到建議的那個候選。 */
+  let _userResetPending = false;
+  const _resetBtn = $('#simReset');
+  if (_resetBtn) {
+    const _origReset = _resetBtn.onclick;
+    _resetBtn.onclick = function(ev) {
+      _userResetPending = true;
+      try {
+        if (simState && simState.sg && simState.sg.pick) simState.subKey = simState.sg.pick.key;
+        return _origReset ? _origReset.call(this, ev) : undefined;
+      } finally { _userResetPending = false; }
+    };
+  }
   const _origRenderSim = renderSim;
   renderSim = function() {
     _origRenderSim();
     if (!simState || window.parent === window) return;
+    const fromParent = _settingMainFromParent || _settingSubFromParent || _settingBgFromParent;
+    /* 主標字色（建議色或手動覆寫）→ 通知 BODA，曝光資源的主標跟著換。
+       以前只在底色改變時通知，而且沒帶主標色，BODA 讀不到，曝光資源的主標就不會變。
+       主頁推來的主標／副標／底色不回報（底色由主頁推來時，主頁會自己讀工具算出的主標／副標）。 */
+    if (simState.res && simState.res.main) {
+      const mainHex = hex(simState.res.main);
+      const manualMain = !!simState.ov.main;
+      const mainKey = mainHex + (manualMain ? '|manual' : '');
+      if (mainKey !== _lastPostedMain) {
+        _lastPostedMain = mainKey;
+        if (!fromParent) {
+          window.parent.postMessage({ type: 'wo-color-tool-main-text', mainText: mainHex, manual: manualMain, reset: _userResetPending, linked: _bodaLinked }, '*');
+        }
+      }
+    }
+    /* 副標字色（點選其他副標候選、手動覆寫、或換底色後的建議色）→ 通知 BODA，
+       曝光資源的副標（與跟著副標的日期）、匯入工單的促標底色／圓標底色跟著換。以前副標完全沒有同步。 */
+    if (simState.res && simState.res.sub) {
+      const subHex = hex(simState.res.sub);
+      const manualSub = !!simState.ov.sub || !!(simState.sg && simState.sg.pick && simState.subKey !== simState.sg.pick.key);
+      const subKey = subHex + (manualSub ? '|manual' : '');
+      if (subKey !== _lastPostedSub) {
+        _lastPostedSub = subKey;
+        if (!fromParent) {
+          window.parent.postMessage({ type: 'wo-color-tool-sub-text', subText: subHex, manual: manualSub, reset: _userResetPending, linked: _bodaLinked }, '*');
+        }
+      }
+    }
+    _renderExposureNotes();
     const manual = !!simState.ov.ctabg;
     const cta = manual ? hex(simState.ov.ctabg) : '';
     if (cta !== _lastPostedCta) {
@@ -767,6 +929,8 @@ if (_isBodaHost) {
     _origRunSim();
     if (_pendingCtaFromParent !== undefined) { const p = _pendingCtaFromParent; _pendingCtaFromParent = undefined; _applyCtaFromParent(p); }
     if (_pendingCtaTextFromParent !== undefined) { const pt = _pendingCtaTextFromParent; _pendingCtaTextFromParent = undefined; _applyCtaTextFromParent(pt[0], pt[1]); }
+    if (_pendingMainFromParent !== undefined) { const pm = _pendingMainFromParent; _pendingMainFromParent = undefined; _applyMainFromParent(pm); }
+    if (_pendingSubFromParent !== undefined) { const ps = _pendingSubFromParent; _pendingSubFromParent = undefined; _applySubFromParent(ps); }
     if (simState && simState.res && window.parent !== window && !_settingBgFromParent) {
       const bg = hex(simState.res.bg);
       if (bg !== _lastPostedBg) {

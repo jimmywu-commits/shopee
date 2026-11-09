@@ -191,7 +191,7 @@
   function scanCopy(rows){
     var spec = findHeader(rows, '規範字數');
     var start = spec ? spec.row + 1 : 0;
-    var result = {brand:'', main:'', sub:'', date:''};
+    var result = {brand:'', main:'', sub:'', date:'', endorserNote:'', endorserFiles:''};
 
     for(var r = start; r < rows.length; r++){
       var row = rows[r] || [];
@@ -199,6 +199,16 @@
         var raw = cellText(row[c]);
         var n = norm(raw);
         if(!raw) continue;
+        /* 工單總覽：「代言人照+簽名檔路徑(將取代2品)」「代言人小字」的值都在標籤右邊那一格。
+           只看緊鄰的一格，避免空白時抓到右邊下一個標籤。 */
+        if(n.indexOf('代言人小字') !== -1){
+          if(!result.endorserNote) result.endorserNote = cellText(row[c + 1]);
+          continue;
+        }
+        if(n.indexOf('代言人照') !== -1){
+          if(!result.endorserFiles) result.endorserFiles = cellText(row[c + 1]);
+          continue;
+        }
         if(!result.brand && (n.indexOf('廠商名稱') !== -1 || n.indexOf('廠商名') !== -1)){
           result.brand = getRightValue(row, c);
         } else if(!result.main && n.indexOf('主標') !== -1){
@@ -487,6 +497,8 @@
     setInputValue('txt-main', copy.main);
     setInputValue('txt-sub', copy.sub);
     setInputValue('txt-date', copy.date);
+    /* 代言人小字：跟 MSBN 一樣的字級／黑白字規則，由左側「代言人」區塊管理 */
+    if(copy.endorserNote && typeof global._bnSetEndorserNote === 'function') global._bnSetEndorserNote(copy.endorserNote);
     if(typeof global.broadcastText === 'function') global.broadcastText();
     try{ document.dispatchEvent(new CustomEvent('bn-state-dirty')); }catch(_){}
 
@@ -519,10 +531,13 @@
         if(copy.main) importedText.push('主標');
         if(copy.sub) importedText.push('副標');
         if(copy.date) importedText.push('日期/警語');
+        if(copy.endorserNote) importedText.push('代言人小字');
 
         var appeared = Object.keys(layoutResult.types).filter(function(k){ return layoutResult.types[k]; }).length;
         var bgMsg = publicCode ? ('，公版背景 ' + publicCode.code + ' 套用中') : '';
-        setStatus('完成：讀取「' + parsed.sheetName + '」，勾選 ' + appliedLayouts.matched + ' 個排版，匯入 ' + importedText.join('、') + bgMsg, 'ok');
+        /* 獨立使用時工單裡只有檔名、沒有圖片本身：提醒到左側「代言人」區塊上傳 */
+        var endorserMsg = copy.endorserFiles ? ('；代言人照／簽名檔（' + copy.endorserFiles.replace(/\s*\n\s*/g, '、') + '）請到左側「代言人」區塊上傳') : '';
+        setStatus('完成：讀取「' + parsed.sheetName + '」，勾選 ' + appliedLayouts.matched + ' 個排版，匯入 ' + importedText.join('、') + bgMsg + endorserMsg, 'ok');
         toast('工單已匯入：讀取「' + parsed.sheetName + '」，偵測到 ' + appeared + ' 個版位，已同步文字與畫布' + bgMsg, 'ok', 3000);
       })
       .catch(function(err){
