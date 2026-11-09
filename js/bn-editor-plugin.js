@@ -3617,6 +3617,8 @@
           window._bnEndorserSign = endorserResult.sign;
           window._bnEndorserClassifyMethod = endorserResult.method;
           endorserNoteState().woSig = endorserResult.sig;
+          /* 工單帶入新的代言人圖：小字也回到預設擺法（照片右、小字左上、簽名左下） */
+          endorserNoteState().layouts = {};
         }
         if(endorserNoteText){
           endorserNoteState().text = endorserNoteText;

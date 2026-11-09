@@ -3709,47 +3709,44 @@
     box.style.width = w + 'px'; box.style.height = h + 'px';
   }
 
-  /* 代言人照預設放在「還顯示著的商品」的另一側；沒有商品或商品置中時放右側。 */
-  function endorserDefaultSide(zone){
-    var area = getProductSyncArea(zone);
-    var boxes = Array.prototype.slice.call(zone.querySelectorAll('.bn-prod-box')).filter(function(b){
-      return b.style.display !== 'none';
-    });
-    if(!boxes.length) return 'right';
-    var minL = Infinity, maxR = -Infinity;
-    boxes.forEach(function(b){
-      var r = endorserBoxRect(b);
-      minL = Math.min(minL, r.left); maxR = Math.max(maxR, r.left + r.width);
-    });
-    return (minL + maxR) / 2 <= area.left + area.width / 2 + 1 ? 'right' : 'left';
+  /* 預設擺法（匯入時、還沒有存過位置）：
+     - 代言人照：放右邊；有效商品區高度 94%、寬度不超過一半，底部對齊。
+     - 照片左邊：上面是代言人小字、下面是簽名檔，跟照片不重疊、只隔一點點；
+       小字＋簽名整組的垂直中心大約在照片高度的一半。間距與簽名大小都用小字字級（em）算，
+       每個版位看起來一樣近。 */
+  var ENDORSER_DEFAULT_GAP_X = 0.5;   /* 文字塊與照片的距離（em） */
+  var ENDORSER_DEFAULT_GAP_Y = 0.35;  /* 小字與簽名檔的距離（em） */
+  var ENDORSER_DEFAULT_SIGN_W = 5;    /* 預設簽名檔寬度（em），跟一排 5 字的小字一樣寬 */
+  function endorserDefaultTextBlock(P, em, signRatio, nm, hasSign){
+    var gapX = em * ENDORSER_DEFAULT_GAP_X, gapY = em * ENDORSER_DEFAULT_GAP_Y;
+    var hasNote = !!(nm && nm.w > 0 && nm.h > 0);
+    var sw = hasSign ? em * ENDORSER_DEFAULT_SIGN_W : 0;
+    var sh = hasSign ? sw / Math.max(0.05, signRatio || 2) : 0;
+    var blockW = Math.max(sw, hasNote ? nm.w : 0);
+    var blockH = sh + (hasNote ? nm.h : 0) + (hasNote && hasSign ? gapY : 0);
+    var left = P.left - gapX - blockW;
+    var top = P.top + P.height / 2 - blockH / 2;
+    return {
+      N: hasNote ? {left:left, top:top, width:nm.w, height:nm.h} : null,
+      S: hasSign ? {left:left, top:top + (hasNote ? nm.h + gapY : 0), width:sw, height:sh} : null
+    };
   }
-
-  /* 預設大小與位置：
-     - 代言人照：有效商品區高度 94%、寬度不超過一半，底部對齊。
-     - 簽名檔：壓在代言人照左下角、稍微凸出照片外（MSBN 的簽名也在代言人左下側）。 */
   function applyDefaultEndorserLayout(box, zone){
     var area = getProductSyncArea(zone);
     var ratio = Math.max(0.1, parseFloat(box.dataset.ratio) || 0.75);
     if(box.dataset.endorser !== 'sign'){
-      var side = endorserDefaultSide(zone);
       var h = area.height * 0.94, w = h * ratio;
       var maxW = area.width * 0.5;
       if(w > maxW){ w = maxW; h = w / ratio; }
-      var left = side === 'right' ? area.left + area.width - w : area.left;
-      setEndorserBoxRect(box, left, area.top + area.height - h, w, h);
+      setEndorserBoxRect(box, area.left + area.width - w, area.top + area.height - h, w, h);
       return;
     }
-    /* 簽名檔大小與位置只看代言人照（不看版位比例），每個版位排出來都一樣靠近照片。 */
+    /* 簽名檔先單獨排在照片左邊、垂直置中；小字出現後 arrangeEndorser 會把兩者當一組重排 */
     var photo = getEndorserBox('_bnEndorserPhoto');
-    var base = photo ? endorserBoxRect(photo)
-      : {left: area.left + area.width * 0.5, top: area.top, width: area.width * 0.5, height: area.height};
-    var sw = base.width * 0.8;
-    var sh = sw / ratio;
-    var maxSh = Math.max(16, base.height * 0.36);
-    if(sh > maxSh){ sh = maxSh; sw = sh * ratio; }
-    var sl = base.left - sw * 0.28;
-    var st = base.top + base.height - sh - base.height * 0.04;
-    setEndorserBoxRect(box, sl, st, sw, sh);
+    var P = photo ? endorserBoxRect(photo)
+      : {left: area.left + area.width, top: area.top, width: 0, height: area.height};
+    var blk = endorserDefaultTextBlock(P, endorserNoteBaseFontSize(), ratio, null, true);
+    setEndorserBoxRect(box, blk.S.left, blk.S.top, blk.S.width, blk.S.height);
   }
 
   /* ════ 代言人：各版位自動配合 ════
@@ -4177,12 +4174,12 @@
     var cs = window.getComputedStyle(zone);
     return {left:0, top:0, width:parseFloat(cs.width) || zone.offsetWidth || 1, height:parseFloat(cs.height) || zone.offsetHeight || 1};
   }
-  /* 小字預設：坐在簽名檔上緣、靠左對齊（同 MSBN 簽名小字在簽名區上方）；
-     沒有簽名就放在代言人照左下角裡面。 */
+  /* 小字的備用預設（簽名檔是手動位置時）：在簽名檔上方、靠左對齊、不重疊；
+     沒有簽名就放在照片左邊、垂直置中。兩者都還是預設時由 arrangeEndorser 當一組排。 */
   function endorserDefaultNoteRect(nm, S, P, zone){
-    if(S) return {left:S.left, top:S.top - nm.h + S.height * 0.08, width:nm.w, height:nm.h};
-    if(P) return {left:P.left + Math.max(4, P.width * 0.04),
-      top:P.top + P.height - nm.h - Math.max(4, P.height * 0.04), width:nm.w, height:nm.h};
+    var em = endorserNoteBaseFontSize();
+    if(S) return {left:S.left, top:S.top - em * ENDORSER_DEFAULT_GAP_Y - nm.h, width:nm.w, height:nm.h};
+    if(P) return endorserDefaultTextBlock(P, em, 2, nm, false).N;
     var area = getProductSyncArea(zone);
     return {left:area.left + 4, top:area.top + area.height - nm.h - 4, width:nm.w, height:nm.h};
   }
@@ -4371,7 +4368,7 @@
     var noteOn = !!(note && text);
     if(!photo && !sign && !noteOn) return;
     var g = endorserGeom(zone), em = g.em;
-    var P = null, S = null, nm = null;
+    var P = null, S = null, nm = null, defBlock = null, signSnapshot = false;
     if(photo){
       if(photo._bnFrame){
         var pr = endorserRectFromFrame(photo._bnFrame, g, endorserImgRatio(photo));
@@ -4379,40 +4376,70 @@
       }
       P = endorserBoxRect(photo);
     }
+    if(noteOn){
+      note.style.fontSize = em + 'px';
+      nm = {w:note.offsetWidth || 0, h:note.offsetHeight || 0};
+    }
+    /* 還在預設位置（沒拖過、也不是別的版位連動來的）的簽名檔／小字：
+       照片左邊，小字在上、簽名在下，整組垂直置中在照片高度的一半（每次都照同一規則算） */
+    var signDefault = !!(sign && sign._bnLayoutSrc === 'default');
+    var noteDefault = !!(noteOn && (!note._bnLayout || !note._bnLayout.manual || note._bnLayoutSrc === 'default'));
     if(sign){
-      if(P && !sign._bnTextRel) sign._bnTextRel = endorserSignRelFromRects(endorserBoxRect(sign), P, em);
-      if(P && sign._bnTextRel){
-        var sw = sign._bnTextRel.w * em;
-        var sr = endorserPlaceByPhotoRel(sign._bnTextRel, P, em, sw, sw / endorserImgRatio(sign));
-        setEndorserBoxRect(sign, sr.left, sr.top, sr.width, sr.height);
+      if(P && signDefault){
+        defBlock = endorserDefaultTextBlock(P, em, endorserImgRatio(sign), noteDefault ? nm : null, true);
+        setEndorserBoxRect(sign, defBlock.S.left, defBlock.S.top, defBlock.S.width, defBlock.S.height);
+        var newSignRel = endorserSignRelFromRects(defBlock.S, P, em), oldSignRel = sign._bnTextRel;
+        if(!oldSignRel || Math.abs(oldSignRel.dx - newSignRel.dx) > 0.01 || Math.abs(oldSignRel.cy - newSignRel.cy) > 0.002 ||
+           Math.abs(oldSignRel.w - newSignRel.w) > 0.01 || oldSignRel.side !== newSignRel.side) signSnapshot = true;
+        sign._bnTextRel = newSignRel;
+      } else {
+        if(P && !sign._bnTextRel) sign._bnTextRel = endorserSignRelFromRects(endorserBoxRect(sign), P, em);
+        if(P && sign._bnTextRel){
+          var sw = sign._bnTextRel.w * em;
+          var sr = endorserPlaceByPhotoRel(sign._bnTextRel, P, em, sw, sw / endorserImgRatio(sign));
+          setEndorserBoxRect(sign, sr.left, sr.top, sr.width, sr.height);
+        }
       }
       S = endorserBoxRect(sign);
     }
     var noteSnapshot = false;
     if(noteOn){
-      note.style.fontSize = em + 'px';
-      nm = {w:note.offsetWidth || 0, h:note.offsetHeight || 0};
-      var nr = endorserNoteRectFromLayout(note._bnLayout, nm, S, P, em, zone);
-      if(!nr){
-        /* 預設位置只算一次，記下來之後就固定（各版位各自算，不觸發連動） */
-        nr = endorserDefaultNoteRect(nm, S, P, zone);
+      var nr = null;
+      if(noteDefault){
+        if(defBlock && defBlock.N) nr = defBlock.N;
+        else if(S) nr = {left:S.left, top:S.top - em * ENDORSER_DEFAULT_GAP_Y - nm.h, width:nm.w, height:nm.h};
+        else if(P) nr = endorserDefaultTextBlock(P, em, 2, nm, false).N;
+        else nr = endorserDefaultNoteRect(nm, null, null, zone);
         note._bnLayout = note._bnLayout || {};
-        note._bnLayoutSrc = note._bnLayoutSrc || 'default';
+        note._bnLayoutSrc = 'default';
         if(zone.dataset.endorserAuto == null) zone.dataset.endorserAuto = '1';
-        noteSnapshot = true;
-      } else if(!note._bnLayout.noteRel){
-        noteSnapshot = true; /* 舊資料：換成新規則記下來 */
+        var newNoteRel = endorserNoteRelFromRect(nr, S, P, em), oldNoteRel = note._bnLayout.noteRel;
+        var relKey = function(r){ return r ? [r.to, r.side, r.x, r.y, r.dx, r.cy].map(function(v){ return typeof v === 'number' ? Math.round(v * 100) : v; }).join('|') : ''; };
+        if(!note._bnLayout.manual || relKey(oldNoteRel) !== relKey(newNoteRel)) noteSnapshot = true;
+        note._bnLayout.manual = true;
+        note._bnLayout.noteRel = newNoteRel;
+      } else {
+        nr = endorserNoteRectFromLayout(note._bnLayout, nm, S, P, em, zone);
+        if(!nr){
+          nr = endorserDefaultNoteRect(nm, S, P, zone);
+          noteSnapshot = true;
+        } else if(!note._bnLayout.noteRel){
+          noteSnapshot = true; /* 舊資料：換成新規則記下來 */
+        }
+        if(noteSnapshot){
+          note._bnLayout.manual = true;
+          note._bnLayout.noteRel = endorserNoteRelFromRect(nr, S, P, em);
+        }
       }
       note.style.left = nr.left + 'px';
       note.style.top = nr.top + 'px';
-      if(noteSnapshot){
-        note._bnLayout.manual = true;
-        note._bnLayout.noteRel = endorserNoteRelFromRect(nr, S, P, em);
-      }
     }
     if(zone.dataset.endorserAuto !== '0') fitEndorser(g, photo, sign, noteOn ? note : null, nm);
     if(photo) syncCharGradientOverlay(photo);
-    if(sign) syncCharGradientOverlay(sign);
+    if(sign){
+      syncCharGradientOverlay(sign);
+      if(signSnapshot) setTimeout(function(){ postCharacterLayout(sign, {snapshotOnly:true}); }, 0);
+    }
     if(noteOn){
       refreshEndorserNoteColor();
       if(noteSnapshot){ markEndorserNoteManual(note); postEndorserNoteLayout(note, {snapshotOnly:true}); }
