@@ -54,6 +54,7 @@
 .bn-endorser-note-wrap label{display:flex;justify-content:space-between;gap:6px;font-size:11px;color:var(--text2,#8b949e)}
 #bn-endorser-note-count{font-size:10px;color:var(--text3,#6e7681)}
 #bn-endorser-note-count.over{color:var(--red,#da3633)}
+.bn-endorser-note-wrap.over textarea,.bn-endorser-note-wrap.limit-flash textarea{border-color:var(--red,#da3633)!important;box-shadow:0 0 0 2px rgba(218,54,51,.25)}
 #bn-endorser-note-inp{width:100%;box-sizing:border-box;resize:none;min-height:46px;padding:6px 8px;background:var(--bg2,#1c2333);border:1px solid var(--border,#30363d);border-radius:6px;color:var(--text,#e6edf3);font-size:12px;line-height:1.5;font-family:inherit}
 #bn-endorser-note-inp:focus{outline:none;border-color:#a855f7}
 .bn-endorser-note-color{display:flex;align-items:center;gap:6px;font-size:10px;color:var(--text3,#6e7681)}
@@ -1328,8 +1329,11 @@
        畫布規則（預設位置、前後順序、小字字級與黑白字）在 layout-runtime.js。 */
     var ENDORSER_SLOTS = ['_bnEndorserPhoto', '_bnEndorserSign'];
     var ENDORSER_LABEL = {_bnEndorserPhoto:'代言人照', _bnEndorserSign:'簽名檔'};
-    var ENDORSER_NOTE_LINE_MAX = 8;   /* MSBN B-1 代言人小字：兩排，每排 8 字（中文 1、英數 0.5） */
+    /* 曝光資源的代言人／簽名檔小字：最多 10 字＝兩排、每排 5 字（中文 1、英數 0.5），同 MSBN 簽名小字。
+       手打／貼上超過會直接擋住；工單帶入或輸入法漏網的超字保留原文、標紅並擋下載（同其他文字欄位）。 */
+    var ENDORSER_NOTE_LINE_MAX = 5;
     var ENDORSER_NOTE_LINES = 2;
+    var ENDORSER_NOTE_MAX_UNITS = 10;
     var _endorserRotateJobs = {};
     var _endorserRotatePromises = {};
     var _editingEndorserSlot = null;
@@ -1745,7 +1749,16 @@
       for(var i = 0; i < line.length; i++) n += endorserCharUnits(line[i]);
       return n;
     }
-    /* 一排超過 8 字時自動流到下一排（同 MSBN 兩行欄位）；不刪字，超過兩排時字數提示變紅。 */
+    function endorserNoteStatus(text){
+      var t = String(text == null ? '' : text).replace(/\r\n?/g, '\n');
+      var units = endorserLineUnits(t.replace(/\n/g, ''));
+      var lines = t ? t.split('\n').length : 0;
+      return {units: Math.round(units * 10) / 10, lines: lines,
+        over: units > ENDORSER_NOTE_MAX_UNITS + 0.001 || lines > ENDORSER_NOTE_LINES};
+    }
+    /* 給曝光資源的字數上限檢查（常駐提醒、下載前硬擋）用，算法跟左側字數提示一致 */
+    window._bnEndorserNoteStatus = endorserNoteStatus;
+    /* 一排超過 5 字時自動流到下一排（同 MSBN 兩行欄位）；不刪字，超過 10 字或兩排時字數提示變紅。 */
     function normalizeEndorserNoteText(text){
       var lines = String(text == null ? '' : text).replace(/\r\n?/g, '\n').split('\n');
       var out = [];
@@ -1763,16 +1776,26 @@
     function renderEndorserNoteUI(){
       var n = endorserNoteState();
       var inp = document.getElementById('bn-endorser-note-inp');
+      /* 舊暫存是用舊的換行規則存的：不在輸入中時照現在的規則（每排 5 字）重排一次，再送給版位 */
+      if(document.activeElement !== inp && n.text){
+        var rewrapped = normalizeEndorserNoteText(n.text);
+        if(rewrapped !== n.text){
+          n.text = rewrapped;
+          setTimeout(function(){ broadcastEndorserNote(); markStateDirty(); }, 0);
+        }
+      }
       if(inp && document.activeElement !== inp && inp.value !== n.text) inp.value = n.text;
+      var st = endorserNoteStatus(n.text);
       var cnt = document.getElementById('bn-endorser-note-count');
       if(cnt){
-        var lines = (n.text || '').split('\n');
-        var over = lines.length > ENDORSER_NOTE_LINES || lines.some(function(l){ return endorserLineUnits(l) > ENDORSER_NOTE_LINE_MAX; });
         cnt.textContent = n.text
-          ? lines.map(function(l){ return endorserLineUnits(l) + '/' + ENDORSER_NOTE_LINE_MAX; }).join('・') + (over ? '・超過兩排' : '')
-          : '兩排，每排 8 字';
-        cnt.classList.toggle('over', over);
+          ? st.units + '/' + ENDORSER_NOTE_MAX_UNITS + ' 字' + (st.lines > ENDORSER_NOTE_LINES ? '・超過兩排' : '')
+          : '最多 10 字（兩排）';
+        cnt.classList.toggle('over', st.over);
       }
+      var wrap = inp && inp.closest ? inp.closest('.bn-endorser-note-wrap') : null;
+      if(wrap) wrap.classList.toggle('over', st.over);
+      if(typeof window.bnRefreshLimitAlert === 'function') window.bnRefreshLimitAlert();
       var auto = document.getElementById('bn-endorser-note-auto');
       var color = document.getElementById('bn-endorser-note-color');
       if(auto) auto.classList.toggle('on', !n.color);
@@ -1799,6 +1822,37 @@
         timer = setTimeout(function(){ broadcastEndorserNote(); markStateDirty(); }, 120);
       }
       if(inp){
+        /* 手打或貼上會超過 10 字（或第三排）就直接擋住，跟其他文字欄位一樣；
+           選字中不擋，選完若超過就保留原文、標紅並擋下載。 */
+        var wrap = inp.closest ? inp.closest('.bn-endorser-note-wrap') : null;
+        var flashTimer = null;
+        var nextValue = function(insert){
+          var s = inp.selectionStart == null ? inp.value.length : inp.selectionStart;
+          var e2 = inp.selectionEnd == null ? inp.value.length : inp.selectionEnd;
+          return inp.value.slice(0, s) + insert + inp.value.slice(e2);
+        };
+        var wouldOverflow = function(value){
+          var st = endorserNoteStatus(normalizeEndorserNoteText(value));
+          return st.over;
+        };
+        var flash = function(){
+          if(!wrap) return;
+          wrap.classList.add('limit-flash');
+          clearTimeout(flashTimer);
+          flashTimer = setTimeout(function(){ wrap.classList.remove('limit-flash'); }, 450);
+        };
+        inp.addEventListener('beforeinput', function(e){
+          if(e.isComposing) return;
+          var type = e.inputType || '';
+          if(type.indexOf('delete') === 0 || type.indexOf('history') === 0) return;
+          var insert = (type === 'insertLineBreak' || type === 'insertParagraph') ? '\n' : (e.data || '');
+          if(!insert) return;
+          if(wouldOverflow(nextValue(insert))){ e.preventDefault(); flash(); }
+        });
+        inp.addEventListener('paste', function(e){
+          var text = ((e.clipboardData || window.clipboardData).getData('text') || '').replace(/\r\n?/g, '\n');
+          if(wouldOverflow(nextValue(text))){ e.preventDefault(); flash(); }
+        });
         /* 注音／拼音選字中不改值，選完（compositionend）才整理換行 */
         inp.addEventListener('input', function(e){ if(e.isComposing) return; commit(); });
         inp.addEventListener('compositionend', commit);
@@ -1873,7 +1927,9 @@
     function endorserWorkorderNoteNeedsApply(payload){
       var text = endorserWorkorderNoteText(payload);
       var n = endorserNoteState();
-      return !!text && (text !== (n.woNote || '') || !n.text);
+      /* 只比文字本身、不比換行位置：換行規則改了，同一份工單重送也不會蓋掉手動調整 */
+      var flat = function(s){ return String(s || '').replace(/\n/g, ''); };
+      return !!text && (flat(text) !== flat(n.woNote) || !n.text);
     }
     function buildWorkorderEndorserSlots(payload){
       var items = normalizeWorkorderAssets(payload.endorsers, 'endorser');
@@ -1892,6 +1948,9 @@
     window._bnBroadcastEndorser = function(){ broadcastAllEndorser(); };
     window._bnSetEndorserNote = function(text){
       endorserNoteState().text = normalizeEndorserNoteText(text);
+      /* 外部帶入（工單）：輸入框有焦點也要換成新內容 */
+      var noteInp = document.getElementById('bn-endorser-note-inp');
+      if(noteInp) noteInp.value = endorserNoteState().text;
       renderEndorserUI();
       broadcastEndorserNote();
       markStateDirty();
@@ -1929,8 +1988,8 @@
         '  <input type="file" id="bn-endorser-sign-inp" accept="image/*" style="display:none">',
         '  <div class="bn-prod-list" id="bn-endorser-list"></div>',
         '  <div class="bn-endorser-note-wrap">',
-        '    <label for="bn-endorser-note-inp"><span>代言人小字</span><span id="bn-endorser-note-count">兩排，每排 8 字</span></label>',
-        '    <textarea id="bn-endorser-note-inp" rows="2" placeholder="例：陳美鳳唯一推薦（Enter 換第二排）"></textarea>',
+        '    <label for="bn-endorser-note-inp"><span>代言人小字</span><span id="bn-endorser-note-count">最多 10 字（兩排）</span></label>',
+        '    <textarea id="bn-endorser-note-inp" rows="2" data-limit="10" placeholder="最多 10 字，每排 5 字（Enter 換第二排）"></textarea>',
         '    <div class="bn-endorser-note-color"><span>字色</span><button type="button" id="bn-endorser-note-auto" class="on" title="依小字底下的顏色自動用黑字或白字（同 MSBN）">自動黑白</button><input type="color" id="bn-endorser-note-color" value="#111827" title="手動指定字色"></div>',
         '  </div>',
         '  <div id="bn-endorser-hint" class="bn-endorser-hint">有代言人照或簽名檔時，商品圖只顯示目前最上層的 1 件（代言人照＋簽名檔取代 2 品）。只放在 ddcard、IG、HBN、LPBN、Coin、FB POST、SCBN、活動總覽、SBA、AMS。代言人照、簽名檔、小字各自拖曳；簽名檔和小字以代言人照為基準連動到其他版位，三者在每個版位都一樣靠近。</div>',
@@ -3562,6 +3621,8 @@
         if(endorserNoteText){
           endorserNoteState().text = endorserNoteText;
           endorserNoteState().woNote = endorserNoteText;
+          var woNoteInp = document.getElementById('bn-endorser-note-inp');
+          if(woNoteInp) woNoteInp.value = endorserNoteText;
         }
         if((endorserResult && (endorserResult.photo || endorserResult.sign)) || endorserNoteText){
           renderEndorserUI();

@@ -1640,14 +1640,25 @@ function bnFieldLimitByInputId(inputId){
 ════════════════════════════════════════ */
 var BN_LIMIT_FIELDS=[
   ['txt-brand','品牌名'],['txt-main','主標'],['txt-sub','副標'],
-  ['txt-date','日期'],['txt-icon','SearchICON文案'],['txt-ar','AR文案']
+  ['txt-date','日期'],['txt-icon','SearchICON文案'],['txt-ar','AR文案'],
+  /* 代言人／簽名檔小字：最多 10 字、兩排（欄位由 bn-editor-plugin.js 建立，算法沿用左側字數提示） */
+  ['bn-endorser-note-inp','代言人小字']
 ];
 function bnFieldAllowComma(inputId){ return inputId==='txt-date'; }
-function bnFieldUnits(inp){ return bnCalcTextUnits(inp.value, bnFieldAllowComma(inp.id)); }
+/* 代言人小字以實際存下來的內容為準（輸入框有焦點時可能還沒同步） */
+function bnFieldValue(inp){
+  if(inp.id==='bn-endorser-note-inp' && window._bnEndorserNote) return String(window._bnEndorserNote.text||'');
+  return inp.value;
+}
+function bnFieldUnits(inp){
+  if(inp.id==='bn-endorser-note-inp' && typeof window._bnEndorserNoteStatus==='function') return window._bnEndorserNoteStatus(bnFieldValue(inp)).units;
+  return bnCalcTextUnits(inp.value, bnFieldAllowComma(inp.id));
+}
 function bnIsFieldOver(inp){
   if(!inp) return false;
   var lim=parseFloat(inp.dataset.limit||'');
   if(!lim) return false;
+  if(inp.id==='bn-endorser-note-inp' && typeof window._bnEndorserNoteStatus==='function') return window._bnEndorserNoteStatus(bnFieldValue(inp)).over;
   return bnFieldUnits(inp) > lim + 0.001;
 }
 /* 標記某欄位「目前的超字是系統格式化造成的」→ 之後不再截斷它 */
@@ -1673,7 +1684,7 @@ function bnGetOverLimitFields(){
     if(!inp) return;
     var lim=parseFloat(inp.dataset.limit||'');
     if(lim && bnIsFieldOver(inp)){
-      out.push({ id:f[0], label:f[1], used:bnFieldUnits(inp), limit:lim, value:inp.value });
+      out.push({ id:f[0], label:f[1], used:bnFieldUnits(inp), limit:lim, value:bnFieldValue(inp) });
     }
   });
   return out;
