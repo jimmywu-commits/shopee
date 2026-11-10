@@ -1120,15 +1120,17 @@
           var subEl = document.querySelector('.副標');
           /* 副標案型七字內 編輯時不反向同步到其他版位的 .副標，由 bn-text-update 統一處理 */
         }
-        /* AR：六字內 預設連動副標文字；使用者在 AR 畫布內手動編輯過後（bnManualText），
-           不再被之後的副標變更覆蓋──編輯結果保持獨立，不反串連回副標欄位。 */
-        if(cls === '副標'){
-          var arEl = document.querySelector('.六字內');
-          if(arEl && !arEl.children.length && arEl.dataset.bnManualText !== '1'){
-            arEl.textContent = d[cls];
-          }
-        }
       });
+      /* AR：六字內 優先用側欄「AR文案」（BODA 工單 AR 列勾選的文案）；AR 文案沒填才連動副標。
+         使用者在 AR 畫布內手動編輯過後（bnManualText），不再被覆蓋──編輯結果保持獨立。
+         以前這裡只看副標，AR 文案欄的值根本沒有用到。 */
+      var arEl = document.querySelector('.六字內');
+      if(arEl && !arEl.children.length && arEl.dataset.bnManualText !== '1'){
+        var arText = typeof d['六字內'] === 'string' ? d['六字內'].trim() : '';
+        if(arText === '最多六個字內') arText = '';   /* 側欄預設提示字，不算有填 */
+        if(arText) arEl.textContent = arText;
+        else if(d['副標'] !== undefined) arEl.textContent = d['副標'];
+      }
       setTimeout(function(){ try{ refreshOverflowAll(); }catch(_){} }, 0);
       setTimeout(function(){ applyContentWarnings(window.__bnContentWarningMessages||[]); },0);
     }

@@ -806,6 +806,8 @@
       bgCheckers: typeof global.getBgCheckerState==='function' ? clone(global.getBgCheckerState()) : [],
       checked: checkedState,
       checkedByFile: checkedByFileState,
+      /* BODA：勾選是在哪個等級做的。等級不同時（例如匯入了別的等級的工單）不還原，改用新等級的預設。 */
+      checkedLevelId: typeof global._bnGetCurrentLevelId==='function' ? String(global._bnGetCurrentLevelId() || '') : '',
     };
   }
 
@@ -967,6 +969,11 @@
       }
       var restoredChecked = mergeFileMapIntoIdMap(state.checked || {}, state.checkedByFile || {}, layoutIndex, state.layoutManifest);
       global.saveChecked(restoredChecked);
+      /* BODA 的等級外掛（boda-level-plugin.js）接管勾選清單：要明確告訴它這是還原的勾選，
+         否則 renderChecks 會改回等級預設，重新整理後手動（或依工單）取消的版位又被勾回來。 */
+      if(typeof global._bnSetRestoredChecked==='function'){
+        global._bnSetRestoredChecked(restoredChecked, explicitUpload ? '' : String(state.checkedLevelId || ''));
+      }
       if(typeof global.renderChecks==='function') global.renderChecks();
       /* _bnExporting 期間不重建 iframe，避免下載時畫布被清空並閃回預設顏色 */
       if(typeof global.renderPreviews==='function' && !global._bnExporting) global.renderPreviews();
@@ -987,6 +994,11 @@
       else if(hasRealDataUrl(state.background.legacySrc) && typeof global.broadcastBg==='function') global.broadcastBg(state.background.legacySrc);
     }
     applyToolbarState(state.toolbar);
+    /* BODA 匯入新工單後，曝光資源的舊暫存會把側欄文字（主標、副標、AR…）蓋回舊值。
+       工單總覽的文字如果比這份暫存新，就在還原後套回去（只套較新的，不蓋使用者之後的手動修改）。 */
+    if(typeof global._bnApplyStoredWorkorderOverviewText==='function'){
+      global._bnApplyStoredWorkorderOverviewText(state.ts || 0);
+    }
     /* 暫存載入後再次刷新畫布背景，避免只更新左側預覽但 iframe 沒重繪。 */
     if(typeof global._bnRefreshCanvasBackgrounds==='function'){
       [0, 250, 700, 1500].forEach(function(delay){

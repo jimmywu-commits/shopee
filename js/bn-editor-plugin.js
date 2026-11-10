@@ -648,6 +648,8 @@
         return applyRatio(img.naturalWidth / img.naturalHeight);
       })['catch'](function(){ return false; });
     }
+    /* BODA 依工單總覽勾選版位後（整類勾選），要再依目前的 LOGO 自動挑方／橫／無 LOGO 版。 */
+    window._bnSyncLogoLayoutSelection = syncLogoLayoutSelection;
     window.addEventListener('message', function(ev){
       var d = ev.data || {};
       if(d.type === 'bn-searchicon-logo-layout-update' && d.layout){
