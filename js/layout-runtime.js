@@ -9,6 +9,38 @@
   var _bnRuntimeScriptNode=document.currentScript;
   var _bnRuntimeScriptBase=new URL('.',(_bnRuntimeScriptNode&&_bnRuntimeScriptNode.src)||new URL('../js/layout-runtime.js',document.baseURI).href).href;
   var _bnActiveCapture=null;
+  /* Only untouched, idle previews may be suspended. Editing gestures pin a
+     canvas for this session; an in-progress edit must never be discarded. */
+  var _bnPreviewTouched = false;
+  var _bnPreviewLastMessageAt = Date.now();
+  var _bnPreviewPendingImages = 0;
+  window._bnTrackPreviewImage = function(image){
+    _bnPreviewPendingImages++;
+    var finished=false;
+    function settle(){
+      if(finished) return; finished=true;
+      _bnPreviewPendingImages--; _bnPreviewLastMessageAt=Date.now();
+      image.removeEventListener('load',settle); image.removeEventListener('error',settle);
+    }
+    image.addEventListener('load',settle); image.addEventListener('error',settle);
+    return image;
+  };
+  ['pointerdown','mousedown','keydown','input','wheel','drop'].forEach(function(type){
+    document.addEventListener(type, function(event){
+      if(event.isTrusted === false) return;
+      _bnPreviewTouched = true;
+      try{ window.parent.postMessage({type:'bn-preview-pin',bnid:getCurrentBnId()}, '*'); }catch(_){}
+    }, {capture:true, passive:true});
+  });
+  window.addEventListener('message', function(event){
+    if(event.source === window.parent && event.data && event.data.type !== 'bn-layout-snapshot-request')
+      _bnPreviewLastMessageAt = Date.now();
+  });
+  function bnPreviewCanSuspend(){
+    if(_bnPreviewTouched || _bnActiveCapture || _bnPreviewPendingImages || Date.now()-_bnPreviewLastMessageAt < 500) return false;
+    if(document.activeElement && document.activeElement !== document.body && document.activeElement !== document.documentElement) return false;
+    return Array.prototype.every.call(document.images, function(image){ return image.complete; });
+  }
   var urlId = parseInt(new URLSearchParams(location.search).get('bnid')) || 0;
   var fname = decodeURIComponent(location.pathname.split('/').pop().replace(/\.html$/i, ''));
 
@@ -368,52 +400,20 @@
       try { arr.push(v.replace(/ /g, '%20')); } catch(_) {}
       arr.push(v.toLowerCase());
     }
-    function _bnTagBases(){
-      var base = fname || '';
-      var decodedPath = '';
-      try { decodedPath = decodeURIComponent(location.pathname.split('/').pop().replace(/\.html$/i, '')); } catch(_) {}
-      var zhBase = _bnDecodeSharpU(base);
-      var zhPath = _bnDecodeSharpU(decodedPath || base);
-      var norm = _bnNormalizeTagName(zhPath || zhBase || base);
-
-      // 已知的固定命名別名優先嘗試（img/tag 資料夾裡實際存在的檔名多是這種命名），
-      // 這樣通常第 1～2 次就能找到圖，不會浪費一堆請求去試不存在的檔名組合。
-      var aliases = [];
-      if(/coin/i.test(norm)) aliases.push('Coinpage','coinpage','Coin_pageBN_APP','Coin_pageBN');
-      if(/ddcard/i.test(norm)) aliases.push('ddcard','DDCard','DD Card');
-      if(/hbn/i.test(norm)) aliases.push('HBN','hbn');
-      if(/fbpost|facebook|^fb/i.test(norm)) aliases.push('fbpost','FB_POST','FB','facebook');
-      if(/ig|instagram/i.test(norm)) aliases.push('IG','ig','instagram');
-      if(/lpbnapp/i.test(norm)) aliases.push('LPBN_APP','lpbn_app');
-      if(/lpbnpc/i.test(norm)) aliases.push('LPBN_PC','lpbn_pc');
-      if(/scbn/i.test(norm)) aliases.push('SCBN_APP','SCBN','scbn');
-      if(/sbapc|sba_pc/i.test(norm)) aliases.push('SBA_PC','sba_pc');
-      else if(/sba/i.test(norm)) aliases.push('SBA_APP','SBA','sba');
-      if(/searchimage1/i.test(norm)) aliases.push('Search_Image1logo','Search_Image1','searchimage1');
-      if(/searchimage2/i.test(norm)) aliases.push('Search_Image2logo','Search_Image2','searchimage2');
-      if(/searchimage3/i.test(norm)) aliases.push('Search_Image3logo','Search_Image3','searchimage3');
-
-      var arr = [];
-      aliases.forEach(function(v){ _bnPushTagBase(arr, v); });
-      [base, decodedPath, zhBase, zhPath, norm].forEach(function(v){ _bnPushTagBase(arr, v); });
-      return _bnUnique(arr);
-    }
+    /* Only these bundled tag pairs exist; absent families intentionally make no request. */
     function _bnBuildTagCandidates(color){
-      var suffix = color === 'white' ? 'w' : 'r';
-      var candidates = [];
-      // 只嘗試實際會用到的副檔名（png 為主，jpg/webp 備用），避免每個檔名都要試 6 種副檔名
-      // 造成組合爆炸（過多無效請求容易被 GitHub Pages 判定為 429 太多請求）。
-      ['png','jpg','webp'].forEach(function(ext){
-        _bnTagBases().forEach(function(base){
-          candidates.push('img/tag/' + base + '_' + suffix + '.' + ext);
-          candidates.push('html/img/tag/' + base + '_' + suffix + '.' + ext);
-        });
-      });
-      // 安全上限：最多只嘗試前 40 個候選網址，找不到就放棄，不繼續往下試。
-      return _bnUnique(candidates).slice(0, 40);
+      var norm = _bnNormalizeTagName(fname), base = '';
+      if (/coin/.test(norm)) base = 'Coinpage';
+      else if (/ddcard/.test(norm)) base = 'ddcard';
+      else if (/fbpost|facebook|^fb/.test(norm)) base = 'fbpost';
+      else if (/^ig|instagram/.test(norm)) base = 'ig';
+      else if (/sbapc/.test(norm)) base = 'SBA_PC';
+      else if (/sba/.test(norm)) base = 'SBA_APP';
+      if (!base) return [];
+      return [new URL('../html/img/tag/' + base + '_' + (color === 'white' ? 'w' : 'r') + '.png?v=20261111-tags1', _bnRuntimeScriptBase).href];
     }
     function _bnTagCacheKey(color){
-      return 'bnTag:' + (fname || '') + ':' + color;
+      return 'bnTag:20261111-tags1:' + (fname || '') + ':' + color;
     }
     function _bnFindFirstImage(srcs, cb){
       var idx = 0;
@@ -485,7 +485,7 @@
           if(cached && cimg){
             cimg.onload = function(){ _bnRefreshTagVisibility(); };
             cimg.onerror = function(){ _bnTagSrcs[color] = ''; _bnRefreshTagVisibility(); };
-            cimg.src = cached + (cached.indexOf('?') === -1 ? '?v=' : '&v=') + Date.now();
+            cimg.src = cached;
           }
           _bnRefreshTagVisibility();
           return;
@@ -498,7 +498,7 @@
           if(src && img){
             img.onload = function(){ _bnRefreshTagVisibility(); };
             img.onerror = function(){ _bnTagSrcs[color] = ''; _bnRefreshTagVisibility(); };
-            img.src = src + (src.indexOf('?') === -1 ? '?v=' : '&v=') + Date.now();
+            img.src = src;
           }
           _bnRefreshTagVisibility();
         });
@@ -1600,8 +1600,25 @@
         return;
       }
       if(oldBox){
-        if(oldBox._bnRO){ try{ oldBox._bnRO.disconnect(); }catch(_){ } }
-        oldBox.remove();
+        /* ready／素材重播不是重新排品。同 id 沿用畫布當下的框與編輯結果，
+           只有圖片真的不同才就地換像素；完整還原會先明確移除舊商品。 */
+        var oldImg = oldBox.querySelector('img');
+        if(oldImg && oldImg.getAttribute('src') !== e.data.src){
+          oldBox._bnImageUpdateSeq = (oldBox._bnImageUpdateSeq || 0) + 1;
+          if(e.data.productRect){
+            oldBox.dataset.productRect = JSON.stringify(e.data.productRect);
+            oldBox.dataset.ratio = String(e.data.productRect.w / Math.max(1,e.data.productRect.h));
+          }else{
+            delete oldBox.dataset.productRect;
+            oldBox.dataset.ratio = String(e.data.ratio || 1);
+          }
+          oldBox.dataset.imageRatio = String(e.data.ratio || 1);
+          if(e.data.rotate !== undefined) oldBox.dataset.rotate = String(Number(e.data.rotate) || 0);
+          oldImg.onload = function(){ bnProductImgLoaded(oldImg); };
+          oldImg.src = e.data.src;
+        }
+        bnRelayoutProductBox(oldBox);
+        return;
       }
       pzone.style.background = 'transparent'; pzone.style.backgroundColor = 'transparent'; pzone.style.opacity = '1';
       if(_bnSearchIconProductTemplate){
@@ -1701,6 +1718,8 @@
       var pzoneU = getProductZone(); if(!pzoneU) return;
       var boxU = pzoneU.querySelector('.bn-prod-box[data-id="'+e.data.id+'"]');
       if(boxU){
+        var imageUpdateSeq = (boxU._bnImageUpdateSeq || 0) + 1;
+        boxU._bnImageUpdateSeq = imageUpdateSeq;
         if(e.data.rotate !== undefined && e.data.rotate !== null) boxU.dataset.rotate = String(Number(e.data.rotate) || 0);
         /* 先保存舊的商品範圍，用來換算目前的顯示倍率（覆寫前要先取） */
         var oldPRU = null;
@@ -1714,7 +1733,14 @@
         if(e.data.ratio !== undefined) boxU.dataset.imageRatio = String(e.data.ratio);
         var imgU = boxU.querySelector('img');
         if(imgU && e.data.src){
-          if(e.data.keepScale && imgU.naturalWidth && imgU.naturalHeight){
+          if(e.data.preserveFrame){
+            /* 換背景後重烘商品影子只會改圖片像素，不是一次新的商品編輯。
+               完整保留目前框的 left/top/width/height、手動排版與 CSS 預覽狀態；
+               圖片載入後只依新的 productRect 對齊框內商品本體。尤其不能沿用
+               keepScale 的旋轉外接框算法，否則每次換背景都會重新算尺寸與中心點。 */
+            imgU.onload = function(){ bnProductImgLoaded(imgU); };
+            imgU.src = e.data.src;
+          }else if(e.data.keepScale && imgU.naturalWidth && imgU.naturalHeight){
             /* 旋轉後換圖：新圖外接矩形變大，若框維持原尺寸、object-fit:contain 會把商品
                看起來縮小。這裡以「舊圖實際顯示倍率」等比換算新框，並以原中心點定位，
                商品視覺大小不變，只是框跟著外接矩形長大／縮小。 */
@@ -1735,7 +1761,9 @@
             var anchorYU = btU + bhU / 2;
             var newSrcU = e.data.src;
             var tmpU = new Image();
+            if(window._bnTrackPreviewImage) window._bnTrackPreviewImage(tmpU);
             tmpU.onload = function(){
+              if(boxU._bnImageUpdateSeq !== imageUpdateSeq) return;
               var prNew = e.data.productRect;
               var nw = prNew ? prNew.w * sU : tmpU.naturalWidth * sU;
               var nh = prNew ? prNew.h * sU : tmpU.naturalHeight * sU;
@@ -1743,6 +1771,7 @@
                  放在同一個畫面更新中。這樣不會先看到「舊圖＋新框」或「新圖＋
                  舊旋轉」的一幀，放開滑鼠時就不會閃跳。 */
               var applyRotatedFrame = function(){
+                if(boxU._bnImageUpdateSeq !== imageUpdateSeq) return;
                 if(nw > 0 && nh > 0){
                   var csU = window.getComputedStyle(pzoneU);
                   var zwU = parseFloat(csU.width) || pzoneU.offsetWidth || 1;
@@ -1777,6 +1806,7 @@
               else applyRotatedFrame();
             };
             tmpU.onerror = function(){
+              if(boxU._bnImageUpdateSeq !== imageUpdateSeq) return;
               imgU.onload = function(){ bnProductImgLoaded(imgU); };
               imgU.src = newSrcU;
               imgU.style.transform = '';
@@ -1837,6 +1867,18 @@
       if(slotKey !== '_bnCharacter' && slotKey !== '_bnCharacter2') return;
       czone.style.background = 'transparent'; czone.style.opacity = '1';
       if(!czone.style.position) czone.style.position = 'relative';
+      var currentChar = czone.querySelector('.bn-char-box[data-slot="'+slotKey+'"]');
+      if(currentChar && currentChar.dataset.id === String(e.data.id)){
+        /* 更換人物／重播同一人物只換圖片，不重建框，也不套回較早的快照。 */
+        currentChar.dataset.ratio = String(e.data.ratio || 1);
+        currentChar.dataset.aboveMain = e.data.aboveMain !== false ? '1' : '0';
+        var currentCharImg = currentChar.querySelector('img');
+        if(currentCharImg && currentCharImg.getAttribute('src') !== e.data.src) currentCharImg.src = e.data.src;
+        syncCharGradientOverlay(currentChar);
+        applyCharacterZ();
+        setTimeout(function(){ postCharacterLayout(currentChar,{snapshotOnly:true}); },0);
+        return;
+      }
       var cbox = createCharBox(slotKey, e.data, czone);
       var appliedSaved = false;
       if(e.data.layoutById){
@@ -1939,6 +1981,32 @@
       ezone.style.background = 'transparent'; ezone.style.opacity = '1';
       ezone.style.overflow = 'visible';
       if(!ezone.style.position) ezone.style.position = 'relative';
+      var currentEndorser = ezone.querySelector('.bn-endorser-box[data-slot="'+eslot+'"]');
+      if(currentEndorser && currentEndorser.dataset.id === String(e.data.id)){
+        /* 同一代言人換圖／重播狀態只更新內容；不重建框、不套回舊快照，
+           也不重新安排照片旁已擺好的簽名檔與小字。 */
+        /* 圖片的天然比例與已編輯框的比例分開：arrangeEndorser 之後仍會
+           使用 ratio 排版，不能讓晚到的小字／字型事件把框改成新圖比例。 */
+        var currentEndorserRect = endorserBoxRect(currentEndorser);
+        if(currentEndorserRect.width > 0 && currentEndorserRect.height > 0){
+          currentEndorser.dataset.ratio = String(currentEndorserRect.width / currentEndorserRect.height);
+        }
+        currentEndorser.dataset.imageRatio = String(e.data.ratio || 1);
+        currentEndorser.dataset.rotate = String(Number(e.data.rotate) || 0);
+        currentEndorser.dataset.aboveMain = e.data.aboveMain !== false ? '1' : '0';
+        var currentEndorserImg = currentEndorser.querySelector('img');
+        if(currentEndorserImg && currentEndorserImg.getAttribute('src') !== e.data.src){
+          /* 保留 DOM 後，先前旋轉／裁切的預載也可能晚到；換圖作廢它們。 */
+          currentEndorser._bnImageUpdateSeq = (currentEndorser._bnImageUpdateSeq || 0) + 1;
+          currentEndorserImg.style.transform = '';
+          currentEndorserImg.src = e.data.src;
+        }
+        syncCharGradientOverlay(currentEndorser);
+        applyCharacterZ();
+        refreshEndorserNoteColorSoon();
+        setTimeout(function(){ postCharacterLayout(currentEndorser,{snapshotOnly:true}); }, 0);
+        return;
+      }
       var ebox = createEndorserBox(eslot, e.data, ezone);
       var eApplied = false;
       if(e.data.layoutById){
@@ -2191,7 +2259,9 @@
           window.parent && window.parent.postMessage({
             type:'bn-layout-snapshot-complete',
             requestId:e.data.requestId,
-            bnid:getCurrentBnId()
+            bnid:getCurrentBnId(),
+            suspendVersion:1,
+            safeToSuspend:bnPreviewCanSuspend()
           }, '*');
         }catch(_){ }
       }, 0);
@@ -2644,6 +2714,13 @@
       var top = (br.top - zr.top) / scaleY;
       var width = br.width / scaleX;
       var height = br.height / scaleY;
+      /* 人物的可見度規則或跨頁隱藏會讓 DOM rect 變成零；仍以框的設計
+         座標存檔，避免零尺寸快照毀掉商品，或透過鎖鏈傳給其他版位。 */
+      if(!(br.width > 0 && br.height > 0 && zr.width > 0 && zr.height > 0)){
+        left = parseFloat(box.style.left); top = parseFloat(box.style.top);
+        width = parseFloat(box.style.width); height = parseFloat(box.style.height);
+      }
+      if(!isFinite(left) || !isFinite(top) || !(width > 0) || !(height > 0)) return;
       var data = {
         type:'bn-product-layout-update',
         bnid:getCurrentBnId(),
@@ -2730,7 +2807,7 @@
        載入順序改回滿版。手動調過／已有儲存版面的商品則照原位置保留。 */
     if(_bnSearchIconProductTemplate && n === 1 && !allBoxes[0].dataset.savedLayout){
       if(allBoxes[0].dataset.manualLayout !== '1') applySearchIconProductDefault(allBoxes[0], pzone);
-      setTimeout(postAllProductLayouts, 0);
+      setTimeout(function(){ postAllProductLayouts({snapshotOnly:true}); }, 0);
       return;
     }
 
@@ -2829,6 +2906,12 @@
     }
 
     positions.forEach(function(p, i){
+      /* 已編輯框使用目前設計座標；新增／重播其他物件不可重新 clamp、
+         改高寬或覆寫 display/z-index。savedLayout 僅在首次還原時套用。 */
+      if(p.box.dataset.manualLayout === '1' && !p.box.dataset.savedLayout){
+        var currentW = parseFloat(p.box.style.width), currentH = parseFloat(p.box.style.height);
+        if(currentW > 0 && currentH > 0){ bnRelayoutProductBox(p.box); return; }
+      }
       var saved = null;
       if(p.box.dataset.savedLayout){
         try{ saved = JSON.parse(p.box.dataset.savedLayout); }catch(_){ saved = null; }
@@ -2886,7 +2969,7 @@
       ].join('');
       bnRelayoutProductBox(p.box);
     });
-    setTimeout(postAllProductLayouts, 0);
+    setTimeout(function(){ postAllProductLayouts({snapshotOnly:true}); }, 0);
   }
 
   function getProductZone(){
@@ -2953,12 +3036,20 @@
     if(on){
       zone.style.background = 'transparent';
       zone.style.opacity = '1';
-      zone.style.border = '2px solid rgba(235,104,119,0.4)';
-      zone.style.boxSizing = 'border-box';
+      /* outline 不參與盒模型；用 border 會讓 SLAB／一般背景互切時改變商品區
+         的內容尺寸與絕對定位原點，既有商品即使沒重排也會視覺位移。 */
+      zone.style.outline = '2px solid rgba(235,104,119,0.4)';
+      zone.style.outlineOffset = '-2px';
+      /* 清掉舊版 runtime 曾留下的 inline border。 */
+      zone.style.border = '';
+      zone.style.boxSizing = '';
       zone.dataset.bnSlabApplied = '1';
     } else if(zone.dataset.bnSlabApplied){
       zone.style.background = '';
       zone.style.opacity = '';
+      zone.style.outline = '';
+      zone.style.outlineOffset = '';
+      /* 向下相容：若狀態是在舊版 runtime 套上的，移除其盒模型樣式。 */
       zone.style.border = '';
       zone.style.boxSizing = '';
       zone.dataset.bnSlabApplied = '';
@@ -3091,6 +3182,7 @@
       return;
     }
     var img = new Image();
+    if(window._bnTrackPreviewImage) window._bnTrackPreviewImage(img);
     img.onload = function(){
       _slabNaturalCache = {src:src, w:img.naturalWidth, h:img.naturalHeight};
       place(img.naturalWidth, img.naturalHeight);
@@ -3491,6 +3583,11 @@
       var css=window.getComputedStyle(zone),zw=parseFloat(css.width)||zone.offsetWidth||zr.width||1,zh=parseFloat(css.height)||zone.offsetHeight||zr.height||1;
       var sx=zr.width/zw||1,sy=zr.height/zh||1,area=getProductSyncArea(zone);
       var left=(br.left-zr.left)/sx,top=(br.top-zr.top)/sy,width=br.width/sx,height=br.height/sy;
+      if(!(br.width > 0 && br.height > 0 && zr.width > 0 && zr.height > 0)){
+        left=parseFloat(box.style.left);top=parseFloat(box.style.top);
+        width=parseFloat(box.style.width);height=parseFloat(box.style.height);
+      }
+      if(!isFinite(left)||!isFinite(top)||!(width>0)||!(height>0))return;
       var data = {
         type:'bn-character-layout-update',
         bnid:getCurrentBnId(),
@@ -3507,6 +3604,8 @@
          photoRel 是舊版欄位，保留給舊暫存相容。 */
       if(box.classList.contains('bn-endorser-box')){
         var eg = endorserGeom(zone), ebr = endorserBoxRect(box);
+        /* 換圖後框可刻意與天然圖片比例不同；回存／跨版位還原也要沿用框比例。 */
+        if(ebr.width > 0 && ebr.height > 0) data.layout.frameRatio = ebr.width / ebr.height;
         data.layout.src = box._bnLayoutSrc || getCurrentBnId();
         if(box.dataset.endorser === 'photo'){
           data.layout.efr = endorserFrameFromRect(ebr, eg);
@@ -3837,6 +3936,9 @@
   }
   function applyEndorserBoxLayout(box, zone, layout){
     if(!layout) return false;
+    var frameRatio = Number(layout.frameRatio);
+    if(!(frameRatio > 0) || !isFinite(frameRatio)) frameRatio = Number(layout.width) / Number(layout.height);
+    if(frameRatio > 0 && isFinite(frameRatio)) box.dataset.ratio = String(frameRatio);
     var g = endorserGeom(zone), info = endorserSrcInfo(layout);
     if(box.dataset.endorser === 'photo'){
       var f = layout.efr && layout.efr.v ? JSON.parse(JSON.stringify(layout.efr)) : null;
@@ -3932,6 +4034,7 @@
   function createEndorserBox(slot, data, zone){
     var box = createCharBox(slot, data, zone);
     box.classList.add('bn-endorser-box');
+    box.dataset.imageRatio = String(data.ratio || 1);
     box.dataset.endorser = slot === '_bnEndorserSign' ? 'sign' : 'photo';
     box.dataset.rotate = String(Number(data.rotate) || 0);
     if(slot === '_bnEndorserSign') box.dataset.noGradient = '1';
@@ -4102,12 +4205,18 @@
 
   function updateEndorserImage(box, data){
     var img = box.querySelector('img'); if(!img) return;
+    var imageUpdateSeq = box._bnImageUpdateSeq = (box._bnImageUpdateSeq || 0) + 1;
+    function isCurrentImageUpdate(){
+      return box._bnImageUpdateSeq === imageUpdateSeq && getEndorserBox(box.dataset.slot) === box;
+    }
     if(data.rotate !== undefined && data.rotate !== null) box.dataset.rotate = String(Number(data.rotate) || 0);
     if(!data.src){ img.style.transform = ''; return; }
     var oldW = img.naturalWidth, oldH = img.naturalHeight;
     var r = endorserBoxRect(box);
     var tmp = new Image();
+    if(window._bnTrackPreviewImage) window._bnTrackPreviewImage(tmp);
     function apply(){
+      if(!isCurrentImageUpdate()) return;
       var nw = tmp.naturalWidth, nh = tmp.naturalHeight;
       if(nw && nh){
         if(data.keepScale && oldW && oldH && r.width && r.height){
@@ -4122,8 +4231,10 @@
           setEndorserBoxRect(box, r.left, r.top + r.height - hh, r.width, hh);
         }
         box.dataset.ratio = String(nw / nh);
+        box.dataset.imageRatio = String(nw / nh);
       } else if(data.ratio){
         box.dataset.ratio = String(data.ratio);
+        box.dataset.imageRatio = String(data.ratio);
       }
       img.src = data.src;
       img.style.transform = '';
@@ -4142,7 +4253,10 @@
     tmp.onload = function(){
       if(window.requestAnimationFrame) window.requestAnimationFrame(apply); else apply();
     };
-    tmp.onerror = function(){ img.src = data.src; img.style.transform = ''; };
+    tmp.onerror = function(){
+      if(!isCurrentImageUpdate()) return;
+      img.src = data.src; img.style.transform = '';
+    };
     tmp.src = data.src;
   }
 

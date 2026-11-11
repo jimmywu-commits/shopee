@@ -224,7 +224,10 @@
        也保護尚未更新 runtime 的 iframe：它回傳的舊格式不能再觸發跨版位連動。 */
     var _layoutSnapshotRequests = {};
     function isLayoutSnapshotUpdate(data){
-      return !!(data && data.snapshotOnly) || Object.keys(_layoutSnapshotRequests).length > 0;
+      return !!(data && data.snapshotOnly) || Object.keys(_layoutSnapshotRequests).some(function(key){
+        var request=_layoutSnapshotRequests[key];
+        return request === true || !!(data && request && request.frameId === String(data.bnid));
+      });
     }
     /* 兩種下載共用：輸出前向每個 iframe 取回最後一刻的商品、人物與
        SearchICON_LOGO 位置。complete 回覆逾時時，仍保留既有即時資料繼續。 */
@@ -260,6 +263,38 @@
       });
     }
     function markStateDirty(){ try{ document.dispatchEvent(new CustomEvent('bn-state-dirty')); }catch(_){ } }
+
+    /* Eviction needs a positive reply from this exact document. A timeout,
+       old runtime or another frame is never a safe acknowledgement. */
+    window._bnRequestPreviewSnapshot = function(frame, timeoutMs){
+      return new Promise(function(resolve){
+        var id = getIframeLayoutId(frame), source = frame && frame.contentWindow;
+        var sourceUrl=frame && frame.getAttribute('src'), generation=frame && frame._bnPreviewGeneration;
+        if(!id || !source){ resolve({complete:false, reason:'missing-frame'}); return; }
+        var requestId = 'preview_'+Date.now()+'_'+Math.random().toString(36).slice(2);
+        var finished = false, timer;
+        function finish(result){
+          if(finished) return;
+          finished = true; clearTimeout(timer);
+          window.removeEventListener('message', onComplete);
+          delete _layoutSnapshotRequests[requestId];
+          resolve(result);
+        }
+        function onComplete(event){
+          var data=event.data||{};
+          if(event.source !== source || data.type !== 'bn-layout-snapshot-complete' ||
+             data.requestId !== requestId || String(data.bnid) !== id) return;
+          if(!frame.isConnected || frame.contentWindow !== source || frame.getAttribute('src') !== sourceUrl ||
+             frame._bnPreviewGeneration !== generation){ finish({complete:false,reason:'document-changed'}); return; }
+          finish({complete:true, safeToSuspend:data.suspendVersion === 1 && data.safeToSuspend === true});
+        }
+        _layoutSnapshotRequests[requestId] = {frameId:id};
+        window.addEventListener('message', onComplete);
+        timer=setTimeout(function(){finish({complete:false,reason:'timeout'});}, Math.max(100,Number(timeoutMs)||1200));
+        try{source.postMessage({type:'bn-layout-snapshot-request',requestId:requestId},'*');}
+        catch(_){finish({complete:false,reason:'post-failed'});}
+      });
+    };
 
     /* 商品版位連動：所有已啟用版位共用商品框的百分比座標；單一版位解鎖後，
        該版位仍保留自己的 layouts[id]，不再接收其他版位的更新。 */
@@ -1314,7 +1349,8 @@
               ratio: trimmed.ratio || 1,
               name: file.name || charSlotLabel(slotKey),
               aboveMain: keepAboveMain, /* 換圖不應該連上下層設定都被重置 */
-              layouts: {} /* 換圖重設手動位置，改回預設：商品範圍右側 1/3 寬、高度 auto */
+              /* 換人物沿用各版位的框；圖片使用 contain，維持比例且不影響商品。 */
+              layouts: prevSlot && prevSlot.layouts ? prevSlot.layouts : {}
             };
             renderCharRow(slotKey);
             broadcastCharacter(slotKey);
@@ -1424,7 +1460,8 @@
           src: trimmed.src, baseSrc: trimmed.src, ratio: trimmed.ratio || 1,
           name: name || ENDORSER_LABEL[slotKey],
           aboveMain: prev ? prev.aboveMain === true : false, /* 預設在商品後面（同 MSBN） */
-          layouts: {},  /* 換圖回到預設位置 */
+          /* 換圖只替換素材；各版位已調整的框與位置繼續沿用。 */
+          layouts: prev && prev.layouts ? prev.layouts : {},
           meta: {rotate:0, baseSrc:trimmed.src}
         };
       });
@@ -1936,10 +1973,12 @@
     function buildWorkorderEndorserSlots(payload){
       var items = normalizeWorkorderAssets(payload.endorsers, 'endorser');
       return classifyEndorserItems(items).then(function(roles){
-        return Promise.all([
-          roles.photo ? makeEndorserSlotFromSrc('_bnEndorserPhoto', roles.photo.src, roles.photo.name, null) : null,
-          roles.sign ? makeEndorserSlotFromSrc('_bnEndorserSign', roles.sign.src, roles.sign.name, null) : null
-        ]).then(function(slots){
+        function slot(key, item) {
+          if (!item) return Promise.resolve(null);
+          if (workorderItemMatches(window[key], item)) return Promise.resolve(window[key]);
+          return makeEndorserSlotFromSrc(key, item.src, item.name, null).then(function(value){ return rememberWorkorderSource(value, item); });
+        }
+        return Promise.all([slot('_bnEndorserPhoto', roles.photo), slot('_bnEndorserSign', roles.sign)]).then(function(slots){
           return {photo:slots[0], sign:slots[1], method:roles.method, sig:endorserItemsSignature(items)};
         });
       });
@@ -3464,6 +3503,7 @@
        沒有收到這則 postMessage 時，Shopee 仍完全照原本的獨立工具運作。 */
     var _bnWorkorderAssetSignature = '';
     var _bnWorkorderAssetApplySeq = 0;
+    var _bnWorkorderAssetPending = null;
     /* BODA 每批素材會重送好幾次，代言人原圖動輒數 MB；同一張圖的指紋只算一次。 */
     var _bnWorkorderHashCache = new Map();
     function workorderAssetHash(value){
@@ -3485,8 +3525,33 @@
     }
     function workorderAssetKey(item){
       item = item || {};
-      var src = String(item.src || '');
-      return String(item.name || '') + '|' + src.length + '|' + workorderAssetHash(src);
+      var sourceId = item.sourceId || item.assetId;
+      var revision = item.sourceRevision !== undefined ? item.sourceRevision : item.revision;
+      if (sourceId && revision !== undefined) return 'source:' + sourceId + '@' + revision;
+      var src = String(item.originalSrc || item.sourceSrc || item.baseSrc || item.src || '');
+      return String(sourceId || item.name || '') + '|' + src.length + '|' + workorderAssetHash(src);
+    }
+    function rememberWorkorderSource(target, item){
+      target.meta = target.meta || {};
+      target.meta.workorderSourceKey = workorderAssetKey(item);
+      return target;
+    }
+    function workorderItemMatches(actual, wanted){
+      if (!actual || !wanted) return false;
+      var stored = actual.meta && actual.meta.workorderSourceKey;
+      if (stored) return stored === workorderAssetKey(wanted);
+      return String(actual.src || '') === String(wanted.src || '') ||
+        workorderAssetKey(actual) === workorderAssetKey(wanted);
+    }
+    function findWorkorderItem(current, wanted){
+      return (current || []).find(function(item){ return workorderItemMatches(item, wanted); });
+    }
+    function adoptLegacyWorkorderSources(current, expected){
+      if (!current || current.length !== expected.length) return;
+      current.forEach(function(item, index){
+        if (item && String(item.name || '') === String(expected[index].name || ''))
+          rememberWorkorderSource(item, expected[index]);
+      });
     }
     function isWorkorderLogoPlaceholder(item){
       var name = String(item && (item.name || item.fileName || item.filename || '') || '')
@@ -3519,7 +3584,7 @@
       for(var i=0;i<expected.length;i++){
         var actual = current[i] || {};
         var wanted = expected[i] || {};
-        if(String(actual.src || '') !== String(wanted.src || '')) return false;
+        if(!workorderItemMatches(actual, wanted)) return false;
       }
       return true;
     }
@@ -3532,8 +3597,8 @@
       payload = payload || {};
       var logos = normalizeWorkorderAssets(payload.logos, 'logo');
       var products = normalizeWorkorderAssets(payload.products, 'product');
-      var replaceLogos = payload.replaceLogos === true;
-      var replaceProducts = payload.replaceProducts === true;
+      var replaceLogos = payload.replaceLogos === true && !workorderAssetStateMatches(window._bnLogos, logos, 'logo');
+      var replaceProducts = payload.replaceProducts === true && !workorderAssetStateMatches(window._bnProducts, products, 'product');
       /* 代言人照＋簽名檔／代言人小字：只有工單內容變了、或目前沒有時才套用（不覆蓋手動調整） */
       var replaceEndorser = endorserWorkorderNeedsApply(payload);
       var endorserNoteText = endorserWorkorderNoteNeedsApply(payload) ? endorserWorkorderNoteText(payload) : '';
@@ -3541,6 +3606,8 @@
 
       var seq = ++_bnWorkorderAssetApplySeq;
       var productJobs = replaceProducts ? Promise.all(products.map(function(item){
+        var existing = findWorkorderItem(window._bnProducts, item);
+        if (existing) return Promise.resolve({item:item, existing:existing});
         return workorderAssetRatio(item.src).then(function(ratio){
           /* 工單匯入的商品也自動合成貼地陰影（失敗就用原圖） */
           if(!window._bnGroundShadow) return { item:item, ratio:ratio };
@@ -3553,6 +3620,8 @@
 
       /* LOGO 比例要量實際圖片：BODA 傳來的素材沒有 ratio，若直接用 1 會永遠判成方版。 */
       var logoJobs = replaceLogos ? Promise.all(logos.map(function(item){
+        var existing = findWorkorderItem(window._bnLogos, item);
+        if (existing) return Promise.resolve(existing.ratio);
         return item.ratio ? Promise.resolve(item.ratio) : workorderAssetRatio(item.src);
       })) : Promise.resolve([]);
 
@@ -3568,17 +3637,20 @@
         if(seq !== _bnWorkorderAssetApplySeq) return false;
 
         if(replaceLogos){
+          var previousLogos = window._bnLogos || [];
           window._bnLogos = logos.map(function(item, index){
-            return {
+            var existing = findWorkorderItem(previousLogos, item);
+            if (existing) return rememberWorkorderSource(existing, item);
+            return rememberWorkorderSource({
               id: 'wo_logo_' + Date.now() + '_' + index,
               src: item.src,
               baseSrc: item.baseSrc || item.src,
               name: item.name || '',
               ratio: logoRatios[index] || 1
-            };
+            }, item);
           });
           window._bnLogoDataUrl = window._bnLogos.length ? window._bnLogos[0].src : null;
-          window._bnLogoLayouts = {};
+          window._bnLogoLayouts = window._bnLogoLayouts || {};
           broadcast({type:'bn-logos', logos:window._bnLogos, logoLayoutById:window._bnLogoLayouts});
           renderLogoList();
           if(typeof syncLogoLayoutSelection === 'function') syncLogoLayoutSelection();
@@ -3586,9 +3658,11 @@
 
         if(replaceProducts){
           var oldIds = (window._bnProducts || []).map(function(product){ return product && product.id; }).filter(Boolean);
-          oldIds.forEach(function(id){ broadcast({type:'bn-product-remove', id:id}); });
+          var retainedIds = productResults.filter(function(result){ return result.existing; }).map(function(result){ return result.existing.id; });
+          oldIds.filter(function(id){ return retainedIds.indexOf(id) < 0; }).forEach(function(id){ broadcast({type:'bn-product-remove', id:id}); });
           window._bnProducts = productResults.map(function(result, index){
             var item = result.item;
+            if (result.existing) return rememberWorkorderSource(result.existing, item);
             var prod = {
               id: 'wo_product_' + Date.now() + '_' + index,
               src: result.src || item.src,
@@ -3600,9 +3674,10 @@
               zOrder: defaultProductZOrder(index, products.length)
             };
             if(result.meta) prod.meta = result.meta;
-            return prod;
+            return rememberWorkorderSource(prod, item);
           });
           window._bnProducts.forEach(function(product, index){
+            if (retainedIds.indexOf(product.id) >= 0) return;
             broadcast({
               type:'bn-product-add', id:product.id, src:product.src, rotate:(product.meta&&product.meta.rotate)||0,
               ratio:product.ratio, name:product.name, index:index,
@@ -3620,7 +3695,8 @@
           window._bnEndorserClassifyMethod = endorserResult.method;
           endorserNoteState().woSig = endorserResult.sig;
           /* 工單帶入新的代言人圖：小字也回到預設擺法（照片右、小字左上、簽名左下） */
-          endorserNoteState().layouts = {};
+          /* A changed companion must not reset the retained photo/sign's edited geometry. */
+          if (!endorserNoteState().layouts) endorserNoteState().layouts = {};
         }
         if(endorserNoteText){
           endorserNoteState().text = endorserNoteText;
@@ -4037,8 +4113,11 @@
         return;
       }
 
+      /* Pending previews are activated one at a time by next(), never all at once. */
       /* 多圖恢復 ZIP：1 張直接 PNG；2 張以上先逐張截圖，最後打包 ZIP。 */
-      var iframes=Array.from(document.querySelectorAll('.preview-block iframe'));
+      var iframes=Array.from(document.querySelectorAll('.preview-block iframe')).sort(function(a,b){
+        return Number(a.closest('.preview-block').style.order || 0) - Number(b.closest('.preview-block').style.order || 0);
+      });
       if(!iframes.length){setProgress('沒有版位可下載');_bnSettleCollect(new Error('曝光資源沒有勾選任何版位'));return;}
       window._bnDownloadBusy=true;
 
@@ -4081,6 +4160,7 @@
       var failedNames=[];
       var failedReasons=[];
       var exportFinished=false;
+      var exportReleases = [];
       window._bnLastDownloadReport={started:Date.now(),finished:null,layouts:[]};
       var exportReport=window._bnLastDownloadReport;
       var files=[];
@@ -4471,7 +4551,9 @@
         }catch(err){console.warn('[bn-export] cleanup',err);}
         finally{
           window._bnBgColorExportGuardUntil=Date.now();
+          exportReleases.forEach(function(release){ release(); }); exportReleases = [];
           window._bnExporting=false;window._bnSuppressProductLayoutWrite=false;window._bnDownloadBusy=false;
+          if (typeof window._bnResumePreviewObservation === 'function') window._bnResumePreviewObservation();
           delete window._bnFrozenColorData;
           clearTimeout(_exportUnlockTimer);
           if(btn)btn.disabled=false;
@@ -4593,6 +4675,20 @@
         }
 
         var iframe=iframes[idx];
+        if (!iframe._bnExportPrepared && typeof window._bnPreparePreviewForExport === 'function') {
+          window._bnPreparePreviewForExport(iframe).then(function(release){
+            iframe._bnExportPrepared = true;
+            iframe._bnReleaseAfterCapture = release;
+            exportReleases.push(release);
+            next(idx);
+          }, function(error){
+            fail++; done++;
+            failedNames.push((iframe.closest('.preview-block').querySelector('.pname') || {}).textContent || 'layout');
+            failedReasons.push(String(error && error.message || '版位載入失敗'));
+            next(idx + 1);
+          });
+          return;
+        }
         var blockEl=iframe.closest('.preview-block');
         var baseName=safeName(blockEl ? ((blockEl.querySelector('.pname')||{}).textContent||'layout') : 'layout');
 
@@ -4604,6 +4700,12 @@
           captureOne(iframe, baseName+'.png', function(res){
             var dataUrl = res && res.dataUrl || null;
             done++;
+            if (iframe._bnReleaseAfterCapture) {
+              var releasePreview = iframe._bnReleaseAfterCapture;
+              delete iframe._bnReleaseAfterCapture; delete iframe._bnExportPrepared;
+              releasePreview();
+              exportReleases = exportReleases.filter(function(release){ return release !== releasePreview; });
+            }
 
             function afterCompress(outUrl, outName){
               if(outUrl){
@@ -4695,7 +4797,7 @@
           broadcastTo(id,{type:'bn-logo',dataUrl:window._bnLogoDataUrl});
         }
         /* 先送 product-add，再送 zorder */
-        window._bnProducts.forEach(function(p,idx){broadcastTo(id,{type:'bn-product-add',id:p.id,src:p.src,ratio:p.ratio,name:p.name,index:idx,sizeScale:p.sizeScale,position:p.position||0,zOrder:p.zOrder||0,layoutById:p.layouts||null,layout:p.layout||null,rotate:(p.meta&&p.meta.rotate)||0,productRect:p.meta&&p.meta.productRect});});
+        window._bnProducts.forEach(function(p,idx){broadcastTo(id,{type:'bn-product-add',preserveExistingLayout:true,id:p.id,src:p.src,ratio:p.ratio,name:p.name,index:idx,sizeScale:p.sizeScale,position:p.position||0,zOrder:p.zOrder||0,layoutById:p.layouts||null,layout:p.layout||null,rotate:(p.meta&&p.meta.rotate)||0,productRect:p.meta&&p.meta.productRect});});
         setTimeout(function(){
           var order=window._bnProducts.slice().sort(function(a,b){return (a.zOrder||0)-(b.zOrder||0);}).map(function(p){return p.id;});
           broadcastTo(id,{type:'bn-product-zorder',order:order});
@@ -4751,10 +4853,15 @@
     window._bnSyncLayoutSnapshot = syncLayoutSnapshot;
     window._bnApplyWorkorderAssets = function(payload){
       var signature = workorderAssetSignature(payload);
+      if (_bnWorkorderAssetPending && _bnWorkorderAssetPending.signature === signature) return _bnWorkorderAssetPending.promise;
       /* 不能只看上一筆訊息的簽章：使用者可能先清空 LOGO／商品圖，
          再匯入同一份試算表與圖片。此時訊息內容相同，但畫面狀態已不同，
          必須重新建回素材；只有目前狀態真的一致時才略過。 */
       var sameSignature = signature === _bnWorkorderAssetSignature;
+      if (sameSignature) {
+        adoptLegacyWorkorderSources(window._bnLogos, normalizeWorkorderAssets(payload && payload.logos, 'logo'));
+        adoptLegacyWorkorderSources(window._bnProducts, normalizeWorkorderAssets(payload && payload.products, 'product'));
+      }
       var logoStateSame = !payload || payload.replaceLogos !== true ||
         workorderAssetStateMatches(window._bnLogos, payload.logos, 'logo');
       var productStateSame = !payload || payload.replaceProducts !== true ||
@@ -4762,7 +4869,16 @@
       var endorserStateSame = !endorserWorkorderNeedsApply(payload) && !endorserWorkorderNoteNeedsApply(payload);
       if(sameSignature && logoStateSame && productStateSame && endorserStateSame) return Promise.resolve(false);
       _bnWorkorderAssetSignature = signature;
-      return applyBodaWorkorderAssets(payload);
+      var pending = {signature:signature, promise:null};
+      pending.promise = applyBodaWorkorderAssets(payload).then(function(value){
+        if (_bnWorkorderAssetPending === pending) _bnWorkorderAssetPending = null;
+        return value;
+      }, function(error){
+        if (_bnWorkorderAssetPending === pending) _bnWorkorderAssetPending = null;
+        throw error;
+      });
+      _bnWorkorderAssetPending = pending;
+      return pending.promise;
     };
     window._bnRebroadcastProducts = function(){
       var ids = (window._bnProducts||[]).map(function(p){ return p.id; });

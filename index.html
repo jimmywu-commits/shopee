@@ -1046,7 +1046,7 @@ function scanLayouts() {
   var s = document.createElement('script');
   s.id  = 'bn-index-script';
   /* index.js 最後一行呼叫 window._bn_scan_cb(BN_LAYOUTS) */
-  s.src = 'js/index.js?t=' + Date.now();
+  s.src = 'js/index.js?v=20261111-image-state1';
   s.onerror = function() {
     status.textContent = '❌ 找不到 js/index.js';
     status.style.color = 'var(--red)';
@@ -1056,98 +1056,67 @@ function scanLayouts() {
 }
 
 /* 靜默探測排版尺寸：載入同名 CSS，從 <style> 解析 :root --canvas-w/h */
+var BN_RESOURCE_VERSION = '20261111-image-state1';
+var bnSizeProbePending = 0;
+var bnSizeProbeJobs = {};
+var bnSizeRefreshTimer = null;
+function bnQueueSizeRefresh() {
+  if (bnSizeProbePending || bnSizeRefreshTimer !== null) return;
+  bnSizeRefreshTimer = setTimeout(function () {
+    bnSizeRefreshTimer = null;
+    renderAdmin(); renderChecks();
+    if (document.getElementById('frontend').classList.contains('active')) renderPreviews();
+  }, 0);
+}
 function probSize(id) {
-  var layouts = loadLayouts();
-  var l = layouts.find(function(x){ return x.id === id; });
-  if (!l || (l.w && l.h)) return;
-  if (document.getElementById('probcss-' + id)) return;
-
-  /* 排版檔名去掉 .html，依序嘗試 .config.css → .css */
+  if (bnSizeProbeJobs[id]) return bnSizeProbeJobs[id];
+  var l = loadLayouts().find(function(x){ return x.id === id; });
+  if (!l || (l.w && l.h)) return Promise.resolve();
+  bnSizeProbePending++;
   var baseName = 'html/' + l.file.replace(/\.html$/i, '');
   var cssFiles = [baseName + '.config.css', baseName + '.css'];
-
-  function tryNextCss(idx) {
-    if (idx >= cssFiles.length) {
-      /* 全部 fetch 失敗 → 改用 <link> 注入讀 computed style */
-      probSizeViaLink(id, cssFiles[0]);
-      return;
-    }
-    var cssFile = cssFiles[idx];
-    fetch(cssFile + '?t=' + Date.now())
-      .then(function(r) {
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        return r.text();
-      })
-      .then(function(text) {
-        var w = parseCSSVar(text, '--canvas-w');
-        var h = parseCSSVar(text, '--canvas-h');
-        if (w && h) {
-          var ls = loadLayouts();
-          var item = ls.find(function(x){ return x.id === id; });
-          if (item) {
-            item.w = w; item.h = h;
-            saveLayouts(ls);
-            renderAdmin();
-            renderChecks();
-            if (document.getElementById('frontend').classList.contains('active')) renderPreviews();
-          }
-        } else {
-          /* 這個 CSS 沒有 --canvas-w/h，試下一個 */
-          tryNextCss(idx + 1);
-        }
-      })
-      .catch(function() {
-        tryNextCss(idx + 1);
-      });
+  function store(w, h) {
+    var ls = loadLayouts(), item = ls.find(function(x){ return x.id === id; });
+    if (item && w && h) { item.w = w; item.h = h; saveLayouts(ls); }
   }
-  tryNextCss(0);
+  function next(index) {
+    if (index >= cssFiles.length) return probSizeViaLink(id, cssFiles[0]);
+    return fetch(cssFiles[index] + '?v=' + BN_RESOURCE_VERSION).then(function(r){
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.text();
+    }).then(function(css){
+      var w = parseCSSVar(css, '--canvas-w'), h = parseCSSVar(css, '--canvas-h');
+      if (w && h) store(w, h); else return next(index + 1);
+    }).catch(function(){ return next(index + 1); });
+  }
+  bnSizeProbeJobs[id] = next(0).then(function(){
+    delete bnSizeProbeJobs[id]; bnSizeProbePending--; bnQueueSizeRefresh();
+  }, function(){ delete bnSizeProbeJobs[id]; bnSizeProbePending--; bnQueueSizeRefresh(); });
+  return bnSizeProbeJobs[id];
 }
 
-/* fetch 失敗時的備用方案：注入 <link>，建臨時元素讀 computed style */
+/* file:// fallback; one bounded link, always removed and settled. */
 function probSizeViaLink(id, cssFile) {
-  var layouts = loadLayouts();
-  var l = layouts.find(function(x){ return x.id === id; });
-  if (!l) return;
-
-  var linkId = 'probcss-' + id;
-  if (document.getElementById(linkId)) return;
-
-  /* 建一個帶 data-prob 的 <div>，對它套用 :root 的 CSS 變數 */
-  var probeEl = document.createElement('div');
-  probeEl.id = linkId;
-  probeEl.style.cssText = 'position:absolute;visibility:hidden;pointer-events:none;';
-  document.body.appendChild(probeEl);
-
-  var lnk = document.createElement('link');
-  lnk.rel  = 'stylesheet';
-  lnk.href = cssFile + '?t=' + Date.now();
-  lnk.onload = function () {
-    requestAnimationFrame(function () {
+  return new Promise(function(resolve){
+    var link = document.createElement('link'), settled = false;
+    var timer = setTimeout(finish, 5000);
+    function finish() {
+      if (settled) return; settled = true; clearTimeout(timer);
+      link.remove(); resolve();
+    }
+    link.rel = 'stylesheet'; link.href = cssFile + '?v=' + BN_RESOURCE_VERSION;
+    link.onerror = finish;
+    link.onload = function(){ requestAnimationFrame(function(){
       var cs = getComputedStyle(document.documentElement);
-      var w  = parseFloat(cs.getPropertyValue('--canvas-w')) || 0;
-      var h  = parseFloat(cs.getPropertyValue('--canvas-h')) || 0;
-      /* 讀完後移除，避免污染 BN編輯器 自己的樣式 */
-      lnk.remove();
-      probeEl.remove();
+      var w = parseFloat(cs.getPropertyValue('--canvas-w')), h = parseFloat(cs.getPropertyValue('--canvas-h'));
       if (w && h) {
-        var ls = loadLayouts();
-        var item = ls.find(function(x){ return x.id === id; });
-        if (item) {
-          item.w = w; item.h = h;
-          saveLayouts(ls);
-          renderAdmin();
-          renderChecks();
-        }
+        var ls = loadLayouts(), item = ls.find(function(x){ return x.id === id; });
+        if (item) { item.w = w; item.h = h; saveLayouts(ls); }
       }
-    });
-  };
-  document.head.appendChild(lnk);
-
-  setTimeout(function () {
-    var el = document.getElementById(linkId);
-    if (el) el.remove();
-    lnk.remove();
-  }, 5000);
+      finish();
+    }); };
+    document.head.appendChild(link);
+  });
 }
 
 /* 從 CSS 文字解析 :root 內的自訂屬性值 */
@@ -1530,21 +1499,46 @@ function renderPreviews() {
     if (_hashKw.length) return matchHashKeywords(l.file || l.name || '', _hashKw);
     return getLayoutCheckedValue(l);
   });
+  /* BODA 匯入工單後，依「工單總覽」版位欄的由上到下順序排列。
+     獨立開啟 Shopee 編輯器時沒有這個 hook，維持原本掃描順序。 */
+  if (typeof window._bnSortLayoutsForDisplay === 'function') {
+    try { layouts = window._bnSortLayoutsForDisplay(layouts) || layouts; } catch (_) {}
+  }
   var area  = document.getElementById('preview-area');
   var empty = document.getElementById('preview-empty');
 
-  area.querySelectorAll('.preview-block').forEach(function(el){ el.remove(); });
+  var wanted = {};
+  layouts.forEach(function(l){ wanted[String(l.id)] = l; });
+  area.querySelectorAll('.preview-block').forEach(function(el){
+    var layout = wanted[el.dataset.id];
+    if (!layout || el.dataset.file !== layout.file) { delete bnLazyReadyIds[el.dataset.id]; el.remove(); }
+  });
 
-  if (!layouts.length) { empty.style.display = 'block'; bnHidePreviewLoading(); return; }
+  if (!layouts.length) { empty.style.display = 'block'; bnLazyReset(); bnHidePreviewLoading(); return; }
   empty.style.display = 'none';
-  bnStartPreviewLoading(layouts);
+  bnLazyReset();
 
-  layouts.forEach(function(l) {
+  layouts.forEach(function(l, order) {
+    var existing = document.getElementById('iframe-' + l.id);
+    if (existing) {
+      var kept = existing.closest('.preview-block');
+      kept.style.order = String(order);
+      kept.querySelector('.pname').textContent = l.name;
+      if (l.w && l.h && !bnLazyReadyIds[String(l.id)]) {
+        document.getElementById('psize-' + l.id).textContent = l.w + ' × ' + l.h + ' px';
+        existing.parentNode.style.minHeight = Math.max(40, Math.round(l.h * Math.min(PREVIEW_MAX / l.w, PREVIEW_MAX / l.h, 1))) + 'px';
+      }
+      return;
+    }
     var block = document.createElement('div');
     block.className = 'preview-block';
     block.dataset.id = l.id;
+    block.dataset.file = l.file;
+    block.style.order = String(order);
 
-    /* 先用佔位尺寸建立結構，onload 後再正確設定 */
+    /* 版位 iframe 不一次全開：先放佔位（依已知尺寸預留高度），捲到附近才載入（bnLazyActivate）。
+       每個版位 iframe 都會各自解碼商品／LOGO／代言人圖，二三十個同時開很吃記憶體。 */
+    var placeholderH = (l.w && l.h) ? Math.round(l.h * Math.min(PREVIEW_MAX / l.w, PREVIEW_MAX / l.h, 1)) : 120;
     block.innerHTML =
       '<div class="preview-block-head">' +
         '<span class="pname">' + esc(l.name) + '</span>' +
@@ -1552,10 +1546,10 @@ function renderPreviews() {
           (l.w ? l.w + ' × ' + l.h + ' px' : '讀取尺寸中…') +
         '</span>' +
       '</div>' +
-      '<div class="preview-block-body" id="pbody-' + l.id + '" style="min-height:40px">' +
+      '<div class="preview-block-body" id="pbody-' + l.id + '" style="min-height:' + Math.max(40, placeholderH) + 'px">' +
         '<iframe id="iframe-' + l.id + '"' +
           /* 每次重建 iframe 都帶時間戳，避免一般瀏覽器沿用舊版排版 HTML。 */
-          ' src="html/' + l.file + '?bnid=' + l.id + '&t=' + Date.now() + '"' +
+          ' data-bn-src="html/' + l.file + '?bnid=' + l.id + '&v=' + BN_RESOURCE_VERSION + '"' +
           ' style="border:none;display:block;transform-origin:top left;visibility:hidden"' +
           ' onload="onIframeLoad(' + l.id + ')">' +
         '</iframe>' +
@@ -1574,7 +1568,178 @@ function renderPreviews() {
     area.appendChild(block);
   });
   bnRefreshProductLayoutLockUI();
+  bnLazyStart(layouts);
 }
+
+/* ── 版位 iframe 延遲載入 ─────────────────────────────
+   畫面上（含上下 800px）的版位先載入並顯示載入遮罩；其他的捲到附近才載入。
+   下載全部、取得所有版位的資料前，用 window._bnLoadAllPreviews() 先把剩下的都載完。 */
+var bnLazyObserver = null;
+var bnLazyReadyIds = {};
+var bnLazyWaiters = [];
+/* Keep three inactive, untouched documents warm. Visible, edited, exporting,
+   busy and non-acknowledging documents are always exempt from this soft cap. */
+var bnPreviewInactiveLimit = 3;
+var bnPreviewPruneTimer = null;
+var bnPreviewPruning = false;
+function bnPreviewNearViewport(frame){
+  var body=frame && frame.parentNode;
+  if(!body || !body.getClientRects().length) return false;
+  var rect=body.getBoundingClientRect();
+  return rect.bottom >= -800 && rect.top <= (window.innerHeight||800)+800;
+}
+function bnPreviewPruneSoon(){
+  if(bnPreviewPruneTimer) clearTimeout(bnPreviewPruneTimer);
+  bnPreviewPruneTimer=setTimeout(function(){bnPreviewPruneTimer=null;bnPruneInactivePreviews();},1500);
+}
+async function bnPruneInactivePreviews(){
+  if(bnPreviewPruning || window._bnExporting || typeof window._bnRequestPreviewSnapshot !== 'function') return;
+  bnPreviewPruning=true;
+  try{
+    var inactive=Array.prototype.slice.call(document.querySelectorAll('.preview-block iframe[src]')).filter(function(frame){
+      var id=String(frame.id).replace(/^iframe-/,'');
+      return bnLazyReadyIds[id] && !frame._bnPreviewPinned && !frame._bnExportLease && !bnPreviewNearViewport(frame);
+    }).sort(function(a,b){return (a._bnPreviewLastUsed||0)-(b._bnPreviewLastUsed||0);});
+    var excess=Math.max(0,inactive.length-bnPreviewInactiveLimit);
+    for(var i=0;i<inactive.length && excess>0;i++){
+      var frame=inactive[i], src=frame.getAttribute('src');
+      if(!src || frame._bnPreviewPinned || frame._bnExportLease || bnPreviewNearViewport(frame)) continue;
+      var result=await window._bnRequestPreviewSnapshot(frame,1200);
+      /* Fail closed: timeout/old code/click/scroll/export during snapshot keeps
+         the original document and its edit state. Never resolve-as-success. */
+      if(!result || !result.complete || !result.safeToSuspend || window._bnExporting ||
+         !frame.isConnected || frame.getAttribute('src')!==src || frame._bnExportLease ||
+         frame._bnPreviewPinned || bnPreviewNearViewport(frame)) continue;
+      delete bnLazyReadyIds[String(frame.id).replace(/^iframe-/,'')];
+      frame.style.visibility='hidden';
+      frame.setAttribute('data-bn-src',src);
+      frame._bnPreviewGeneration=(frame._bnPreviewGeneration||0)+1;
+      frame.removeAttribute('src');
+      if(bnLazyObserver) bnLazyObserver.observe(frame);
+      excess--;
+    }
+  }finally{bnPreviewPruning=false;}
+}
+window._bnPruneInactivePreviews=bnPruneInactivePreviews;
+window.addEventListener('message',function(event){
+  var data=event.data||{};
+  if(data.type!=='bn-preview-pin' || !data.bnid) return;
+  var frame=document.getElementById('iframe-'+data.bnid);
+  if(frame && frame.contentWindow===event.source) frame._bnPreviewPinned=true;
+});
+function bnLazyReset() {
+  if (bnLazyObserver) { try { bnLazyObserver.disconnect(); } catch (_) {} }
+  bnLazyObserver = null;
+  /* Keep ready markers for retained iframe documents. */
+}
+function bnLazyPendingFrames() {
+  return Array.prototype.slice.call(document.querySelectorAll('.preview-block iframe[data-bn-src]'));
+}
+function bnLazyActivate(iframe) {
+  if (!iframe || !iframe.getAttribute('data-bn-src')) return;
+  if (window._bnExporting && !iframe._bnExportLease) return;
+  var src = iframe.getAttribute('data-bn-src');
+  iframe.removeAttribute('data-bn-src');
+  iframe._bnPreviewGeneration=(iframe._bnPreviewGeneration||0)+1;
+  if (bnLazyObserver) { try { bnLazyObserver.unobserve(iframe); } catch (_) {} }
+  iframe.setAttribute('src', src);
+  iframe._bnPreviewLastUsed=Date.now();
+}
+function bnLazyStart(layouts) {
+  var area = document.getElementById('preview-area');
+  var frames = bnLazyPendingFrames();
+  /* 頁面被隱藏（BODA 在別的頁）時量不到位置：先不載入，顯示後由 IntersectionObserver 接手 */
+  var visible = !!(area && area.getClientRects().length && area.offsetHeight > 0);
+  var initial = [];
+  if (visible) {
+    var limit = (window.innerHeight || 800) + 800;
+    frames.forEach(function (iframe) {
+      var top = iframe.parentNode.getBoundingClientRect().top;
+      if (top < limit) initial.push(iframe);
+    });
+  }
+  var initialIds = {};
+  initial.forEach(function (iframe) { initialIds[iframe.id.replace(/^iframe-/, '')] = true; });
+  bnStartPreviewLoading(layouts.filter(function (l) { return initialIds[String(l.id)]; }));
+  initial.forEach(bnLazyActivate);
+  if (typeof IntersectionObserver !== 'function') { bnLazyPendingFrames().forEach(bnLazyActivate); return; }
+  bnLazyObserver = new IntersectionObserver(function (entries) {
+    entries.forEach(function (entry) {
+      if (entry.isIntersecting) { entry.target._bnPreviewLastUsed=Date.now(); bnLazyActivate(entry.target); }
+    });
+    bnPreviewPruneSoon();
+  }, { root: null, rootMargin: '800px 0px 800px 0px' });
+  document.querySelectorAll('.preview-block iframe').forEach(function (iframe) { bnLazyObserver.observe(iframe); });
+}
+function bnLazyMarkReady(id) {
+  bnLazyReadyIds[String(id)] = true;
+  bnLazyWaiters = bnLazyWaiters.filter(function (w) { return !w(); });
+  var frame=document.getElementById('iframe-'+id);
+  if(frame){frame._bnPreviewLastUsed=Date.now();if(bnLazyObserver) bnLazyObserver.observe(frame);}
+  bnPreviewPruneSoon();
+}
+/* 還沒載入的版位數 */
+window._bnPendingPreviewCount = function () { return bnLazyPendingFrames().length; };
+/* 把所有勾選版位都載入，等它們都就緒（逾時 45 秒也照樣繼續）。 */
+window._bnLoadAllPreviews = function () {
+  var pending = bnLazyPendingFrames();
+  if (!pending.length) return Promise.resolve();
+  var ids = pending.map(function (iframe) { return iframe.id.replace(/^iframe-/, ''); });
+  pending.forEach(bnLazyActivate);
+  return new Promise(function (resolve) {
+    var done = false;
+    function check() {
+      if (done) return true;
+      if (ids.every(function (id) { return bnLazyReadyIds[id] || !document.getElementById('iframe-' + id); })) {
+        done = true; resolve(); return true;
+      }
+      return false;
+    }
+    if (check()) return;
+    bnLazyWaiters.push(check);
+    setTimeout(function () { if (!done) { done = true; resolve(); } }, 45000);
+  });
+};
+
+/* Export activates only its current pending preview. Existing edited frames stay live. */
+window._bnPreparePreviewForExport = function(iframe) {
+  if (!iframe) return Promise.reject(new Error('找不到版位'));
+  var src = iframe.getAttribute('data-bn-src');
+  var id = String(iframe.id).replace(/^iframe-/, '');
+  if (!src && bnLazyReadyIds[id]) return Promise.resolve(function(){});
+  iframe._bnExportLease = true;
+  return new Promise(function(resolve, reject){
+    var done = false;
+    var timer = setTimeout(function(){ settle(new Error('版位載入逾時')); }, 45000);
+    function release() {
+      delete iframe._bnExportLease; delete iframe._bnExportPrepared; delete iframe._bnReleaseAfterCapture;
+      if (!src) return;
+      delete bnLazyReadyIds[id];
+      iframe.style.visibility = 'hidden';
+      iframe.setAttribute('data-bn-src', src);
+      iframe.removeAttribute('src');
+    }
+    function settle(error) {
+      if (done) return true; done = true; clearTimeout(timer);
+      if (error) { release(); reject(error); } else resolve(release);
+      return true;
+    }
+    function check() {
+      if (done) return true;
+      if (!document.getElementById(iframe.id)) return settle(new Error('版位已移除'));
+      if (bnLazyReadyIds[id]) return settle();
+      return false;
+    }
+    bnLazyWaiters.push(check);
+    if (src) bnLazyActivate(iframe);
+    check();
+  });
+};
+window._bnResumePreviewObservation = function(){
+  if (!bnLazyObserver) return;
+  bnLazyPendingFrames().forEach(function(iframe){ bnLazyObserver.unobserve(iframe); bnLazyObserver.observe(iframe); });
+  bnPreviewPruneSoon();
+};
 
 /* iframe 載入完成：
    1. 從 iframe CSS 讀 --canvas-w / --canvas-h
@@ -1988,7 +2153,9 @@ window.addEventListener('message', function (e) {
 
     var iframe = document.getElementById('iframe-' + id);
     if (!iframe) return;
+    if(iframe.getAttribute('data-bn-src') || iframe.contentWindow !== e.source) return;
     bnMarkPreviewReady(id);
+    bnLazyMarkReady(id);
 
     var scale = Math.min(PREVIEW_MAX / W, PREVIEW_MAX / H, 1);
     iframe.dataset.bnBaseWidth=String(W);
@@ -2004,7 +2171,7 @@ window.addEventListener('message', function (e) {
     var l = layouts.find(function(x){ return x.id === id; });
     if (l && (!l.w || !l.h)) {
       l.w = W; l.h = H;
-      saveLayouts(layouts); renderAdmin(); renderChecks(); if (document.getElementById('frontend').classList.contains('active')) renderPreviews();
+      saveLayouts(layouts); bnQueueSizeRefresh();
     }
 
     /* 清掉靜默探測 iframe */
@@ -3573,7 +3740,7 @@ function scanBgFiles(){
   list.innerHTML = '<div style="color:var(--text3);font-size:12px">掃描中...</div>';
 
   /* 嘗試讀取 bn測底圖/index.json（格式：["hbn.jpg","scbn.png",...]）*/
-  fetch('bn測底圖/index.json?t=' + Date.now())
+  fetch('bn測底圖/index.json?v=20261111-image-state1')
     .then(function(r){ return r.json(); })
     .then(function(files){
       if(!Array.isArray(files) || !files.length){
@@ -3746,13 +3913,13 @@ window.loadCheckedByFile  = function(){
    （bn-state-plugin.js 等後面幾支依賴 bn-editor-plugin.js 先準備好一些東西），
    動態插入的 script 預設是非同步、載入完成順序不保證，一定要手動關掉。 */
 (function(){
-  var _t = Date.now();
+  var _t = '20261111-image-state1';
   var plugins = IS_BODA
     ? ['js/bn-shadow-plugin.js','js/bn-editor-plugin.js','js/bn-state-plugin.js','js/bn-workorder-upload-plugin.js','js/bn-bg-library-plugin.js','js/bn-whatsnew-plugin.js']
     : ['js/logo-autotrim-plugin.js','js/bn-shadow-plugin.js','js/bn-editor-plugin.js','js/bn-state-plugin.js','js/bn-workorder-upload-plugin.js','js/bn-bg-library-plugin.js','js/bn-whatsnew-plugin.js'];
   plugins.forEach(function(src){
     var s = document.createElement('script');
-    s.src = src + '?t=' + _t;
+    s.src = src + '?v=' + _t;
     s.async = false;
     document.head.appendChild(s);
   });
@@ -3760,7 +3927,7 @@ window.loadCheckedByFile  = function(){
     var pluginBase = BN_HOST_PARAMS.get('pluginBase') || '';
     ['boda-level-plugin.js'].forEach(function(src){
       var s = document.createElement('script');
-      s.src = pluginBase + src + '?t=' + _t;
+      s.src = pluginBase + src + '?v=' + _t;
       s.async = false;
       document.head.appendChild(s);
     });
@@ -3951,7 +4118,7 @@ if (location.hash) {
 <script>
 if(IS_BODA){
   var _hs=document.createElement('script');
-  _hs.src=(BN_HOST_PARAMS.get('pluginBase')||'')+'../js/help-settings.js?t='+Date.now();
+  _hs.src=(BN_HOST_PARAMS.get('pluginBase')||'')+'../js/help-settings.js?v=20261111-image-state1';
   _hs.async=false;
   document.head.appendChild(_hs);
 }

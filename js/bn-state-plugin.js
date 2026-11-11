@@ -1,7 +1,7 @@
 /*!
  * BN State Plugin
  * 1. banwords：用 applyToElement（同 sba.html），含 toast + 手動選 xlsx fallback
- * 2. 本機暫存（localStorage）
+ * 2. 本機暫存（IndexedDB Blob 素材＋小型設定；localStorage 僅存文字／位置備援）
  * 3. 下載暫存 / 上傳暫存按鈕
  *
  * 依賴：js/banwords-engine-hbn.js（自動載入）
@@ -29,86 +29,183 @@
 
 
 
-  /* IndexedDB：完整本機暫存。背景圖 dataURL 很容易超過 localStorage 容量，
-     因此完整 state 存 IndexedDB；localStorage 僅作為小型備援/舊版相容。 */
+  /* collect/apply 仍使用可攜的完整 dataURL 格式；只有本機儲存層改成
+     Blob＋assetId。舊版 raw state 由共用 codec 透明讀取，下一次修改才遷移。 */
   var IDB_DB = 'bn_editor_state_db';
   var IDB_STORE = 'states';
   var IDB_KEY = 'current';
+  var stateCodecPromise = null;
+  var stateOwnershipPromise = null;
+  function getStorageOwnership(){
+    if(stateOwnershipPromise) return stateOwnershipPromise;
+    stateOwnershipPromise=Promise.resolve().then(function(){
+      var factory=global.BodaStorageOwnership;
+      try{if(!factory && global.parent && global.parent!==global) factory=global.parent.BodaStorageOwnership;}catch(_){}
+      if(factory) return factory;
+      return new Promise(function(resolve,reject){
+        function unavailable(){var error=new Error('多分頁暫存保護未載入，自動暫存已暫停；請下載備份後重新載入。');error.name='StorageOwnershipError';error.noAutomaticRetry=true;reject(error);}
+        var base;
+        try{var pluginBase=new URLSearchParams(global.location.search||'').get('pluginBase');base=pluginBase?new URL('../../JS/storage-ownership.js?v=20261111-owner1',new URL(pluginBase,global.location.href)).href:new URL('../BODA/JS/storage-ownership.js?v=20261111-owner1',global.location.href).href;}catch(_){unavailable();return;}
+        var script=document.createElement('script'),settled=false;
+        var timer=setTimeout(function(){finish(null);},5000);
+        function finish(value){if(settled)return;settled=true;clearTimeout(timer);if(value)resolve(value);else unavailable();}
+        script.src=base;script.onload=function(){finish(global.BodaStorageOwnership);};script.onerror=function(){finish(null);};document.head.appendChild(script);
+      });
+    });
+    return stateOwnershipPromise;
+  }
+  function withStorageOwnership(operation){
+    return getStorageOwnership().then(function(factory){return factory.create(IDB_DB+':'+IDB_KEY).run(operation);});
+  }
+
+  function getStateCodec(){
+    if(stateCodecPromise) return stateCodecPromise;
+    stateCodecPromise = Promise.resolve().then(function(){
+      var factory = global.BodaStateAssets;
+      try{ if(!factory && global.parent && global.parent !== global) factory = global.parent.BodaStateAssets; }catch(_){ }
+      if(factory) return factory;
+      return new Promise(function(resolve){
+        /* pluginBase 在 localhost 與 GitHub Pages 都指向 BODA 的 jbp/js。 */
+        var base;
+        try{
+          var pluginBase = new URLSearchParams(global.location.search || '').get('pluginBase');
+          base = pluginBase ? new URL('../../JS/state-asset-codec.js?v=20261111-assets1', new URL(pluginBase, global.location.href)).href
+            : new URL('../BODA/JS/state-asset-codec.js?v=20261111-assets1', global.location.href).href;
+        }catch(_){ resolve(null); return; }
+        var script = document.createElement('script');
+        var settled = false;
+        var timer = setTimeout(function(){ finish(null); },5000);
+        function finish(factory){ if(settled) return; settled = true; clearTimeout(timer); resolve(factory); }
+        script.src = base;
+        script.onload = function(){ finish(global.BodaStateAssets || null); };
+        script.onerror = function(){ finish(null); };
+        document.head.appendChild(script);
+      });
+    }).then(function(factory){
+      return getStorageOwnership().then(function(ownership){
+        return factory ? ownership.wrap(factory.create({dbName:IDB_DB, stateStore:IDB_STORE, assetStore:'assets', key:IDB_KEY, dbVersion:2}),IDB_DB+':'+IDB_KEY) : null;
+      });
+    });
+    return stateCodecPromise;
+  }
 
   function openStateDb(){
     return new Promise(function(resolve, reject){
       if(!('indexedDB' in global)){ reject(new Error('IndexedDB not supported')); return; }
-      var req = indexedDB.open(IDB_DB, 1);
+      var settled = false;
+      var req = indexedDB.open(IDB_DB, 2);
       req.onupgradeneeded = function(){
         var db = req.result;
         if(!db.objectStoreNames.contains(IDB_STORE)) db.createObjectStore(IDB_STORE);
+        if(!db.objectStoreNames.contains('assets')) db.createObjectStore('assets');
       };
-      req.onsuccess = function(){ resolve(req.result); };
-      req.onerror = function(){ reject(req.error || new Error('IndexedDB open failed')); };
+      req.onsuccess = function(){
+        var db = req.result;
+        db.onversionchange = function(){ db.close(); };
+        if(settled){ db.close(); return; }
+        settled = true; resolve(db);
+      };
+      req.onerror = function(){ if(!settled){ settled = true; reject(req.error || new Error('IndexedDB open failed')); } };
+      req.onblocked = function(){
+        if(settled) return;
+        settled = true;
+        var err = new Error('請關閉其他舊版曝光資源分頁後重試暫存');
+        err.name = 'BlockedError'; reject(err);
+      };
     });
   }
 
   function idbSetState(state){
-    return openStateDb().then(function(db){
+    return getStateCodec().then(function(codec){
+      if(codec) return codec.put(state);
+      /* 單獨開啟曝光工具、未安裝 BODA codec 時仍可安全保存舊格式；
+         不退回 localStorage，也不先 stringify 大圖。 */
+    return withStorageOwnership(function(){return openStateDb().then(function(db){
       return new Promise(function(resolve, reject){
-        var tx = db.transaction(IDB_STORE, 'readwrite');
-        tx.objectStore(IDB_STORE).put(state, IDB_KEY);
-        tx.oncomplete = function(){ db.close(); resolve(); };
-        tx.onerror = function(){ var err = tx.error; try{ db.close(); }catch(_){} reject(err || new Error('IndexedDB write failed')); };
+        var tx = db.transaction([IDB_STORE, 'assets'], 'readwrite');
+        var states = tx.objectStore(IDB_STORE), assets = tx.objectStore('assets');
+        var previous = states.get(IDB_KEY);
+        previous.onsuccess = function(){
+          var old = previous.result;
+          if(old && old.storageFormat === 'boda-state-assets-v1') (old.assetIds || []).forEach(function(id){ assets.delete(id); });
+        };
+        try{ states.put(state, IDB_KEY); }
+        catch(error){ try{ tx.abort(); }catch(_){} db.close(); reject(error); return; }
+        tx.oncomplete = function(){ db.close(); resolve({legacyStorage:true}); };
+        tx.onabort = tx.onerror = function(){ var err = tx.error; try{ db.close(); }catch(_){} reject(err || new Error('IndexedDB write failed')); };
       });
+    });});
     });
   }
 
   function idbGetState(){
-    return openStateDb().then(function(db){
+    return getStateCodec().then(function(codec){
+      if(codec) return codec.get();
+    return withStorageOwnership(function(){return openStateDb().then(function(db){
       return new Promise(function(resolve, reject){
         var tx = db.transaction(IDB_STORE, 'readonly');
         var req = tx.objectStore(IDB_STORE).get(IDB_KEY);
-        req.onsuccess = function(){ resolve(req.result || null); };
+        req.onsuccess = function(){
+          if(req.result && req.result.storageFormat === 'boda-state-assets-v1'){
+            reject(new Error('圖片暫存元件未載入，完整暫存尚未還原')); return;
+          }
+          resolve(req.result || null);
+        };
         req.onerror = function(){ reject(req.error || new Error('IndexedDB read failed')); };
+        tx.onabort = function(){ db.close(); reject(tx.error || new Error('IndexedDB read aborted')); };
         tx.oncomplete = function(){ try{ db.close(); }catch(_){} };
       });
+    });});
     });
   }
 
   function idbClearState(){
-    return openStateDb().then(function(db){
+    return Promise.resolve(saveInFlight).catch(function(){}).then(function(){ return getStateCodec(); }).then(function(codec){
+      if(codec) return codec.clear();
+    return withStorageOwnership(function(){return openStateDb().then(function(db){
       return new Promise(function(resolve, reject){
-        var tx = db.transaction(IDB_STORE, 'readwrite');
+        var tx = db.transaction([IDB_STORE, 'assets'], 'readwrite');
         tx.objectStore(IDB_STORE).delete(IDB_KEY);
+        tx.objectStore('assets').clear();
         tx.oncomplete = function(){ db.close(); resolve(); };
-        tx.onerror = function(){ var err = tx.error; try{ db.close(); }catch(_){} reject(err || new Error('IndexedDB delete failed')); };
+        tx.onabort = tx.onerror = function(){ var err = tx.error; try{ db.close(); }catch(_){} reject(err || new Error('IndexedDB delete failed')); };
       });
+    });});
     });
   }
 
   function stripHeavyStateForLocalStorage(state){
-    var light = clone(state || {});
-    light._heavyStripped = true;
-    if(light.background && light.background.states){
-      Object.keys(light.background.states).forEach(function(id){
-        if(light.background.states[id]) light.background.states[id].src = light.background.states[id].src ? '__BN_IDB__' : null;
-      });
-      if(light.background.statesByFile){
-        Object.keys(light.background.statesByFile).forEach(function(file){
-          if(light.background.statesByFile[file]) light.background.statesByFile[file].src = light.background.statesByFile[file].src ? '__BN_IDB__' : null;
-        });
+    /* 在複製前就捨棄所有圖片字串，不能先 JSON clone 整包 Base64。
+       meta/baseSrc/outputSrc 與其他巢狀圖片欄位都適用同一規則。 */
+    var seen = new WeakMap();
+    function lightValue(value, key){
+      if(typeof value === 'string'){
+        if(value && (/(?:src|url)$/i.test(key || '') || /(?:^|,)\s*(?:data:|blob:)/i.test(value))) return '__BN_IDB__';
+        return value;
       }
-      if(light.background.legacySrc) light.background.legacySrc = '__BN_IDB__';
+      if(!value || typeof value !== 'object') return value;
+      if(seen.has(value)) return seen.get(value);
+      var out = Array.isArray(value) ? new Array(value.length) : {};
+      seen.set(value,out);
+      Object.keys(value).forEach(function(k){
+        Object.defineProperty(out,k,{value:lightValue(value[k],k),enumerable:true,writable:true,configurable:true});
+      });
+      return out;
     }
-    if(light.products){ light.products.forEach(function(p){ if(p && p.src) p.src='__BN_IDB__'; }); }
-    if(light.logos){ light.logos.forEach(function(l){ if(l && l.src) l.src='__BN_IDB__'; }); }
-    if(light.character && light.character.src){ light.character.src='__BN_IDB__'; }
-    if(light.character2 && light.character2.src){ light.character2.src='__BN_IDB__'; }
-    /* 代言人照／簽名檔：圖片（含旋轉前原圖）只存在 IndexedDB 完整版 */
-    ['endorserPhoto','endorserSign'].forEach(function(key){
-      var slot = light[key];
-      if(!slot || !slot.src) return;
-      slot.src = '__BN_IDB__';
-      if(slot.baseSrc) slot.baseSrc = '__BN_IDB__';
-      if(slot.meta && slot.meta.baseSrc) slot.meta.baseSrc = '__BN_IDB__';
-    });
+    var light = lightValue(state || {}, '');
+    light._heavyStripped = true;
     return light;
+  }
+
+  function mergeLightValue(full, light){
+    if(light === '__BN_IDB__') return full;
+    if(!light || typeof light !== 'object') return light;
+    var out = Array.isArray(light) ? new Array(light.length) : {};
+    Object.keys(light).forEach(function(key){
+      var value = mergeLightValue(full && full[key], light[key]);
+      if(value !== undefined) Object.defineProperty(out,key,{value:value,enumerable:true,writable:true,configurable:true});
+    });
+    return out;
   }
 
   function isFullStateCandidate(state){
@@ -148,7 +245,7 @@
       light.products.forEach(function(lp){
         if(!lp || !lp.id || !byId[lp.id]) return;
         ['sizeScale','position','zOrder','width','height','x','y','scale','rotate','layout','layouts','layoutsByFile','crop','meta'].forEach(function(k){
-          if(lp[k] !== undefined) byId[lp.id][k] = clone(lp[k]);
+          if(lp[k] !== undefined) byId[lp.id][k] = mergeLightValue(byId[lp.id][k],lp[k]);
         });
       });
     }
@@ -159,7 +256,7 @@
       light.logos.forEach(function(ll, i){
         var target = (ll && ll.id && logosById[ll.id]) || merged.logos[i];
         if(!target || !ll) return;
-        Object.keys(ll).forEach(function(k){ if(k !== 'src' && ll[k] !== undefined) target[k] = clone(ll[k]); });
+        Object.keys(ll).forEach(function(k){ if(k !== 'src' && ll[k] !== undefined) target[k] = mergeLightValue(target[k],ll[k]); });
       });
     }
 
@@ -168,7 +265,7 @@
       var mergedChar = merged[key];
       if(!lightChar || !mergedChar) return;
       Object.keys(lightChar).forEach(function(k){
-        if(k !== 'src' && lightChar[k] !== undefined) mergedChar[k] = clone(lightChar[k]);
+        if(k !== 'src' && lightChar[k] !== undefined) mergedChar[k] = mergeLightValue(mergedChar[k],lightChar[k]);
       });
     });
     /* 代言人照／簽名檔：同一張圖（id 相同）才合併位置、角度等輕量欄位；圖片沿用完整版 */
@@ -179,12 +276,10 @@
       Object.keys(lightSlot).forEach(function(k){
         if(k === 'src' || k === 'baseSrc' || lightSlot[k] === undefined) return;
         if(k === 'meta'){
-          var meta = clone(lightSlot.meta) || {};
-          if(meta.baseSrc === '__BN_IDB__') meta.baseSrc = mergedSlot.meta && mergedSlot.meta.baseSrc;
-          mergedSlot.meta = meta;
+          mergedSlot.meta = mergeLightValue(mergedSlot.meta,lightSlot.meta) || {};
           return;
         }
-        mergedSlot[k] = clone(lightSlot[k]);
+        mergedSlot[k] = mergeLightValue(mergedSlot[k],lightSlot[k]);
       });
     });
 
@@ -516,8 +611,24 @@
   }
 
   function clone(obj){
-    try{ return JSON.parse(JSON.stringify(obj)); }
-    catch(_){ return obj; }
+    /* Strings are immutable: retain their references instead of allocating an
+       entire serialized copy of every original / cropped image on each save. */
+    function copy(value, seen){
+      if(typeof value === 'function' || typeof value === 'symbol') return undefined;
+      if(typeof value === 'number' && !isFinite(value)) return null;
+      if(!value || typeof value !== 'object') return value;
+      if(value instanceof Date) return value.toJSON();
+      if(seen.has(value)) return seen.get(value);
+      var out = Array.isArray(value) ? new Array(value.length) : {};
+      seen.set(value,out);
+      Object.keys(value).forEach(function(key){
+        var next = copy(value[key],seen);
+        if(next === undefined && !Array.isArray(value)) return;
+        Object.defineProperty(out,key,{value:next === undefined ? null : next,enumerable:true,writable:true,configurable:true});
+      });
+      return out;
+    }
+    return copy(obj,new WeakMap());
   }
 
   /* 數字版位 id 只在目前瀏覽器的 bn-layouts 內有效；跨電腦、無痕模式、
@@ -761,6 +872,10 @@
     return {
       version: 1,
       portableVersion: 1,
+      _bodaProjectId: (function(){
+        try{ return global.parent && global.parent !== global ? String(global.parent.currentImportImageLayoutId || '') : ''; }
+        catch(_){ return ''; }
+      })(),
       /* 勾選結果與版位入口的版本同步；舊本機暫存仍可還原其他編輯內容，
          但不再把舊版的 checked 狀態覆蓋回目前頁面。 */
       selectionVersion: global.BN_LAYOUT_SELECTION_VERSION || '',
@@ -797,15 +912,15 @@
       background:{
         activeId: activeBgId,
         activeFile: activeBgId !== null && activeBgId !== undefined ? (layoutIndex.byId[String(activeBgId)] || null) : null,
-        states: bgStates,
+        states: clone(bgStates),
         statesByFile: bgStatesByFile,
         legacySrc: global._bgDataUrl || null
       },
       toolbar: collectToolbarState(),
       layouts: typeof global.getLayoutState==='function' ? clone(global.getLayoutState()) : null,
       bgCheckers: typeof global.getBgCheckerState==='function' ? clone(global.getBgCheckerState()) : [],
-      checked: checkedState,
-      checkedByFile: checkedByFileState,
+      checked: clone(checkedState),
+      checkedByFile: clone(checkedByFileState),
       /* BODA：勾選是在哪個等級做的。等級不同時（例如匯入了別的等級的工單）不還原，改用新等級的預設。 */
       checkedLevelId: typeof global._bnGetCurrentLevelId==='function' ? String(global._bnGetCurrentLevelId() || '') : '',
     };
@@ -1007,66 +1122,231 @@
     }
     setTimeout(function(){ global.bnRunAllFields(); }, 300);
     setTimeout(function(){ global._bnStateApplying = false; }, 1800);
+    if(explicitUpload){
+      saveFailureCount = 0; saveRetryAt = 0; restoreFailed = false;
+      markStateDirty();
+      clearTimeout(global._bnSaveTimer);
+      global._bnSaveTimer = setTimeout(autoSave,2300);
+    }
   }
 
-  function autoSave(){
-    /* 清除暫存時禁止任何計時器／beforeunload 再把舊狀態寫回去。 */
-    if(global._bnExporting || global._bnStateDownloading || global._bnClearingState) return;
-    var state;
-    try{ state = collectState(); }
-    catch(e){ console.warn('[BNState] collectState 失敗', e); return; }
+  var stateRevision = 0, savedRevision = 0, stateDirty = false;
+  var saveInFlight = null, saveFailureCount = 0, saveRetryAt = 0;
+  var summaryBlocked = false, summaryAvailable = true, lastSavedAt = 0, restoreFailed = false;
+  var restorePending = true, resolveStateReady;
+  var stateReady = new Promise(function(resolve){ resolveStateReady = resolve; });
+  var saveStatus = {state:'idle',dirty:false,revision:0,savedRevision:0,lastSavedAt:0,summaryAvailable:true};
 
-    /* 完整資料（含背景圖、商品圖、logo dataURL）優先寫入 IndexedDB。 */
-    idbSetState(state).catch(function(e){
-      console.warn('[BNState] IndexedDB autoSave 失敗，改嘗試 localStorage 完整備援', e);
-      try{ localStorage.setItem(STORAGE_KEY + '_full', JSON.stringify(state)); }
-      catch(err){ console.warn('[BNState] localStorage full autoSave 也失敗，可能圖片太大', err); }
+  function publishSaveStatus(state, error){
+    saveStatus = {state:state,dirty:stateDirty,revision:stateRevision,savedRevision:savedRevision,
+      lastSavedAt:lastSavedAt,summaryAvailable:summaryAvailable,
+      retryPaused:saveFailureCount >= 3,restoreFailed:restoreFailed,errorName:error && error.name || ''};
+    var node = document.getElementById('_bn_save_status');
+    if(node){
+      var labels = {idle:'尚無待保存的修改',loading:'正在還原本機暫存…',pending:'有修改，等待暫存',
+        saving:'正在保存完整暫存…',saved:'完整暫存已保存',partial:'已還原文字／位置備援，請上傳暫存補回圖片',
+        error:saveFailureCount >= 3 ? '暫存已暫停，請下載暫存保留進度或按重試' : '完整暫存失敗，請下載暫存保留進度'};
+      node.textContent = error && error.noAutomaticRetry ? error.message
+        : error && error.name === 'BlockedError' ? '請關閉其他舊版曝光分頁，再重試暫存'
+        : restoreFailed ? '完整暫存未能還原，自動保存已暫停；請上傳暫存或下載目前進度'
+        : labels[state] || labels.idle;
+      node.style.color = state === 'error' || state === 'partial' ? '#b45309' : 'var(--text2,#8b949e)';
+      node.title = summaryAvailable ? '' : '文字／位置備援不可用；完整圖片與設定仍以 IndexedDB 的保存結果為準。';
+    }
+    var retry = document.getElementById('_bn_save_retry');
+    if(retry){ retry.hidden = state !== 'error'; retry.disabled = !!saveInFlight; }
+    try{ document.dispatchEvent(new CustomEvent('bn-state-save-status',{detail:clone(saveStatus)})); }catch(_){ }
+  }
+
+  function markStateDirty(){
+    if(global._bnClearingState) return;
+    stateRevision++;
+    stateDirty = true;
+    if(!saveFailureCount) publishSaveStatus('pending');
+  }
+
+  function smallSummaryFits(value){
+    var remaining = 256 * 1024;
+    var seen = new WeakSet();
+    function visit(item){
+      if(remaining < 0) return false;
+      if(typeof item === 'string'){ remaining -= item.length * 2 + 4; return remaining >= 0; }
+      if(item && typeof item === 'object'){
+        if(seen.has(item)) return false;
+        seen.add(item);
+        return Object.keys(item).every(function(key){ remaining -= key.length * 2 + 8; return visit(item[key]); });
+      }
+      remaining -= 24; return remaining >= 0;
+    }
+    return visit(value);
+  }
+
+  function writeLightSummary(state){
+    if(summaryBlocked) return;
+    try{
+      var light = stripHeavyStateForLocalStorage(state);
+      if(!smallSummaryFits(light)){ summaryAvailable = false; return; }
+      localStorage.setItem(STORAGE_KEY,JSON.stringify(light));
+      summaryAvailable = true;
+    }catch(_){
+      /* 同一輪 localStorage 配額失敗不再逐次編輯重試，手動重試才重新開啟。 */
+      summaryBlocked = true; summaryAvailable = false;
+    }
+  }
+
+  function saveIsBusy(){
+    return global._bnExporting || global._bnStateDownloading || global._bnStateApplying || global._bnClearingState;
+  }
+
+  function flushState(options){
+    options = options || {};
+    if(options.syncLayouts && typeof global._bnSyncLayoutSnapshot === 'function'){
+      return Promise.resolve(global._bnSyncLayoutSnapshot(900)).then(function(){
+        markStateDirty();
+        return flushState({force:!!options.force});
+      });
+    }
+    if(restorePending) return stateReady.then(function(){ return flushState(options); });
+    if(saveInFlight){
+      if(options.waitForIdle !== false && saveIsBusy()) return saveInFlight.then(function(result){
+        return stateDirty ? flushState(options) : result;
+      });
+      return saveInFlight;
+    }
+    if(options.force){
+      saveFailureCount = 0; saveRetryAt = 0; summaryBlocked = false; restoreFailed = false;
+      if(!stateDirty) markStateDirty();
+    }
+    if(!stateDirty) return Promise.resolve({saved:true,unchanged:true});
+    if(saveIsBusy()){
+      if(options.waitForIdle === false || global._bnClearingState) return Promise.resolve({saved:false,reason:'busy'});
+      var deadline = options._idleDeadline || Date.now() + 10000;
+      if(Date.now() >= deadline){
+        var busyError = new Error('曝光編輯器仍在套用或輸出，暫存尚未完成');
+        busyError.name = 'BusyError'; return Promise.reject(busyError);
+      }
+      return new Promise(function(resolve){ setTimeout(resolve,100); }).then(function(){
+        return flushState({force:!!options.force,waitForIdle:true,_idleDeadline:deadline});
+      });
+    }
+    if(!options.force && (saveFailureCount >= 3 || Date.now() < saveRetryAt)) return Promise.resolve({saved:false,reason:'retry-paused'});
+    clearTimeout(global._bnSaveTimer);
+    var revision, state;
+    var task = Promise.resolve().then(function(){
+      if(global._bnClearingState) return {cleared:true};
+      revision = stateRevision;
+      publishSaveStatus('saving');
+      state = collectState();
+      writeLightSummary(state);
+      return idbSetState(state);
+    }).then(function(result){
+      saveInFlight = null;
+      if(global._bnClearingState || (result && result.cleared)) return {saved:false,reason:'cleared'};
+      savedRevision = revision;
+      stateDirty = stateRevision !== savedRevision;
+      saveFailureCount = 0; saveRetryAt = 0; lastSavedAt = state.ts || Date.now();
+      /* 只有完整 IDB 交易成功才移除舊版的大型備援，失敗時保留上次成功資料。 */
+      try{ localStorage.removeItem(STORAGE_KEY + '_full'); }catch(_){ }
+      publishSaveStatus(stateDirty ? 'pending' : 'saved');
+      if(stateDirty && !saveIsBusy()) return flushState();
+      return {saved:true,revision:savedRevision,assetCount:result && result.assetCount};
+    },function(error){
+      saveInFlight = null;
+      if(global._bnClearingState) return {saved:false,reason:'cleared'};
+      stateDirty = true;
+      saveFailureCount=error && error.noAutomaticRetry ? 3 : saveFailureCount+1;
+      saveRetryAt = Date.now() + (saveFailureCount === 1 ? 1000 : 5000);
+      publishSaveStatus('error',error);
+      /* 最多初次＋兩次自動重試；後續修改只保留 dirty，等待使用者明確重試。 */
+      if(saveFailureCount === 1) console.warn('[BNState] 完整暫存失敗，圖片未寫入 localStorage。請下載暫存保留進度。',error);
+      throw error;
     });
-
-    /* localStorage 只放輕量摘要供文字/工具列備援；帶 _heavyStripped，載入時不會拿它清掉背景/商品/logo。 */
-    try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(stripHeavyStateForLocalStorage(state))); }
-    catch(e){ console.warn('[BNState] localStorage light autoSave 失敗',e); }
+    saveInFlight = task;
+    return task;
   }
 
-  function autoLoad(){
+  function autoSave(options){
+    return flushState({force:!!(options && options.force),waitForIdle:false})
+      .catch(function(error){ return {saved:false,errorName:error && error.name || 'Error'}; });
+  }
+
+  function finishStateReady(){
+    if(!restorePending) return;
+    restorePending = false;
+    resolveStateReady();
+    if(stateDirty && !global._bnClearingState){
+      clearTimeout(global._bnSaveTimer);
+      global._bnSaveTimer = setTimeout(autoSave,2300);
+    }
+  }
+
+  function autoLoad(options){
+    options = options || {};
+    var revisionAtStart = stateRevision;
     var localFull = readLocalState(STORAGE_KEY + '_full');
     var localLight = readLocalState(STORAGE_KEY);
-
-    idbGetState().then(function(idbState){
+    publishSaveStatus('loading');
+    function canApply(){ return !global._bnClearingState && stateRevision === revisionAtStart && (!options.startup || revisionAtStart === 0); }
+    function restore(full, light){
+      if(!canApply()){ publishSaveStatus(stateDirty ? 'pending' : 'idle'); return false; }
+      if(full){
+        var newerLight = light && Number(light.ts || 0) > Number(full.ts || 0);
+        full = mergeLightIntoFull(full,light);
+        applyState(full);
+        lastSavedAt = full.ts || 0;
+        savedRevision = stateRevision;
+        stateDirty = false;
+        restoreFailed = false;
+        if(newerLight){ markStateDirty(); }
+        else publishSaveStatus('saved');
+        return true;
+      }
+      if(light){ applyState(light); publishSaveStatus('partial'); return true; }
+      publishSaveStatus('idle');
+      return false;
+    }
+    return idbGetState().then(function(idbState){
       /* 不能盲目用 IndexedDB：若上一輪 IDB 寫入失敗或落後，會讀到更舊的商品位置。
          這裡改成在 IDB / localStorage full 之間取 ts 最新的完整 state；
          只有沒有完整 state 時，才使用輕量備援，避免舊資料蓋掉新畫面。 */
       var full = getNewestState([idbState, localFull], true);
-      if(full){
-        full = mergeLightIntoFull(full, localLight);
-        applyState(full);
-        console.log('[BNState] 完整本機暫存載入完成，來源時間:', new Date(full.ts || Date.now()).toLocaleString());
-        return;
-      }
-      if(localLight){
-        applyState(localLight);
-        console.log('[BNState] 輕量本機暫存載入完成，來源時間:', new Date(localLight.ts || Date.now()).toLocaleString());
-      }
+      return restore(full,localLight);
     }).catch(function(e){
+      if(e && e.noAutomaticRetry){restoreFailed=true;saveFailureCount=3;publishSaveStatus('error',e);return false;}
       console.warn('[BNState] IndexedDB autoLoad 失敗，改用 localStorage', e);
       var full = getNewestState([localFull], true);
-      if(full){ applyState(mergeLightIntoFull(full, localLight)); return; }
-      if(localLight) applyState(localLight);
+      var restored = restore(full,localLight);
+      if(!full && canApply()){
+        restoreFailed = true; saveFailureCount = 3;
+        publishSaveStatus('error',e);
+      }
+      return restored;
+    }).then(function(restored){
+      finishStateReady(); return restored;
+    },function(error){
+      finishStateReady(); publishSaveStatus('error',error); throw error;
     });
   }
 
   function startAutoSave(){
-    setInterval(autoSave,30000);
-    window.addEventListener('beforeunload',autoSave);
+    /* 安全巡檢只處理 dirty；沒有編輯時不 collect、不做圖像轉碼、不寫儲存層。 */
+    setInterval(function(){ if(stateDirty) autoSave(); },30000);
+    window.addEventListener('beforeunload',function(){ if(stateDirty) autoSave(); });
+    window.addEventListener('pagehide',function(){ if(stateDirty) autoSave(); });
+    document.addEventListener('visibilitychange',function(){ if(document.visibilityState === 'hidden' && stateDirty) autoSave(); });
     function queueSave(e){
       /* bn-state-dirty 可能從 document 或 iframe message 流程發出，target 不會在 #sidebar。
          舊邏輯只接受 sidebar 事件，導致商品拖曳/縮放、背景畫布設定等不會寫入本機暫存，刷新後就回到舊資料。 */
       var isDirtyEvent = e && e.type === 'bn-state-dirty';
       var fromSidebar = !e || (e.target && e.target.closest && e.target.closest('#sidebar'));
-      if(global._bnExporting || global._bnStateDownloading || global._bnStateApplying || global._bnClearingState) return;
+      if(global._bnExporting || global._bnStateDownloading || global._bnClearingState) return;
       if(isDirtyEvent || fromSidebar){
+        /* 還原會送出合成 input；略過它們，但不能漏掉等待還原期間的真實操作。
+           圖片位置回報延後到還原穩定後保存，避免收進套用一半的狀態。 */
+        if(global._bnStateApplying && !isDirtyEvent && !(e && e.isTrusted)) return;
+        markStateDirty();
         clearTimeout(global._bnSaveTimer);
-        global._bnSaveTimer=setTimeout(autoSave, isDirtyEvent ? 250 : 1500);
+        global._bnSaveTimer=setTimeout(autoSave, global._bnStateApplying ? 2000 : isDirtyEvent ? 250 : 1500);
       }
     }
     document.addEventListener('input',queueSave,true);
@@ -1083,7 +1363,7 @@
 
     var bar=document.createElement('div');
     bar.id='_bn_save_bar';
-    bar.style.cssText='padding:8px 14px;border-top:1px solid var(--border,#30363d);display:flex;gap:6px;flex-shrink:0;';
+    bar.style.cssText='padding:8px 14px;border-top:1px solid var(--border,#30363d);display:flex;flex-wrap:wrap;gap:6px;flex-shrink:0;';
 
     var bs='flex:1;padding:7px 6px;background:var(--bg2,#1c2333);border:1px solid var(--border,#30363d);border-radius:7px;color:var(--text2,#8b949e);font-size:11px;cursor:pointer;transition:.12s;text-align:center;';
 
@@ -1156,7 +1436,6 @@
           applyState(uploadedState, {source:'upload', forceColors:true});
           /* applyState 會重建/推送 iframe，等它穩定後再寫本機暫存；
              避免剛套用一半的輕量狀態把完整背景/商品覆蓋掉。 */
-          setTimeout(autoSave, 2300);
           setTimeout(markDirty, 2400);
           showToast('暫存已載入','ok');
         }catch(_){ showToast('暫存格式錯誤','err'); }
@@ -1300,19 +1579,39 @@
     clrBar.appendChild(clrBtn);
 
     bar.appendChild(dlBtn); bar.appendChild(ulWrap);
+    var statusRow = document.createElement('div');
+    statusRow.style.cssText='flex:0 0 100%;display:flex;align-items:center;gap:7px;font-size:11px;line-height:1.5;';
+    var statusText = document.createElement('span');
+    statusText.id = '_bn_save_status';
+    statusText.style.cssText='flex:1;min-width:0;';
+    statusText.setAttribute('role','status');
+    statusText.setAttribute('aria-live','polite');
+    var retryBtn = document.createElement('button');
+    retryBtn.id = '_bn_save_retry'; retryBtn.type = 'button'; retryBtn.textContent = '重試暫存'; retryBtn.hidden = true;
+    retryBtn.style.cssText='padding:3px 7px;border:1px solid var(--border,#30363d);border-radius:5px;background:transparent;color:var(--text2,#8b949e);font-size:11px;cursor:pointer;';
+    retryBtn.addEventListener('click',function(){ flushState({force:true}).catch(function(){}); });
+    statusRow.appendChild(statusText); statusRow.appendChild(retryBtn); bar.appendChild(statusRow);
     var dlBar=document.getElementById('bn-download-bar');
     if(dlBar&&dlBar.nextSibling) sidebar.insertBefore(bar,dlBar.nextSibling);
     else sidebar.appendChild(bar);
     /* 清除按鈕加在暫存列下面 */
     if(bar.nextSibling) sidebar.insertBefore(clrBar,bar.nextSibling);
     else sidebar.appendChild(clrBar);
+    publishSaveStatus(saveStatus.state);
   }
 
   /* ══════════════════════════════════════
      初始化
   ══════════════════════════════════════ */
   ready(function(){
-    global._bnStatePlugin = { save:autoSave, load:autoLoad, collect:collectState, apply:applyState, toast:showToast };
+    global._bnStatePlugin = {
+      save:function(){ markStateDirty(); return autoSave({force:true}); },
+      load:autoLoad, collect:collectState, apply:applyState, toast:showToast,
+      flush:flushState, markDirty:markStateDirty,
+      whenReady:function(){ return stateReady; },
+      whenIdle:function(){ return Promise.resolve(saveInFlight).catch(function(){}); },
+      getSaveStatus:function(){ return clone(saveStatus); }
+    };
 
     /* banwords */
     initBanwords();
@@ -1321,7 +1620,7 @@
     function tryInsert(){
       if(document.getElementById('sidebar')){
         insertSaveLoadBar();
-        setTimeout(autoLoad, 800);
+        setTimeout(function(){ autoLoad({startup:true}).catch(function(){}); }, 800);
         startAutoSave();
       } else { setTimeout(tryInsert,300); }
     }
