@@ -9,6 +9,7 @@ if(window.parent!==window) document.documentElement.classList.add('boda-hosted')
 if(IS_BODA) document.documentElement.setAttribute('data-host','boda');
 </script>
 <meta charset="UTF-8">
+<script src="js/vendor/browser-loader.js?v=20261111-vendor1"></script>
 <!-- 編輯器入口不可使用舊版 HTML；JS／版位 iframe 另有時間戳防快取。 -->
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
@@ -1046,7 +1047,7 @@ function scanLayouts() {
   var s = document.createElement('script');
   s.id  = 'bn-index-script';
   /* index.js 最後一行呼叫 window._bn_scan_cb(BN_LAYOUTS) */
-  s.src = 'js/index.js?v=20261111-image-state1';
+  s.src = 'js/index.js?v=20261111-preview-lifecycle1';
   s.onerror = function() {
     status.textContent = '❌ 找不到 js/index.js';
     status.style.color = 'var(--red)';
@@ -1056,7 +1057,7 @@ function scanLayouts() {
 }
 
 /* 靜默探測排版尺寸：載入同名 CSS，從 <style> 解析 :root --canvas-w/h */
-var BN_RESOURCE_VERSION = '20261111-image-state1';
+var BN_RESOURCE_VERSION = '20261111-preview-lifecycle1';
 var bnSizeProbePending = 0;
 var bnSizeProbeJobs = {};
 var bnSizeRefreshTimer = null;
@@ -1593,7 +1594,8 @@ function bnPreviewPruneSoon(){
   bnPreviewPruneTimer=setTimeout(function(){bnPreviewPruneTimer=null;bnPruneInactivePreviews();},1500);
 }
 async function bnPruneInactivePreviews(){
-  if(bnPreviewPruning || window._bnExporting || typeof window._bnRequestPreviewSnapshot !== 'function') return;
+  if(bnPreviewPruning || window._bnExporting || window._bnStateApplying || window._bnClearingState ||
+     window._bnStateDownloading || typeof window._bnRequestPreviewSnapshot !== 'function') return;
   bnPreviewPruning=true;
   try{
     var inactive=Array.prototype.slice.call(document.querySelectorAll('.preview-block iframe[src]')).filter(function(frame){
@@ -1608,6 +1610,7 @@ async function bnPruneInactivePreviews(){
       /* Fail closed: timeout/old code/click/scroll/export during snapshot keeps
          the original document and its edit state. Never resolve-as-success. */
       if(!result || !result.complete || !result.safeToSuspend || window._bnExporting ||
+         window._bnStateApplying || window._bnClearingState || window._bnStateDownloading ||
          !frame.isConnected || frame.getAttribute('src')!==src || frame._bnExportLease ||
          frame._bnPreviewPinned || bnPreviewNearViewport(frame)) continue;
       delete bnLazyReadyIds[String(frame.id).replace(/^iframe-/,'')];
@@ -3740,7 +3743,7 @@ function scanBgFiles(){
   list.innerHTML = '<div style="color:var(--text3);font-size:12px">掃描中...</div>';
 
   /* 嘗試讀取 bn測底圖/index.json（格式：["hbn.jpg","scbn.png",...]）*/
-  fetch('bn測底圖/index.json?v=20261111-image-state1')
+  fetch('bn測底圖/index.json?v=20261111-preview-lifecycle1')
     .then(function(r){ return r.json(); })
     .then(function(files){
       if(!Array.isArray(files) || !files.length){
@@ -3913,7 +3916,7 @@ window.loadCheckedByFile  = function(){
    （bn-state-plugin.js 等後面幾支依賴 bn-editor-plugin.js 先準備好一些東西），
    動態插入的 script 預設是非同步、載入完成順序不保證，一定要手動關掉。 */
 (function(){
-  var _t = '20261111-image-state1';
+  var _t = '20261111-vendor1';
   var plugins = IS_BODA
     ? ['js/bn-shadow-plugin.js','js/bn-editor-plugin.js','js/bn-state-plugin.js','js/bn-workorder-upload-plugin.js','js/bn-bg-library-plugin.js','js/bn-whatsnew-plugin.js']
     : ['js/logo-autotrim-plugin.js','js/bn-shadow-plugin.js','js/bn-editor-plugin.js','js/bn-state-plugin.js','js/bn-workorder-upload-plugin.js','js/bn-bg-library-plugin.js','js/bn-whatsnew-plugin.js'];
@@ -4118,7 +4121,7 @@ if (location.hash) {
 <script>
 if(IS_BODA){
   var _hs=document.createElement('script');
-  _hs.src=(BN_HOST_PARAMS.get('pluginBase')||'')+'../js/help-settings.js?v=20261111-image-state1';
+  _hs.src=(BN_HOST_PARAMS.get('pluginBase')||'')+'../js/help-settings.js?v=20261111-preview-lifecycle1';
   _hs.async=false;
   document.head.appendChild(_hs);
 }

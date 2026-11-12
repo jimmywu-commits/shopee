@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>Float Editor</title>
 <!-- SheetJS for parsing banwords.xlsx -->
-<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="js/vendor/browser-loader.js?v=20261111-vendor1"></script>
 <!-- External JS plugins: keep rules/features in separate JS files so future updates only require replacing the JS file. -->
 <script src="js/banwords-engine-hbn.js"></script>
 <script src="js/editor-plugin.js"></script>
@@ -524,6 +524,7 @@ let _bwReady=false;
 async function loadBanwords(){
   const el=document.getElementById('bw-status');
   try{
+    await BodaVendor.ensure('sheet');
     const res=await fetch('banwords.xlsx');
     if(!res.ok) throw new Error('fetch failed');
     const buf=await res.arrayBuffer();

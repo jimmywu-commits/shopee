@@ -9,11 +9,6 @@
 (function(global){
   'use strict';
 
-  var XLSX_URLS = [
-    'https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js',
-    'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'
-  ];
-
   var STATUS_ID = 'bn-workorder-status';
   var INPUT_ID = 'bn-workorder-file';
 
@@ -34,35 +29,9 @@
     el.className = 'bn-workorder-status' + (kind ? ' ' + kind : '');
   }
 
-  function loadScriptOnce(src){
-    return new Promise(function(resolve, reject){
-      var existed = document.querySelector('script[data-bn-workorder-xlsx="' + src + '"]');
-      if(existed){
-        existed.addEventListener('load', resolve, {once:true});
-        existed.addEventListener('error', reject, {once:true});
-        if(global.XLSX) resolve();
-        return;
-      }
-      var s = document.createElement('script');
-      s.src = src;
-      s.async = true;
-      s.dataset.bnWorkorderXlsx = src;
-      s.onload = resolve;
-      s.onerror = function(){ reject(new Error('無法載入 XLSX parser')); };
-      document.head.appendChild(s);
-    });
-  }
-
   function ensureXLSX(){
-    if(global.XLSX && global.XLSX.read) return Promise.resolve(global.XLSX);
-    var chain = Promise.reject();
-    XLSX_URLS.forEach(function(url){
-      chain = chain.catch(function(){ return loadScriptOnce(url); });
-    });
-    return chain.then(function(){
-      if(!global.XLSX || !global.XLSX.read) throw new Error('XLSX parser not found');
-      return global.XLSX;
-    });
+    if(!global.BodaVendor) return Promise.reject(new Error('試算表載入元件未載入，請確認 js/vendor/browser-loader.js 已一起更新。'));
+    return global.BodaVendor.ensure('sheet');
   }
 
   function cellText(v){
@@ -543,7 +512,7 @@
       .catch(function(err){
         console.error('[工單上傳] 失敗', err);
         setStatus('匯入失敗：' + (err && err.message ? err.message : err), 'err');
-        toast('工單匯入失敗，請確認是 .xlsx 檔', 'err', 3200);
+        toast('工單匯入失敗：'+(err && err.message ? err.message : '請確認是 .xlsx 檔'), 'err', 5000);
       })
       .finally(function(){
         var inp = $(INPUT_ID);

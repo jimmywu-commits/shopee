@@ -20,15 +20,14 @@
 
   /* ── 載入 CropperJS ── */
   function loadCropper(cb){
-    if(global.Cropper){ cb(); return; }
-    var link = document.createElement('link');
-    link.rel = 'stylesheet';
-    link.href = 'https://cdn.jsdelivr.net/npm/cropperjs@1.6.2/dist/cropper.min.css';
-    document.head.appendChild(link);
-    var s = document.createElement('script');
-    s.src = 'https://cdn.jsdelivr.net/npm/cropperjs@1.6.2/dist/cropper.min.js';
-    s.onload = cb;
-    document.head.appendChild(s);
+    var task=global.BodaVendor ? global.BodaVendor.ensure('cropper')
+      : Promise.reject(new Error('裁切載入元件未載入，請確認 js/vendor/browser-loader.js 已一起更新。'));
+    return task.then(function(){cb();}).catch(function(error){
+      _cropDone=null;
+      var message='無法開啟裁切工具：'+error.message;
+      if(global._bnStatePlugin && typeof global._bnStatePlugin.toast==='function') global._bnStatePlugin.toast(message,'err',5000);
+      else global.alert(message);
+    });
   }
 
   /* ── 注入 CSS ── */

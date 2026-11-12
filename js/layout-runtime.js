@@ -19,8 +19,15 @@
     var finished=false;
     function settle(){
       if(finished) return; finished=true;
-      _bnPreviewPendingImages--; _bnPreviewLastMessageAt=Date.now();
       image.removeEventListener('load',settle); image.removeEventListener('error',settle);
+      /* load/error only finishes decoding. Its onload may still queue the
+         atomic geometry update and layout report in RAF (throttled in hidden
+         iframes). Keep the lease through that RAF and the following frame.
+         Stale/error callbacks use the same barrier, so every path releases. */
+      function release(){_bnPreviewPendingImages--;_bnPreviewLastMessageAt=Date.now();}
+      if(window.requestAnimationFrame){
+        window.requestAnimationFrame(function(){window.requestAnimationFrame(release);});
+      }else setTimeout(release,0);
     }
     image.addEventListener('load',settle); image.addEventListener('error',settle);
     return image;

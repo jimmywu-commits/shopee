@@ -903,7 +903,7 @@
 
       if(window.BNLogoMenu){ doShow(); }
       else {
-        loadScriptOnce('js/logo-editor-plugin.js').then(doShow)['catch'](function(){ alert('logo-editor-plugin.js 載入失敗'); });
+        loadScriptOnce('js/logo-editor-plugin.js?v=20261111-vendor1').then(doShow)['catch'](function(){ alert('logo-editor-plugin.js 載入失敗'); });
       }
     }
 
@@ -1001,7 +1001,7 @@
       if(window.BNLogoMenu){
         doAttach();
       } else {
-        loadScriptOnce('js/logo-editor-plugin.js').then(doAttach)['catch'](function(){ alert('logo-editor-plugin.js 載入失敗'); });
+        loadScriptOnce('js/logo-editor-plugin.js?v=20261111-vendor1').then(doAttach)['catch'](function(){ alert('logo-editor-plugin.js 載入失敗'); });
       }
     }
 

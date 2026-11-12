@@ -36,11 +36,13 @@
   var IDB_KEY = 'current';
   var stateCodecPromise = null;
   var stateOwnershipPromise = null;
+  var storageOwnershipError = null;
   function getStorageOwnership(){
     if(stateOwnershipPromise) return stateOwnershipPromise;
     stateOwnershipPromise=Promise.resolve().then(function(){
-      var factory=global.BodaStorageOwnership;
-      try{if(!factory && global.parent && global.parent!==global) factory=global.parent.BodaStorageOwnership;}catch(_){}
+      var factory=null;
+      try{if(global.parent && global.parent!==global) factory=global.parent.BodaStorageOwnership;}catch(_){}
+      if(!factory) factory=global.BodaStorageOwnership;
       if(factory) return factory;
       return new Promise(function(resolve,reject){
         function unavailable(){var error=new Error('多分頁暫存保護未載入，自動暫存已暫停；請下載備份後重新載入。');error.name='StorageOwnershipError';error.noAutomaticRetry=true;reject(error);}
@@ -557,7 +559,7 @@
     wrap.querySelector('#_bn_excelManualInput').addEventListener('change', function(e){
       var file = e.target.files && e.target.files[0];
       if(!file) return;
-      file.arrayBuffer().then(function(buf){
+      ensureXLSX().then(function(){return file.arrayBuffer();}).then(function(buf){
         var rules = global.banwordEngine.loadRulesFromExcelArrayBuffer(buf);
         showToast('已手動載入 banwords.xlsx（'+( Array.isArray(rules)?rules.length:0 )+'條）','ok',2200);
         wrap.style.display = 'none';
@@ -567,6 +569,11 @@
       });
     });
     return wrap;
+  }
+
+  function ensureXLSX(){
+    if(!global.BodaVendor) return Promise.reject(new Error('試算表載入元件未載入，請確認 js/vendor/browser-loader.js 已一起更新。'));
+    return global.BodaVendor.ensure('sheet');
   }
 
   function loadBanwordsExcel(){
@@ -589,18 +596,11 @@
         bridgeInputs();
       });
     }
-    if(global.XLSX){
-      doFetch();
-    } else {
-      var s = document.createElement('script');
-      s.src = 'https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js';
-      s.onload = doFetch;
-      s.onerror = function(){
-        console.warn('[BNState] SheetJS CDN 載入失敗，嘗試本機...');
-        doFetch(); /* 試試看，可能已有其他方式載入 */
-      };
-      document.head.appendChild(s);
-    }
+    ensureXLSX().then(doFetch).catch(function(error){
+      console.warn('[BNState] 試算表元件載入失敗',error);
+      ensureExcelPicker().style.display='block';
+      showToast('禁用語規則未能載入：'+error.message,'err',5000);
+    });
   }
 
   function initBanwords(){
@@ -1138,9 +1138,12 @@
   var saveStatus = {state:'idle',dirty:false,revision:0,savedRevision:0,lastSavedAt:0,summaryAvailable:true};
 
   function publishSaveStatus(state, error){
+    if(error && error.noAutomaticRetry) storageOwnershipError=error;
+    if(storageOwnershipError) error=storageOwnershipError;
     saveStatus = {state:state,dirty:stateDirty,revision:stateRevision,savedRevision:savedRevision,
       lastSavedAt:lastSavedAt,summaryAvailable:summaryAvailable,
-      retryPaused:saveFailureCount >= 3,restoreFailed:restoreFailed,errorName:error && error.name || ''};
+      retryPaused:saveFailureCount >= 3,restoreFailed:restoreFailed,errorName:error && error.name || '',
+      noAutomaticRetry:!!(error && error.noAutomaticRetry)};
     var node = document.getElementById('_bn_save_status');
     if(node){
       var labels = {idle:'尚無待保存的修改',loading:'正在還原本機暫存…',pending:'有修改，等待暫存',
@@ -1154,7 +1157,7 @@
       node.title = summaryAvailable ? '' : '文字／位置備援不可用；完整圖片與設定仍以 IndexedDB 的保存結果為準。';
     }
     var retry = document.getElementById('_bn_save_retry');
-    if(retry){ retry.hidden = state !== 'error'; retry.disabled = !!saveInFlight; }
+    if(retry){ retry.hidden = state !== 'error' || !!storageOwnershipError; retry.disabled = !!saveInFlight; }
     try{ document.dispatchEvent(new CustomEvent('bn-state-save-status',{detail:clone(saveStatus)})); }catch(_){ }
   }
 
@@ -1200,6 +1203,7 @@
 
   function flushState(options){
     options = options || {};
+    if(storageOwnershipError) return Promise.reject(storageOwnershipError);
     if(options.syncLayouts && typeof global._bnSyncLayoutSnapshot === 'function'){
       return Promise.resolve(global._bnSyncLayoutSnapshot(900)).then(function(){
         markStateDirty();
@@ -1457,9 +1461,11 @@
     clrBtn.addEventListener('mouseleave',function(){ clrBtn.style.background='transparent'; });
     clrBtn.addEventListener('click',function(){
       if(!confirm('確定要清除本機暫存？頁面將重新整理，畫面會回到預設值。')) return;
+      withStorageOwnership(function(){
       /* 先鎖住所有自動暫存，避免清除後在 reload 前又把舊資料寫回去。 */
       global._bnClearingState = true;
       clearTimeout(global._bnSaveTimer);
+      return idbClearState().then(function(){
       try{
         /* 1. 清除 localStorage + IndexedDB 完整暫存
            ────────────────────────────────────────────────
@@ -1517,19 +1523,6 @@
           }
         }catch(_){ }
 
-        Promise.resolve(idbClearState()).catch(function(e){ console.warn('[BNState] IndexedDB clear 失敗', e); })
-          .then(function(){
-            /* 一定要重新整理頁面才會真正回到預設值。
-               之前這裡只清掉 localStorage/IndexedDB（儲存層），
-               沒有重置「目前頁面正在執行中」的商品/人物/Logo/各版位背景
-               這些記憶體內的狀態——這些變數分散在好幾支不同的檔案裡，
-               不重新整理頁面的話，即使儲存的資料清掉了，畫面上看到的
-               還是清除前那份還留在記憶體裡的舊資料，重新上傳背景圖之類的
-               操作也會沿用那份舊資料，跟「清除、回到預設值」的預期不符。
-               重新整理頁面才能保證是真正乾淨的初始狀態。 */
-            location.reload();
-          });
-
         /* 2. 文字輸入框還原預設 value，觸發 broadcastText
            （雖然馬上就會重新整理頁面，這裡先做一次是為了讓使用者在
            頁面重新整理前，也能立刻看到畫面有反應，而不是按下去像沒反應。）*/
@@ -1574,7 +1567,14 @@
         if(typeof global.applyLogoColor === 'function') global.applyLogoColor('white');
 
         showToast('已清除，頁面即將重新整理…','ok');
+        location.reload();
       }catch(e){ global._bnClearingState = false; showToast('清除失敗：'+e.message,'err'); }
+      });
+      }).catch(function(error){
+        global._bnClearingState=false;
+        publishSaveStatus('error',error);
+        showToast('清除失敗：'+error.message,'err');
+      });
     });
     clrBar.appendChild(clrBtn);
 
