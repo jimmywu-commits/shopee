@@ -766,9 +766,9 @@ html.boda-hosted #shopee-tour-launch{display:none!important;}
     </div>
     <div class="card" id="help-links-admin-card" style="display:none">
       <h3>🔗 全站支援按鈕連結</h3>
-      <p style="font-size:12px;color:var(--text2);margin-bottom:12px;line-height:1.7">會套用到首頁、工單生成器、匯入工單、曝光資源、吸底與維修頁右下角的浮動按鈕。<br>這裡可先預覽；要讓 GitHub 部署後的所有設備共用，請下載 <code>config.json</code>、覆蓋專案根目錄同名檔案後 commit / push。使用反饋表連結留白時，使用預設的 Google 反饋表單。</p>
-      <label style="display:block;font-size:12px;font-weight:700;color:var(--text2);margin-bottom:5px" for="help-feedback-url">使用反饋表連結（選填）</label>
-      <input id="help-feedback-url" type="url" placeholder="https://…（留白＝預設 Google 反饋表單）" style="width:100%;margin-bottom:12px">
+      <p style="font-size:12px;color:var(--text2);margin-bottom:12px;line-height:1.7">會套用到首頁、工單產生器、匯入工單、曝光資源、吸底與維修頁右下角的浮動按鈕。<br>這裡可先預覽；要讓 GitHub 部署後的所有設備共用，請下載 <code>config.json</code>、覆蓋專案根目錄同名檔案後 commit / push。使用回饋表連結留白時，使用預設的 Google 回饋表單。</p>
+      <label style="display:block;font-size:12px;font-weight:700;color:var(--text2);margin-bottom:5px" for="help-feedback-url">使用回饋表連結（選填）</label>
+      <input id="help-feedback-url" type="url" placeholder="https://…（留白＝預設 Google 回饋表單）" style="width:100%;margin-bottom:12px">
       <label style="display:block;font-size:12px;font-weight:700;color:var(--text2);margin-bottom:5px" for="help-manual-url">使用說明書連結（選填）</label>
       <input id="help-manual-url" type="url" placeholder="https://…（留白＝專案內建說明書）" style="width:100%;margin-bottom:12px">
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><button class="btn btn-primary" type="button" id="help-links-save">套用目前頁面預覽</button><button class="btn" type="button" id="help-links-download-config">⬇ 下載 GitHub 設定檔</button><span id="help-links-status" style="font-size:11px;color:var(--text3)"></span></div>
@@ -901,8 +901,8 @@ html.boda-hosted #shopee-tour-launch{display:none!important;}
 <div id="bn-download-overlay" aria-live="polite">
   <div class="bn-loading-card">
     <div class="bn-loading-spinner"></div>
-    <div class="bn-loading-title">正在打包下載中…</div>
-    <div class="bn-loading-desc" id="bn-download-overlay-desc">正在截圖並打包成 ZIP，請稍候，不要關閉分頁。</div>
+    <div class="bn-loading-title">正在建立 ZIP 壓縮檔…</div>
+    <div class="bn-loading-desc" id="bn-download-overlay-desc">正在截圖並建立 ZIP 壓縮檔，請稍候，不要關閉分頁。</div>
     <div class="bn-loading-bar"><div id="bn-download-overlay-progress"></div></div>
     <div id="bn-download-overlay-count"></div>
   </div>
@@ -1439,7 +1439,7 @@ function bnShowDownloadOverlay(desc) {
   if (bar) bar.style.width = '0%';
   if (count) count.textContent = '';
   overlay.classList.add('show');
-  bnNotifyHostLoading('start', 5, 'LOADING · 曝光資源下載', desc || '正在截圖並打包下載…');
+  bnNotifyHostLoading('start', 5, 'LOADING · 曝光資源下載', desc || '正在截圖並建立 ZIP 壓縮檔…');
 }
 
 function bnUpdateDownloadOverlay(text, done, total) {
@@ -1477,8 +1477,8 @@ function bnRefreshProductLayoutLockUI() {
     var linked = bnProductLayoutIsLinked(btn.dataset.layoutId);
     btn.classList.toggle('is-linked', linked);
     btn.setAttribute('aria-pressed', linked ? 'true' : 'false');
-    btn.setAttribute('aria-label', linked ? '已連動，點擊解除此版位連動' : '未連動，點擊加入全部版位連動');
-    btn.title = linked ? '已連動：點擊後此版位獨立編輯' : '未連動：點擊後重新加入全部版位連動';
+    btn.setAttribute('aria-label', linked ? '已連動，點選解除此版位連動' : '未連動，點選加入全部版位連動');
+    btn.title = linked ? '已連動：點選後此版位獨立編輯' : '未連動：點選後重新加入全部版位連動';
   });
 }
 window._bnRefreshProductLayoutLockUI = bnRefreshProductLayoutLockUI;
@@ -4066,7 +4066,7 @@ window.addEventListener('message',function(e){
 });
 </script>
 
-<div id="feedback-btn">📝 填寫反饋</div>
+<div id="feedback-btn">📝 填寫回饋</div>
 <button id="shopee-tour-launch" class="shopee-tour-launch" type="button" title="開始 SHOPEE 使用教學" aria-haspopup="dialog" aria-controls="shopee-tour-root">使用教學</button>
 <div id="manual-btn">📖 使用說明書</div>
 <div id="manual-modal" role="dialog" aria-modal="true" aria-label="JBP 編輯器使用說明書">
@@ -4086,7 +4086,7 @@ document.addEventListener("DOMContentLoaded",function(){
  document.addEventListener("keydown",function(e){
    if(e.key==="Escape"&&m.classList.contains("show"))closeManual();
  });
- /* 使用反饋表：直接開 Google 表單（BODA 模式若在後台另填連結，
+ /* 使用回饋表：直接開 Google 表單（BODA 模式若在後台另填連結，
     help-settings.js 會在 capture 階段攔截並改開該連結）。 */
  document.getElementById("feedback-btn").onclick=function(){
    window.open("https://docs.google.com/forms/d/e/1FAIpQLSfVK0PlrMGPRyZ6pExKWlZKjlzXzCm_M2x9C9OfikHZXu-Qxg/viewform?usp=header","_blank","noopener");
@@ -4117,7 +4117,7 @@ if (location.hash) {
 }
 </script>
 
-<!-- 全站使用說明／反饋按鈕共用設定（BODA 模式）。 -->
+<!-- 全站使用說明／回饋按鈕共用設定（BODA 模式）。 -->
 <script>
 if(IS_BODA){
   var _hs=document.createElement('script');

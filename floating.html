@@ -266,7 +266,7 @@ body{font-family:'ShopeeNotoSans','Noto Sans TC','PingFang TC',sans-serif;backgr
 
     <!-- Banword loading status -->
     <div class="sc" style="padding:10px 13px">
-      <div class="banword-status" id="bw-status">⏳ 禁用語規則載入中…</div>
+      <div class="banword-status" id="bw-status">⏳ 禁用詞規則載入中…</div>
     </div>
 
     <!-- Image upload -->
@@ -275,7 +275,7 @@ body{font-family:'ShopeeNotoSans','Noto Sans TC','PingFang TC',sans-serif;backgr
       <div class="up" id="upzone">
         <input type="file" accept="image/*" id="fIn" onchange="onFile(event)">
         <svg class="upico" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M12 8v8M8 12l4-4 4 4"/></svg>
-        <div style="font-size:11px">點擊上傳 / 拖曳圖片</div>
+        <div style="font-size:11px">點選上傳／拖曳圖片</div>
         <div style="font-size:10px;color:var(--mu);margin-top:2px">PNG · JPG · WEBP</div>
       </div>
       <div id="prevWrap" style="display:none">
@@ -532,13 +532,13 @@ async function loadBanwords(){
       window.banwordEngine.loadRulesFromExcelArrayBuffer(buf);
       _bwReady=true;
       const n=window.banwordEngine.getRules().length;
-      el.textContent=`✓ 禁用語規則已載入（${n} 條）`;
+      el.textContent=`✓ 禁用詞規則已載入（${n} 條）`;
       el.className='banword-status ok';
     } else {
       throw new Error('engine not ready');
     }
   }catch(e){
-    el.textContent=`✕ 禁用語規則載入失敗：${e.message}`;
+    el.textContent=`✕ 禁用詞規則無法載入：${e.message}`;
     el.className='banword-status err';
     console.warn('Banwords load error',e);
   }
@@ -551,7 +551,7 @@ function runAudit(text, msgElId){
   if(!result.changed){ msgEl.className='audit-msg'; msgEl.style.display='none'; return text; }
   // Build message
   const lines=[];
-  if(result.blocked) lines.push('🚫 含有禁用語，已自動移除');
+  if(result.blocked) lines.push('🚫 含有禁用詞，已自動移除');
   if(result.text!==text) lines.push(`✏️ 自動修正：<span class="audit-tag">${escHtml(text)}</span> → <span class="audit-tag">${escHtml(result.text)}</span>`);
   if(result.messages&&result.messages.length) result.messages.forEach(m=>lines.push(`⚠️ ${escHtml(m)}`));
   msgEl.innerHTML=lines.join('<br>');

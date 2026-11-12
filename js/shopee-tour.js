@@ -96,9 +96,9 @@
       text:'從左側商品清單按<b>影子</b>，或按<b>編輯 → 加 / 編輯影子</b>，即可進入右側示範的影子畫面。可調整光源方向、陰影位移、寬度、長度與顏色。',
       tip:'此處展示已帶入示範商品的真實影子介面；示範與正式作品隔離，不會合成或套用到你的商品圖。'},
     {id:'download',group:'下載與暫存',target:['#bn-dl-all','#bn-download-bar'],findText:'下載全部勾選畫版|下載全部',fallback:['#sidebar'],title:'檢查完成，再下載勾選的畫版',
-      text:'按<b>下載全部勾選畫版</b>輸出目前成品。多版位會打包成 ZIP；下載前請確認字數、內容提醒與圖片都已處理完成。',
-      tip:'打包期間請等待完成，不要關閉分頁。導覽只標示按鈕，不會觸發下載。',demo:'download'},
-    {id:'restore',group:'下載與暫存',target:['#bn-state-upload','#bn-state-bar'],findText:'上傳暫存|還原暫存|載入暫存|下載暫存',fallback:['#bn-download-bar','#sidebar'],title:'保存暫存檔，下次可以接著做',
+      text:'按<b>下載全部勾選畫版</b>輸出目前成品。多版位會建立 ZIP 壓縮檔；下載前請確認字數、內容提醒與圖片都已處理完成。',
+      tip:'建立壓縮檔期間請等待完成，不要關閉分頁。導覽只標示按鈕，不會觸發下載。',demo:'download'},
+    {id:'restore',group:'下載與暫存',target:['#bn-state-upload','#bn-state-bar'],findText:'上傳暫存|還原暫存|載入暫存|下載暫存',fallback:['#bn-download-bar','#sidebar'],title:'儲存暫存檔，下次可以接著做',
       text:'保留工具提供的 <b>JSON 暫存檔</b>；下次從上傳／還原暫存入口載回，即可繼續編輯。同一瀏覽器的本機暫存，不能取代跨電腦的備份檔。',
       tip:'清除暫存可能重設內容，請先備份。完成教學後會回到開始前的捲動位置。',demo:'restore'}
   ];
@@ -120,7 +120,7 @@
   function updateScreenNotice(){
     var note=root&&root.querySelector('.spt-screen-status');if(!note||!livePreview)return;
     var state=livePreview.state;if(note.dataset.status===state)return;note.dataset.status=state;
-    if(state==='ready')note.textContent=livePreview.kind==='backgrounds'?'已開啟真正的背景搜尋圖庫；教學不會選圖或套用。':livePreview.kind==='canvas-transform'?'可直接拖拉示範商品、四角縮放與上方旋轉把手；不會開啟浮動編輯器或修改作品。':'這是正式工具相同的真實編輯介面，已帶入獨立示範商品，不會影響你的作品。';
+    if(state==='ready')note.textContent=livePreview.kind==='backgrounds'?'已開啟真正的背景搜尋圖庫；教學不會選圖或套用。':livePreview.kind==='canvas-transform'?'可直接拖曳示範商品、四角縮放與上方旋轉把手；不會開啟浮動編輯器或修改作品。':'這是正式工具相同的真實編輯介面，已帶入獨立示範商品，不會影響你的作品。';
     else if(state==='error')note.innerHTML=html(livePreview.error||'無法載入實際介面，請確認外掛檔案存在並使用網頁伺服器開啟工具。')+'<br><button type="button" class="spt-secondary" data-action="screen">重新載入實際介面</button>';
     else note.textContent='正在載入實際介面與示範商品…';
   }
@@ -193,7 +193,7 @@
   function showCanvasTransform(session){
     var mount=document.createElement('div');mount.className='spt-canvas-demo';
     mount.innerHTML='<div class="spt-canvas-caption">畫布操作示範 · 不會修改作品 <span data-demo-angle>0°</span></div>'+
-      '<div class="spt-canvas-target" aria-hidden="true"></div><div class="spt-canvas-product" role="group" aria-label="可拖拉、縮放與旋轉的教學示範商品">'+
+      '<div class="spt-canvas-target" aria-hidden="true"></div><div class="spt-canvas-product" role="group" aria-label="可拖曳、縮放與旋轉的教學示範商品">'+
       '<img alt="教學示範商品" draggable="false"><button type="button" data-demo-resize="nw" aria-label="拖曳左上角等比例縮放"></button><button type="button" data-demo-resize="ne" aria-label="拖曳右上角等比例縮放"></button>'+
       '<button type="button" data-demo-resize="sw" aria-label="拖曳左下角等比例縮放"></button><button type="button" data-demo-resize="se" aria-label="拖曳右下角等比例縮放"></button>'+
       '<i class="spt-canvas-stem" aria-hidden="true"></i><button type="button" data-demo-rotate aria-label="拖曳把手原地旋轉">↻</button></div>';
@@ -390,7 +390,7 @@
     var shown=!!productOptionsTarget(),status=shown?'shown':optionsPreview&&optionsPreview.opening?'opening':'unavailable';
     if(note.dataset.status===status)return;
     note.dataset.status=status;
-    note.innerHTML=shown?(optionsPreview.session.interactive?'三張示範圖可直接拖拉換位；中間為較大的主品。操作不會套用到正式作品。':optionsPreview.session.count?'已開啟實際的「② 確認大小比例」選項視窗（教學展示，不會套用）。':'這是實際的「② 確認大小比例」選項視窗。尚未上傳商品，因此暫時沒有商品縮圖。'):
+    note.innerHTML=shown?(optionsPreview.session.interactive?'三張示範圖可直接拖曳換位；中間為較大的主品。操作不會套用到正式作品。':optionsPreview.session.count?'已開啟實際的「② 確認大小比例」選項視窗（教學展示，不會套用）。':'這是實際的「② 確認大小比例」選項視窗。尚未上傳商品，因此暫時沒有商品縮圖。'):
       status==='opening'?'正在開啟實際商品選項視窗…':
       '目前無法開啟商品選項，請確認已一併更新商品編輯外掛，並先完成其他編輯視窗。<br><button type="button" class="spt-secondary" data-action="options">重新開啟商品選項</button>';
   }

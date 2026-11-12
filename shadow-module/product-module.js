@@ -399,7 +399,7 @@ window.Modules.product = {
 
   _buildInteractive: function(box, slot, cfg, scale, onRequestPick, onChange, onSelect){
     if(!slot.productSrc){
-      box.innerHTML = '<span class="ph">曝品（點擊上傳）</span>';
+      box.innerHTML = '<span class="ph">曝品（點選上傳）</span>';
       box.onclick = function(){ if(onSelect) onSelect(); onRequestPick(); };
       return;
     }

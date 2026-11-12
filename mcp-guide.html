@@ -252,11 +252,11 @@ table tr:last-child td {
 
 <div class="container">
   <h1>📚 MCP 使用指南</h1>
-  <p style="color: var(--muted); margin-top: 8px;">Model Context Protocol (MCP) 集成文檔</p>
+  <p style="color: var(--muted); margin-top: 8px;">Model Context Protocol (MCP) 整合文件</p>
 
   <div class="intro">
     <p>
-      <strong>MCP (Model Context Protocol)</strong> 是一個通信協議，允許 Claude 與外部系統（如你的 tech stack）交互。
+      <strong>MCP (Model Context Protocol)</strong> 是一個通訊協定，允許 Claude 與外部系統（如你的 tech stack）互動。
       本指南將幫助你快速上手 Shopee MCP 服務。
     </p>
   </div>
@@ -265,9 +265,9 @@ table tr:last-child td {
     <h3>📖 目錄</h3>
     <ul>
       <li><a href="#what-is-mcp">什麼是 MCP？</a></li>
-      <li><a href="#setup">安裝配置</a></li>
+      <li><a href="#setup">安裝設定</a></li>
       <li><a href="#basic-usage">基本使用</a></li>
-      <li><a href="#examples">使用示例</a></li>
+      <li><a href="#examples">使用範例</a></li>
       <li><a href="#tools">可用工具</a></li>
       <li><a href="#resources">資源查詢</a></li>
       <li><a href="#troubleshooting">常見問題</a></li>
@@ -276,25 +276,25 @@ table tr:last-child td {
 
   <h2 id="what-is-mcp">什麼是 MCP？</h2>
 
-  <p>Model Context Protocol (MCP) 是一個開放協議，用於連接 AI 助手與外部資料、工具和系統。通過 MCP，Claude 可以：</p>
+  <p>Model Context Protocol (MCP) 是一個開放協定，用於連線 AI 助手與外部資料、工具和系統。透過 MCP，Claude 可以：</p>
 
   <ul class="feature-list">
-    <li>訪問實時資料和系統狀態</li>
-    <li>執行特定的操作和命令</li>
+    <li>存取即時資料和系統狀態</li>
+    <li>執行特定的操作和指令</li>
     <li>查詢知識庫和資源</li>
-    <li>與外部 API 進行交互</li>
-    <li>獲取上下文相關的資訊</li>
+    <li>與外部 API 進行互動</li>
+    <li>取得相關上下文資訊</li>
   </ul>
 
-  <h2 id="setup">安裝配置</h2>
+  <h2 id="setup">安裝設定</h2>
 
-  <h3>步驟 1：獲取 MCP 連結</h3>
-  <p>Shopee MCP 服務地址：</p>
+  <h3>步驟 1：取得 MCP 連結</h3>
+  <p>Shopee MCP 服務位址：</p>
   <pre><code>https://twtc.shopee.tw/mcp</code></pre>
 
-  <h3>步驟 2：在 Claude Code 中配置</h3>
+  <h3>步驟 2：在 Claude Code 中設定</h3>
 
-  <p>編輯 <code>.claude/mcp.json</code> 文件：</p>
+  <p>編輯 <code>.claude/mcp.json</code> 檔案：</p>
 
   <pre><code>{
   "mcpServers": {
@@ -306,10 +306,10 @@ table tr:last-child td {
 
   <div class="step">
     <h4>💡 提示</h4>
-    <p>如果文件不存在，可以新建一個。配置後 Claude Code 會自動載入這個 MCP。</p>
+    <p>如果檔案不存在，可以建立一個。設定後 Claude Code 會自動載入這個 MCP。</p>
   </div>
 
-  <h3>步驟 3：驗證連接</h3>
+  <h3>步驟 3：驗證連線</h3>
 
   <p>使用測試工具驗證 MCP 連線狀態：</p>
   <pre><code>GET https://twtc.shopee.tw/mcp/health</code></pre>
@@ -335,14 +335,14 @@ table tr:last-child td {
 
   <div class="example">
     <strong>3. 查詢資源</strong>
-    <p>檢索知識庫、配置或其他資訊</p>
+    <p>查詢知識庫、設定或其他資訊</p>
     <pre><code>GET /resources?type=config
 回應: { "resources": [...] }</code></pre>
   </div>
 
-  <h2 id="examples">使用示例</h2>
+  <h2 id="examples">使用範例</h2>
 
-  <h3>示例 1：獲取系統配置</h3>
+  <h3>範例 1：取得系統設定</h3>
 
   <pre><code>// 請求
 {
@@ -364,7 +364,7 @@ table tr:last-child td {
   ]
 }</code></pre>
 
-  <h3>示例 2：執行服務檢查</h3>
+  <h3>範例 2：執行服務檢查</h3>
 
   <pre><code>// 請求
 {
@@ -384,7 +384,7 @@ table tr:last-child td {
   "uptime": "99.98%"
 }</code></pre>
 
-  <h3>示例 3：查詢監控指標</h3>
+  <h3>範例 3：查詢監控指標</h3>
 
   <pre><code>// 請求
 {
@@ -432,7 +432,7 @@ table tr:last-child td {
       </tr>
       <tr>
         <td><code>get-metrics</code></td>
-        <td>獲取服務監控指標</td>
+        <td>取得服務監控指標</td>
         <td>POST</td>
       </tr>
       <tr>
@@ -442,7 +442,7 @@ table tr:last-child td {
       </tr>
       <tr>
         <td><code>get-config</code></td>
-        <td>獲取服務配置</td>
+        <td>取得服務設定</td>
         <td>GET</td>
       </tr>
     </tbody>
@@ -453,15 +453,15 @@ table tr:last-child td {
   <h3>支援的資源類型</h3>
 
   <div class="example">
-    <strong>配置資源</strong>
+    <strong>設定資源</strong>
     <pre><code>GET /resources?type=config
-type: "config" | 檢索系統配置和環境變數</code></pre>
+type: "config" | 查詢系統設定和環境變數</code></pre>
   </div>
 
   <div class="example">
-    <strong>文檔資源</strong>
+    <strong>文件資源</strong>
     <pre><code>GET /resources?type=docs
-type: "docs" | 檢索 API 文檔和技術規範</code></pre>
+type: "docs" | 查詢 API 文件和技術規範</code></pre>
   </div>
 
   <div class="example">
@@ -480,7 +480,7 @@ type: "metrics" | 檢索服務監控指標</code></pre>
     {
       "id": "docs:order-api",
       "title": "Order Service API",
-      "description": "API 文檔",
+      "description": "API 文件",
       "type": "docs"
     }
   ]
@@ -488,14 +488,14 @@ type: "metrics" | 檢索服務監控指標</code></pre>
 
   <h2 id="troubleshooting">常見問題</h2>
 
-  <h3>❌ 連線超時</h3>
+  <h3>❌ 連線逾時</h3>
   <div class="warning">
-    <strong>問題：</strong>連線到 MCP 伺服器超時<br><br>
+    <strong>問題：</strong>連線到 MCP 伺服器逾時<br><br>
     <strong>解決：</strong>
     <ul style="margin: 8px 0 0 20px;">
-      <li>檢查網路連接是否正常</li>
+      <li>檢查網路連線是否正常</li>
       <li>確認 MCP 伺服器 URL 是否正確</li>
-      <li>檢查防火牆設置</li>
+      <li>檢查防火牆設定</li>
       <li>使用 <code>curl https://twtc.shopee.tw/mcp/health</code> 測試</li>
     </ul>
   </div>
@@ -505,9 +505,9 @@ type: "metrics" | 檢索服務監控指標</code></pre>
     <strong>問題：</strong>收到 401 Unauthorized 錯誤<br><br>
     <strong>解決：</strong>
     <ul style="margin: 8px 0 0 20px;">
-      <li>確認是否已通過身份驗證</li>
-      <li>檢查 API 令牌是否有效</li>
-      <li>查看 MCP 文檔中的身份驗證要求</li>
+      <li>確認是否已完成身分驗證</li>
+      <li>檢查 API 權杖是否有效</li>
+      <li>查看 MCP 文件中的身分驗證要求</li>
     </ul>
   </div>
 
@@ -529,7 +529,7 @@ type: "metrics" | 檢索服務監控指標</code></pre>
     <ul style="margin: 8px 0 0 20px;">
       <li>驗證請求體是否為有效的 JSON</li>
       <li>檢查是否提供了所有必需的參數</li>
-      <li>查看工具的文檔以了解參數要求</li>
+      <li>查看工具的文件以了解參數要求</li>
     </ul>
   </div>
 
@@ -537,9 +537,9 @@ type: "metrics" | 檢索服務監控指標</code></pre>
 
   <ul class="feature-list">
     <li>總是先進行健康檢查，確認服務可用</li>
-    <li>使用適當的超時時間（推薦 30 秒）</li>
+    <li>使用適當的逾時時間（建議 30 秒）</li>
     <li>實施重試機制處理暫時性失敗</li>
-    <li>記錄所有 API 呼叫便於調試</li>
+    <li>記錄所有 API 呼叫便於除錯</li>
     <li>定期驗證 MCP 連線狀態</li>
     <li>使用請求 ID 追蹤和關聯日誌</li>
   </ul>
@@ -547,7 +547,7 @@ type: "metrics" | 檢索服務監控指標</code></pre>
   <h2>後續資源</h2>
 
   <ul class="feature-list">
-    <li>MCP 規範文檔</li>
+    <li>MCP 規範文件</li>
     <li>Shopee Tech Platform API</li>
     <li>測試工具</li>
     <li>社群論壇</li>

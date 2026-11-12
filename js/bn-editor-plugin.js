@@ -758,7 +758,7 @@
         '<div class="bn-section">',
         '  <div class="bn-drop" id="bn-logo-drop">',
         '    <input type="file" accept="image/*" multiple id="bn-logo-inp">',
-        '    ＋ 點擊或拖曳上傳 Logo',
+        '    ＋ 點選或拖曳上傳 Logo',
         '  </div>',
         '  <div class="bn-prod-list" id="bn-logo-list"></div>',
         '</div>',
@@ -2788,13 +2788,13 @@
           '    <div class="bn-bg-pair-grid">',
           '      <div class="bn-bg-drop-card" id="bn-bg-hdrop">',
           '        <div class="bn-bg-drop-title">橫式背景圖</div>',
-          '        <div class="bn-bg-drop-desc">拖曳到這裡，或點擊選取檔案</div>',
+          '        <div class="bn-bg-drop-desc">拖曳到這裡，或點選選取檔案</div>',
           '        <img id="bn-bg-himg"><div class="bn-bg-drop-name" id="bn-bg-hname"></div>',
           '        <input id="bn-bg-hinp" type="file" accept="image/*">',
           '      </div>',
           '      <div class="bn-bg-drop-card" id="bn-bg-vdrop">',
           '        <div class="bn-bg-drop-title">直式背景圖</div>',
-          '        <div class="bn-bg-drop-desc">拖曳到這裡，或點擊選取檔案</div>',
+          '        <div class="bn-bg-drop-desc">拖曳到這裡，或點選選取檔案</div>',
           '        <img id="bn-bg-vimg"><div class="bn-bg-drop-name" id="bn-bg-vname"></div>',
           '        <input id="bn-bg-vinp" type="file" accept="image/*">',
           '      </div>',
@@ -2918,7 +2918,7 @@
         '    <div id="bn-sc1">',
         '      <div class="bn-modal-drop" id="bn-mdrop">',
         '        <div style="font-size:22px;margin-bottom:4px">🖼️</div>',
-        '        <div style="font-size:13px;font-weight:700;color:#dde3f0">拖曳或點擊選取圖片</div>',
+        '        <div style="font-size:13px;font-weight:700;color:#dde3f0">拖曳或點選選取圖片</div>',
         '        <p style="margin:4px 0 0;font-size:11px">最多3張，可多選</p>',
         '        <input id="bn-mfinp" type="file" accept="image/*" multiple>',
         '      </div>',
@@ -4149,7 +4149,7 @@
       /* 下載＋打包暫存檔現在需要一點時間，跟「剛進來時」的畫布/字體載入
          用同一種毛玻璃浮動提示，讓使用者知道還在跑，不要誤以為卡住。 */
       if(typeof window.bnShowDownloadOverlay === 'function'){
-        window.bnShowDownloadOverlay(iframes.length > 1 ? '正在截圖並打包成 ZIP，請稍候，不要關閉分頁。' : '正在截圖，請稍候，不要關閉分頁。');
+        window.bnShowDownloadOverlay(iframes.length > 1 ? '正在截圖並建立 ZIP 壓縮檔，請稍候，不要關閉分頁。' : '正在截圖，請稍候，不要關閉分頁。');
       }
 
       var btn=document.getElementById('bn-dl-all');
@@ -4177,7 +4177,7 @@
       var exportProducts = window._bnProducts ? JSON.parse(JSON.stringify(window._bnProducts)) : [];
       var exportZOrder = exportProducts.slice().sort(function(a,b){ return (a.zOrder||0)-(b.zOrder||0); }).map(function(p){ return p.id; });
 
-      setProgress(total===1 ? '準備下載 1 個版位…' : '準備打包 '+total+' 個版位…');
+      setProgress(total===1 ? '準備下載 1 個版位…' : '準備建立 '+total+' 個版位的 ZIP 壓縮檔…');
 
       function sendToIframe(iframeEl, msg){
         try{ iframeEl && iframeEl.contentWindow && iframeEl.contentWindow.postMessage(msg, '*'); }catch(_){ }
@@ -4575,7 +4575,7 @@
             setProgress('沒有版位截圖成功：'+failedNames.join('、'));
             _bnSettleCollect(new Error('沒有任何版位截圖成功（'+(failedReasons[0]||'截圖未完成')+'）'), [], collectReport);
           }else{
-            setProgress('已交給主工具打包：成功 '+ok+' / '+total+(fail?'，失敗 '+fail+' 個已跳過（'+failedNames.join('、')+'）':''));
+            setProgress('已交由主工具建立壓縮檔：成功 '+ok+' / '+total+(fail?'，失敗 '+fail+' 個已跳過（'+failedNames.join('、')+'）':''));
             _bnSettleCollect(null, files, collectReport);
           }
           return;
@@ -4591,17 +4591,17 @@
         if(!files.length){
           btn.disabled=false;
           finishExport();
-          setProgress('ZIP 未產生：'+failedNames.join('、')+'（'+(failedReasons[0]||'截圖未完成，請重試')+'）');
+          setProgress('ZIP 壓縮檔未建立：'+failedNames.join('、')+'（'+(failedReasons[0]||'截圖未完成，請重試')+'）');
           return;
         }
 
-        setProgress('正在產生 ZIP（成功 '+ok+'，失敗 '+fail+'）…');
+        setProgress('正在建立 ZIP 壓縮檔（成功 '+ok+'，失敗 '+fail+'）…');
 
         loadJSZip(function(err){
           if(err || !window.JSZip){
             btn.disabled=false;
             finishExport();
-            setProgress('ZIP 失敗：'+(err&&err.message||'JSZip 載入失敗'));
+            setProgress('ZIP 壓縮檔建立失敗：'+(err&&err.message||'JSZip 載入失敗'));
             return;
           }
 
@@ -4631,12 +4631,12 @@
             }).catch(function(){
               btn.disabled=false;
               finishExport();
-              setProgress('ZIP 產生失敗');
+              setProgress('ZIP 壓縮檔建立失敗');
             });
           }catch(e){
             btn.disabled=false;
             finishExport();
-            setProgress('ZIP 產生失敗：'+e.message);
+              setProgress('ZIP 壓縮檔建立失敗：'+e.message);
           }
         });
       }
@@ -4665,7 +4665,7 @@
           settle({dataUrl:null,error:{code:'IFRAME_TIMEOUT',message:'版位沒有在期限內回應；已取消本次截圖，可重新下載。'}});
         },50000);
         try{iframeEl.contentWindow.postMessage({type:'bn-capture',msgId:msgId,layers:!!wantLayers},'*');}
-        catch(error){settle({dataUrl:null,error:{code:'IFRAME_ACCESS',message:'無法連接版位，請重新整理後再試。'}});}
+        catch(error){settle({dataUrl:null,error:{code:'IFRAME_ACCESS',message:'無法連線版位，請重新整理後再試。'}});}
       }
 
       function next(idx){
@@ -4724,7 +4724,7 @@
               if(total===1){
                 setProgress(outUrl ? '已下載 1 / 1' : '下載失敗：'+baseName+'（'+(failedReasons[failedReasons.length-1]||'截圖未完成')+'）');
               }else{
-                setProgress('打包中 '+done+' / '+total+'（成功 '+ok+'，失敗 '+fail+'）'
+                setProgress('建立壓縮檔中 '+done+' / '+total+'（成功 '+ok+'，失敗 '+fail+'）'
                   + (failedNames.length ? '　失敗清單：'+failedNames.join('、') : ''));
               }
 

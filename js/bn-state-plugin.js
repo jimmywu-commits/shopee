@@ -492,8 +492,8 @@
     var isBothExempt = inp.dataset.dollarExempt && inp.dataset.thousandsExempt === '1' && inp.dataset.numeralExempt === '1';
 
     [
-      { label: isBothExempt ? '✓ 已豁免（點擊取消）' : '暫時不加$符號與千分位符號、不強制變阿拉伯數字', action:'both' },
-      { label: '重新檢查禁用語', action:'check' },
+      { label: isBothExempt ? '✓ 已豁免（點選取消）' : '暫時不加$符號與千分位符號、不強制變阿拉伯數字', action:'both' },
+      { label: '重新檢查禁用詞', action:'check' },
     ].forEach(function(item){
       var btn = document.createElement('div');
       btn.textContent = item.label;
@@ -599,7 +599,7 @@
     ensureXLSX().then(doFetch).catch(function(error){
       console.warn('[BNState] 試算表元件載入失敗',error);
       ensureExcelPicker().style.display='block';
-      showToast('禁用語規則未能載入：'+error.message,'err',5000);
+      showToast('禁用詞規則無法載入：'+error.message,'err',5000);
     });
   }
 
@@ -1146,15 +1146,15 @@
       noAutomaticRetry:!!(error && error.noAutomaticRetry)};
     var node = document.getElementById('_bn_save_status');
     if(node){
-      var labels = {idle:'尚無待保存的修改',loading:'正在還原本機暫存…',pending:'有修改，等待暫存',
-        saving:'正在保存完整暫存…',saved:'完整暫存已保存',partial:'已還原文字／位置備援，請上傳暫存補回圖片',
+      var labels = {idle:'目前沒有待儲存的修改',loading:'正在還原本機暫存…',pending:'有修改，等待暫存',
+        saving:'正在儲存完整暫存…',saved:'完整暫存已儲存',partial:'已還原文字／位置備援，請上傳暫存補回圖片',
         error:saveFailureCount >= 3 ? '暫存已暫停，請下載暫存保留進度或按重試' : '完整暫存失敗，請下載暫存保留進度'};
       node.textContent = error && error.noAutomaticRetry ? error.message
         : error && error.name === 'BlockedError' ? '請關閉其他舊版曝光分頁，再重試暫存'
-        : restoreFailed ? '完整暫存未能還原，自動保存已暫停；請上傳暫存或下載目前進度'
+        : restoreFailed ? '完整暫存未能還原，自動儲存已暫停；請上傳暫存或下載目前進度'
         : labels[state] || labels.idle;
       node.style.color = state === 'error' || state === 'partial' ? '#b45309' : 'var(--text2,#8b949e)';
-      node.title = summaryAvailable ? '' : '文字／位置備援不可用；完整圖片與設定仍以 IndexedDB 的保存結果為準。';
+      node.title = summaryAvailable ? '' : '文字／位置備援不可用；完整圖片與設定仍以 IndexedDB 的儲存結果為準。';
     }
     var retry = document.getElementById('_bn_save_retry');
     if(retry){ retry.hidden = state !== 'error' || !!storageOwnershipError; retry.disabled = !!saveInFlight; }
