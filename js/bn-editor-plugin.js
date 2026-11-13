@@ -2008,16 +2008,19 @@
       var target=null;
       scroll.querySelectorAll('.s-section').forEach(function(el){if(el.textContent.trim()==='排版選擇')target=el;});
       var sec=document.createElement('div');
+      var legacyCharacterUi = window.IS_BODA ? [] : [
+        '  <button id="bn-char-open-btn" style="margin-top:6px">＋ 上傳人物圖1</button>',
+        '  <input type="file" id="bn-char-inp" accept="image/*" style="display:none">',
+        '  <button id="bn-char2-open-btn" style="margin-top:6px">＋ 上傳人物圖2</button>',
+        '  <input type="file" id="bn-char2-inp" accept="image/*" style="display:none">',
+        '  <div id="bn-char-hint" style="display:none;font-size:10px;color:var(--text3,#6e7681);margin-top:4px;line-height:1.5">已上傳 1 張人物圖：商品圖最多只會顯示「目前最上層」的 2 件，其餘暫時隱藏；上傳第 2 張人物圖後，商品圖會完全不顯示。移除人物圖後會自動恢復顯示。人物圖卡片會顯示在上方清單裡，跟目前最上層的商品一起排前後順序。</div>'
+      ];
       sec.innerHTML=[
         '<div class="s-section" style="margin-top:8px">商品圖（最多3張）</div>',
         '<div class="bn-section">',
         '  <button id="bn-prod-open-btn">＋ 上傳商品圖</button>',
         '  <div class="bn-prod-list" id="bn-prod-list"></div>',
-        '  <button id="bn-char-open-btn" style="margin-top:6px">＋ 上傳人物圖1</button>',
-        '  <input type="file" id="bn-char-inp" accept="image/*" style="display:none">',
-        '  <button id="bn-char2-open-btn" style="margin-top:6px">＋ 上傳人物圖2</button>',
-        '  <input type="file" id="bn-char2-inp" accept="image/*" style="display:none">',
-        '  <div id="bn-char-hint" style="display:none;font-size:10px;color:var(--text3,#6e7681);margin-top:4px;line-height:1.5">已上傳 1 張人物圖：商品圖最多只會顯示「目前最上層」的 2 件，其餘暫時隱藏；上傳第 2 張人物圖後，商品圖會完全不顯示。移除人物圖後會自動恢復顯示。人物圖卡片會顯示在上方清單裡，跟目前最上層的商品一起排前後順序。</div>',
+      ].concat(legacyCharacterUi, [
         '</div>',
         '<div class="s-section" style="margin-top:8px">代言人（照片＋簽名檔，不加影子）</div>',
         '<div class="bn-section" id="bn-endorser-section">',
@@ -2047,12 +2050,14 @@
         '    <div id="bn-bg-summary" style="font-size:10px;color:var(--text3,#687090)">各版位可在右側獨立調整縮放和位置</div>',
         '  </div>',
         '</div>',
-      ].join('');
+      ]).join('');
       if(target)scroll.insertBefore(sec,target);else scroll.appendChild(sec);
       document.getElementById('bn-prod-open-btn').addEventListener('click',openModal);
       buildModal();
-      initCharacterUpload('_bnCharacter');
-      initCharacterUpload('_bnCharacter2');
+      if(!window.IS_BODA){
+        initCharacterUpload('_bnCharacter');
+        initCharacterUpload('_bnCharacter2');
+      }
       initEndorserUpload('_bnEndorserPhoto');
       initEndorserUpload('_bnEndorserSign');
       initEndorserNoteUI();

@@ -893,9 +893,10 @@
       logos: (global._bnLogos||[]).map(function(l){ return clone(l); }),
       logoLayouts: clone(global._bnLogoLayouts || {}),
       logoLayoutsByFile: idMapToFileMap(global._bnLogoLayouts || {}, layoutIndex),
-      character: addPortableLayouts(global._bnCharacter, layoutIndex),
-      character2: addPortableLayouts(global._bnCharacter2, layoutIndex),
-      charPairFirst: global._bnCharPairFirst || null,
+      /* BODA 已下架獨立人物圖；一般 SHOPEE 模式仍保留原人物圖暫存。 */
+      character: global.IS_BODA ? null : addPortableLayouts(global._bnCharacter, layoutIndex),
+      character2: global.IS_BODA ? null : addPortableLayouts(global._bnCharacter2, layoutIndex),
+      charPairFirst: global.IS_BODA ? null : (global._bnCharPairFirst || null),
       endorserPhoto: addPortableLayouts(global._bnEndorserPhoto || null, layoutIndex),
       endorserSign: addPortableLayouts(global._bnEndorserSign || null, layoutIndex),
       endorserNote: addPortableLayouts(global._bnEndorserNote || {text:'', color:'', layouts:{}}, layoutIndex),
@@ -933,8 +934,8 @@
   function stateHasHeavyPlaceholders(state){
     if(!state) return false;
     if(state._heavyStripped) return true;
-    if(state.character && state.character.src === '__BN_IDB__') return true;
-    if(state.character2 && state.character2.src === '__BN_IDB__') return true;
+    if(!global.IS_BODA && state.character && state.character.src === '__BN_IDB__') return true;
+    if(!global.IS_BODA && state.character2 && state.character2.src === '__BN_IDB__') return true;
     if(state.endorserPhoto && state.endorserPhoto.src === '__BN_IDB__') return true;
     if(state.endorserSign && state.endorserSign.src === '__BN_IDB__') return true;
     var bg = state.background || {};
@@ -1028,10 +1029,21 @@
         }
       }
     }
-    if('character' in state || 'character2' in state){
-      /* character 為 null 代表使用者存檔時沒有人物圖，允許還原成「移除」；
-         但若這份 state 是被 strip 過的輕量版且人物圖是佔位符，就不要拿它把真正的人物圖蓋掉。
-         人物1、人物2 各自獨立判斷，其中一個是佔位符不影響另一個正常還原。 */
+    if(global.IS_BODA){
+      /* 曝光頁的人物圖已下架。舊暫存仍可能帶 character／character2，一律清除並恢復商品可見數；
+         工單代言人照使用獨立的 endorserPhoto／endorserImg 狀態，照常還原。 */
+      var hadRetiredCharacters = !!(state.character || state.character2 || global._bnCharacter || global._bnCharacter2);
+      global._bnCharacter = null;
+      global._bnCharacter2 = null;
+      global._bnCharPairFirst = '_bnCharacter';
+      if(hadRetiredCharacters){
+        if(typeof global._bnRenderCharacter==='function') global._bnRenderCharacter();
+        if(typeof global._bnBroadcastCharacter==='function') global._bnBroadcastCharacter();
+        /* 自動暫存會清掉舊人物圖圖片資料，商品、背景、代言人與版位狀態仍完整保留。 */
+        markDirty();
+      }
+    }else if('character' in state || 'character2' in state){
+      /* 一般 SHOPEE 工具仍支援人物圖，維持原本暫存還原行為。 */
       if('character' in state){
         var charPlaceholder = state.character && state.character.src === '__BN_IDB__';
         if(!charPlaceholder) global._bnCharacter = state.character ? restorePortableLayouts(state.character, layoutIndex, state.layoutManifest) : null;
@@ -1040,9 +1052,7 @@
         var char2Placeholder = state.character2 && state.character2.src === '__BN_IDB__';
         if(!char2Placeholder) global._bnCharacter2 = state.character2 ? restorePortableLayouts(state.character2, layoutIndex, state.layoutManifest) : null;
       }
-      if('charPairFirst' in state && state.charPairFirst){
-        global._bnCharPairFirst = state.charPairFirst;
-      }
+      if('charPairFirst' in state && state.charPairFirst) global._bnCharPairFirst = state.charPairFirst;
       if(typeof global._bnRenderCharacter==='function') global._bnRenderCharacter();
       if(typeof global._bnBroadcastCharacter==='function') global._bnBroadcastCharacter();
     }

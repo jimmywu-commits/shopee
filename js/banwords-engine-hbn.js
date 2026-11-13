@@ -246,6 +246,11 @@
   function sanitizeAllowedCharacters(text, role){
     let out = String(text || '');
 
+    /* 品牌名（目前只有 SCBN 使用）不限特殊符號，原樣保留。 */
+    if (role === '品牌名') {
+      return out.replace(/ /g, ' ');
+    }
+
     if (role === 'date') {
       out = out.replace(/[~～∼˜]/g, '-');
       out = out.replace(/[^\p{Script=Han}\p{L}\p{N}\s,$%\/\-:]/gu, '');
@@ -656,6 +661,9 @@
     getRules().forEach(function(rule){
       if (!rule.keyword) return;
       if (options && options.numeralExempt && isChineseNumeralRule(rule)) return;
+      /* 品牌名不限特殊符號：banwords.xlsx 裡純符號的規則（! ? . " =+ ~）不套用，
+         含文字的一般禁用語照常檢查。 */
+      if (role === '品牌名' && !/[\p{Script=Han}\p{L}\p{N}]/u.test(String(rule.keyword))) return;
 
       const protectedResult = protectExcludedSegments(out, rule.exclude);
       let workingText = protectedResult.text;
@@ -694,7 +702,8 @@
     /* 還原已正規化的蝦幣金額，再執行其他一般數字規則。 */
     out = restoreProtectedMap(out, shopeeCoinProtected.protectedMap);
 
-    const adjusted = applyNumericRules(out, role, options);
+    /* 品牌名不套數字規則（不加 $、不加千分位），避免 7-ELEVEN 變成 $7-ELEVEN。 */
+    const adjusted = role === '品牌名' ? out : applyNumericRules(out, role, options);
     if (adjusted !== out) {
       out = adjusted;
       changed = true;
@@ -707,7 +716,7 @@
     }
 
     // - 左右補空格：清掉 - 周圍任意空白後補成 ' - '（不含字串開頭的負號）
-    out = out.replace(/(?<=.)[ \t]*-[ \t]*(?=\S)/g, ' - ');
+    if (role !== '品牌名') out = out.replace(/(?<=.)[ \t]*-[ \t]*(?=\S)/g, ' - ');
 
     out = out.replace(/\s{2,}/g, ' ').trim();
 
