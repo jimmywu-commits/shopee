@@ -1181,6 +1181,21 @@ function getLayoutCheckedValue(layout) {
   return defaultChecked;
 }
 
+/* AR 文案的字數限制只在至少一個 AR 版位被勾選時生效。 */
+function bnHasCheckedArLayout() {
+  return loadLayouts().some(function(layout) {
+    return /^(?:AR|AR_LOGO)\.html$/i.test(String(layout && layout.file || '')) &&
+      getLayoutCheckedValue(layout);
+  });
+}
+window.bnHasCheckedArLayout = bnHasCheckedArLayout;
+function bnBroadcastArLimitState() {
+  var active = bnHasCheckedArLayout();
+  document.querySelectorAll('.preview-block iframe').forEach(function(iframe){
+    try { iframe.contentWindow.postMessage({type:'bn-ar-limit-active', active:active}, '*'); } catch(_) {}
+  });
+}
+
 function rememberLayoutChecked(id, value) {
   value = !!value;
   checked[id] = value;
@@ -1350,6 +1365,8 @@ function onCheck(id, val) {
   _syncSbaPc(id, val);
   renderChecks();
   renderPreviews();
+  if(typeof bnRefreshLimitAlert === 'function') bnRefreshLimitAlert();
+  bnBroadcastArLimitState();
 }
 
 function checkAll(val) {
@@ -1358,6 +1375,8 @@ function checkAll(val) {
   layouts.forEach(function(l){ rememberLayoutChecked(l.id, val); });
   renderChecks();
   renderPreviews();
+  if(typeof bnRefreshLimitAlert === 'function') bnRefreshLimitAlert();
+  bnBroadcastArLimitState();
 }
 
 /* 共用外掛批次切換版位時，必須直接更新本頁 renderPreviews() 使用的
@@ -1373,7 +1392,7 @@ function setLayoutChecks(nextById) {
     }
   });
   if (_syncSbaPc()) changed = true;
-  if(changed){ renderChecks(); renderPreviews(); }
+  if(changed){ renderChecks(); renderPreviews(); bnRefreshLimitAlert(); bnBroadcastArLimitState(); }
   return changed;
 }
 
@@ -1847,6 +1866,7 @@ function bnFieldUnits(inp){
 }
 function bnIsFieldOver(inp){
   if(!inp) return false;
+  if(inp.id==='txt-ar' && !bnHasCheckedArLayout()) return false;
   var lim=parseFloat(inp.dataset.limit||'');
   if(!lim) return false;
   if(inp.id==='bn-endorser-note-inp' && typeof window._bnEndorserNoteStatus==='function') return window._bnEndorserNoteStatus(bnFieldValue(inp)).over;
@@ -1874,6 +1894,7 @@ function bnGetOverLimitFields(){
     var inp=document.getElementById(f[0]);
     if(!inp) return;
     var lim=parseFloat(inp.dataset.limit||'');
+    if(f[0]==='txt-ar' && !bnHasCheckedArLayout()) return;
     if(lim && bnIsFieldOver(inp)){
       out.push({ id:f[0], label:f[1], used:bnFieldUnits(inp), limit:lim, value:bnFieldValue(inp) });
     }
@@ -2141,6 +2162,11 @@ window.addEventListener('message', function (e) {
     var badgeEl = document.getElementById(badgeMap[e.data.field]);
     var inpEl   = document.getElementById(inputMap[e.data.field]);
     var rowEl   = inpEl ? inpEl.closest('.s-field-row') : null;
+    if(e.data.field === '六字內' && !bnHasCheckedArLayout()){
+      if(badgeEl){ badgeEl.textContent=''; badgeEl.className='char-count-badge'; }
+      if(rowEl) rowEl.classList.remove('over-limit','fmt-over');
+      return;
+    }
     if(badgeEl){
       if(e.data.used === null || e.data.used === undefined){
         badgeEl.textContent=''; badgeEl.className='char-count-badge';
@@ -4030,6 +4056,7 @@ document.addEventListener('DOMContentLoaded',function(){
     var allowComma = input.id==='txt-date';
 
     input.addEventListener('beforeinput',function(e){
+      if(input.id==='txt-ar' && !bnHasCheckedArLayout()) return;
       if(e.inputType && e.inputType.indexOf('delete')===0) return;
       if(e.isComposing) return;
       var insert=e.data||'';
@@ -4041,6 +4068,7 @@ document.addEventListener('DOMContentLoaded',function(){
     });
 
     input.addEventListener('paste',function(e){
+      if(input.id==='txt-ar' && !bnHasCheckedArLayout()) return;
       var text=(e.clipboardData||window.clipboardData).getData('text')||'';
       if(calcUnits(nextValue(input,text), allowComma)<=limit) return;
       /* 貼上後會超過上限：整段擋掉，不做截斷（避免貼進殘缺的文字） */
@@ -4049,6 +4077,13 @@ document.addEventListener('DOMContentLoaded',function(){
     });
 
     input.addEventListener('input',function(){
+      if(input.id==='txt-ar' && !bnHasCheckedArLayout()){
+        if(badge){ badge.textContent=''; badge.className='char-count-badge'; badge.title=''; }
+        var arRow=input.closest('.s-field-row');
+        if(arRow) arRow.classList.remove('over-limit','fmt-over');
+        if(typeof bnRefreshLimitAlert==='function') bnRefreshLimitAlert();
+        return;
+      }
       /* 一律不截斷文字：
          手打由 beforeinput 擋住、貼上整段擋住；
          其餘（輸入法漏網、系統補 $／千分位、預設值）保留原文，
@@ -4075,6 +4110,7 @@ window.addEventListener('message',function(e){
   if(!iframe) return;
   try{
     iframe.contentWindow.postMessage({type:'bn-content-warning',messages:window._bnContentWarningMessages||[]},'*');
+    iframe.contentWindow.postMessage({type:'bn-ar-limit-active', active:bnHasCheckedArLayout()},'*');
   }catch(_){}
 });
 </script>

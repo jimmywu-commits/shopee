@@ -50,6 +50,12 @@
   }
   var urlId = parseInt(new URLSearchParams(location.search).get('bnid')) || 0;
   var fname = decodeURIComponent(location.pathname.split('/').pop().replace(/\.html$/i, ''));
+  function isArTemplate(){ return /^(?:ar|ar_logo)$/i.test(fname || ''); }
+  function isArLimitActive(){
+    if(!isArTemplate()) return true;
+    try { return !window.parent || typeof window.parent.bnHasCheckedArLayout !== 'function' || window.parent.bnHasCheckedArLayout(); }
+    catch(_) { return true; }
+  }
 
   /* 這個版位（依檔名判斷）只能顯示「目前最上層（z-index最高）」的一張商品圖，
      人物圖完全不顯示——不管人物圖數量或商品可見度規則怎麼變，都要蓋掉。
@@ -1159,6 +1165,13 @@
     }
 
     if (e.data.type === 'bn-overflow-check') {
+      try{ refreshOverflowAll(); }catch(_){}
+    }
+
+    if (e.data.type === 'bn-ar-limit-active') {
+      if(isArTemplate() && e.data.active === false){
+        document.querySelectorAll('.六字內.bn-over-limit').forEach(function(el){ el.classList.remove('bn-over-limit'); el.__fmtOver = false; });
+      }
       try{ refreshOverflowAll(); }catch(_){}
     }
 
@@ -4820,6 +4833,10 @@
   function showCounter(el, cls){
     /* 通知父層（BN編輯器）更新字數顯示 */
     if(window.parent !== window){
+      if(cls === '六字內' && !isArLimitActive()){
+        window.parent.postMessage({type:'bn-char-count', field:cls, used:null}, '*');
+        return;
+      }
       var limit = CHAR_LIMITS[cls] || 0;
       var used  = calcUnits(el.textContent);
       window.parent.postMessage({
@@ -4849,6 +4866,7 @@
   }
 
   function enforceLimit(el, cls){
+    if(cls === '六字內' && !isArLimitActive()) return;
     var limit = CHAR_LIMITS[cls];
     if(!limit) return;
     if(el.__fmtOver) return;   /* 系統補 $／千分位造成的超字：保留原文 */
@@ -4884,6 +4902,7 @@
   }
 
   function wouldExceedLimit(el, cls, insertText){
+    if(cls === '六字內' && !isArLimitActive()) return false;
     var limit = CHAR_LIMITS[cls];
     if(!limit) return false;
     var text = el.textContent || '';
@@ -4902,6 +4921,7 @@
     (document.head||document.documentElement).appendChild(st);
   }
   function isOverLimit(el, cls){
+    if(cls === '六字內' && !isArLimitActive()) return false;
     var limit = CHAR_LIMITS[cls];
     if(!limit) return false;
     return calcUnits(el.textContent) > limit + 0.001;
