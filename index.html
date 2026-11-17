@@ -1181,7 +1181,8 @@ function getLayoutCheckedValue(layout) {
   return defaultChecked;
 }
 
-/* AR 文案的字數限制只在至少一個 AR 版位被勾選時生效。 */
+/* 只看 AR 版位本身：至少一個 AR（AR／AR_LOGO）勾選才啟用 AR 字數限制；
+   其他非 AR 版位是否勾選，不影響 AR 文案。 */
 function bnHasCheckedArLayout() {
   return loadLayouts().some(function(layout) {
     return /^(?:AR|AR_LOGO)\.html$/i.test(String(layout && layout.file || '')) &&
