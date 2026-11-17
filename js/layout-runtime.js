@@ -2505,7 +2505,11 @@
            負半行距的行為不穩定，實測下載會整行往上跳 8px（預覽正常），
            造成跟左右橫白線對不齊。納入點陣化後下載 = 預覽，橫線本身是
            靜態色塊本來就不會漂，兩者就永遠對齊。 */
-        _cv.querySelectorAll('.ICON獨立文案, .副標案型七字內, .官方旗艦店').forEach(function(el){
+        /* SBA_PC 的「逛逛去」同樣是絕對定位文字；預覽正常但 html2canvas
+           會把字型基準線算得偏下，因此納入同一套點陣化，讓下載與預覽一致。 */
+        var _rasterTextSelector = '.ICON獨立文案, .副標案型七字內, .官方旗艦店';
+        if(/^sba_pc$/i.test(_fnameLower)) _rasterTextSelector += ', .逛逛去';
+        _cv.querySelectorAll(_rasterTextSelector).forEach(function(el){
           var txt = (el.textContent || '').trim();
           if(!txt) return;
           var w = el.offsetWidth, h = el.offsetHeight;
