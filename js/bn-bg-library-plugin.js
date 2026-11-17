@@ -116,7 +116,7 @@
   }
   function isAllMode(){
     var s = String(location.hash || '').replace(/^#/,'').trim().toLowerCase();
-    return s === 'all';
+    return s === 'all' || s === 'ad';
   }
   function isFullLibraryMode(levelId){
     if(isAllMode()) return true;

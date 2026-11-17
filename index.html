@@ -1171,6 +1171,9 @@ function layoutFileKey(file) {
 function getLayoutCheckedValue(layout) {
   var id = layout.id;
   var fileKey = layoutFileKey(layout.file || layout.name);
+  if (isAdModeHash(location.hash) && !(id in checked) && !(fileKey && fileKey in checkedByFile)) {
+    return isAdDefaultLayout(layout);
+  }
   var defaultChecked = !/^LPBN_/i.test(layout.file || '');
   if (id in checked) return !!checked[id];
   if (fileKey && fileKey in checkedByFile) return !!checkedByFile[fileKey];
@@ -1202,7 +1205,15 @@ function isJbpModeHash(raw){
 }
 function isAllModeHash(raw){
   var s = String(raw || '').replace(/^#/,'').trim().toLowerCase();
-  return s === 'all';
+  return s === 'all' || s === 'ad';
+}
+function isAdModeHash(raw){
+  var s = String(raw || '').replace(/^#/,'').trim().toLowerCase();
+  return s === 'ad';
+}
+function isAdDefaultLayout(layout){
+  var file = String(layout && (layout.file || layout.name) || '').toLowerCase();
+  return file.indexOf('ddcard') !== -1 || file.indexOf('hbn') !== -1;
 }
 function parseHashKeywords(raw){
   var s = (raw || '').replace(/^#/,'').trim().toLowerCase();
@@ -1235,6 +1246,18 @@ function renderChecks() {
      則看起來正常。先讀 hash，再決定是否套用 enabled。
   */
   var allLayouts = loadLayouts();
+
+  /* #ad 是廣告入口：每次切入時重設為只勾選 DDCard 與 HBN，
+     之後仍可由使用者手動調整，不沿用其他入口的勾選狀態。 */
+  var adMode = isAdModeHash(location.hash);
+  var adHashKey = adMode ? String(location.hash || '').toLowerCase() : '';
+  if (adHashKey !== window._bnLastAdHashKey) {
+    window._bnLastAdHashKey = adHashKey;
+    if (adMode) {
+      checked = {};
+      checkedByFile = {};
+    }
+  }
 
   /* 從 URL hash 讀取過濾關鍵詞（如 #ddcard 或 #hbnddcard），並據此篩選版位 */
   var hashKeywords = parseHashKeywords(location.hash);
