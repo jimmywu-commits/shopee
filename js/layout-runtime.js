@@ -50,7 +50,7 @@
   }
   var urlId = parseInt(new URLSearchParams(location.search).get('bnid')) || 0;
   var fname = decodeURIComponent(location.pathname.split('/').pop().replace(/\.html$/i, ''));
-  function isArTemplate(){ return /^(?:ar|ar_logo)$/i.test(fname || ''); }
+  function isArTemplate(){ return /^ar$/i.test(fname || ''); }
   function isArLimitActive(){
     if(!isArTemplate()) return true;
     try { return !window.parent || typeof window.parent.bnHasCheckedArLayout !== 'function' || window.parent.bnHasCheckedArLayout(); }
