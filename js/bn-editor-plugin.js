@@ -65,10 +65,26 @@
 .bn-endorser-hint.on{color:#c084fc}
 .bn-endorser-editing .hbn-plugin-modal [data-act="shadow"]{display:none!important}
 #bn-download-bar{padding:10px 14px;border-top:1px solid var(--border,#30363d);flex-shrink:0}
+.bn-terms-line{display:flex;align-items:flex-start;gap:5px;margin:0 0 7px;color:var(--text3,#8b949e);font-size:10px;line-height:1.45}
+.bn-terms-line input{width:13px;height:13px;margin:1px 0 0;accent-color:#2563eb;flex:0 0 auto}
+.bn-terms-line label{cursor:pointer}
+.bn-terms-link{color:#60a5fa;text-decoration:underline;cursor:pointer}
 .bn-dl-btn{display:block;width:100%;padding:9px;background:linear-gradient(135deg,#1d4ed8,#0d47a1);border:none;border-radius:7px;color:#fff;font-size:12px;font-weight:700;cursor:pointer;transition:opacity .12s}
 .bn-dl-btn:hover{opacity:.88}
 .bn-dl-btn:disabled{opacity:.35;cursor:not-allowed}
 .bn-dl-progress{font-size:10px;color:var(--text3,#6e7681);text-align:center;margin-top:5px;min-height:14px}
+#bn-terms-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.78);z-index:100000;align-items:center;justify-content:center;backdrop-filter:blur(4px)}
+#bn-terms-modal.show{display:flex}
+.bn-terms-box{background:#13161f;border:1px solid #30384d;border-radius:14px;width:min(760px,94vw);max-height:88vh;display:flex;flex-direction:column;box-shadow:0 24px 70px rgba(0,0,0,.65);overflow:hidden}
+.bn-terms-head{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid #252b3d}
+.bn-terms-head h3{font-size:15px;color:#e6edf3;margin:0}
+.bn-terms-close{background:transparent;border:0;color:#8b949e;font-size:21px;cursor:pointer;line-height:1}
+.bn-terms-body{margin:14px 18px;padding:14px;background:#0d1018;border:1px solid #252b3d;border-radius:8px;overflow-y:auto;max-height:55vh;color:#c9d1d9;font-size:12px;line-height:1.8;white-space:normal}
+.bn-terms-body p{margin:0 0 10px}.bn-terms-body p:last-child{margin-bottom:0}
+.bn-terms-foot{padding:12px 18px;border-top:1px solid #252b3d;display:flex;gap:8px;justify-content:flex-end;align-items:center;flex-wrap:wrap}
+.bn-terms-scroll{margin-right:auto;background:#202938;border:1px solid #3b4b68;color:#c9d1d9;border-radius:6px;padding:6px 10px;font-size:11px;cursor:pointer}
+.bn-terms-agree{background:#f97316;border:0;color:#fff;border-radius:6px;padding:7px 15px;font-size:12px;font-weight:700;cursor:pointer}
+.bn-terms-agree:disabled{opacity:.35;cursor:not-allowed}
 
 /* ── 背景上傳 Modal ── */
 #bn-bg-open-btn{display:block;width:100%;padding:8px;background:var(--bg2,#1c2333);border:1.5px dashed var(--border,#30363d);border-radius:7px;color:var(--text2,#8b949e);font-size:11px;cursor:pointer;text-align:center;transition:.15s;box-sizing:border-box}
@@ -3973,12 +3989,74 @@
       var sidebar=document.getElementById('sidebar');
       if(!sidebar||document.getElementById('bn-download-bar'))return;
       var bar=document.createElement('div');bar.id='bn-download-bar';
-      bar.innerHTML='<button class="bn-dl-btn" id="bn-dl-all">⬇ 下載全部勾選畫版</button><div class="bn-dl-progress" id="bn-dl-progress"></div>';
+      bar.innerHTML='<div class="bn-terms-line"><input type="checkbox" id="bn-terms-check" aria-label="我已閱讀並接受蝦皮資產使用條款"><label for="bn-terms-check">我已閱讀並接受 <a href="#bn-terms-modal" class="bn-terms-link" id="bn-terms-link">「蝦皮資產使用條款」</a></label></div>'
+        +'<button class="bn-dl-btn" id="bn-dl-all" disabled>⬇ 下載全部勾選畫版</button><div class="bn-dl-progress" id="bn-dl-progress"></div>';
       /* 加到 sidebar 最底部（sidebar-scroll 下方）*/
       var scroll=document.getElementById('sidebar-scroll');
       if(scroll && scroll.nextSibling) sidebar.insertBefore(bar, scroll.nextSibling);
       else sidebar.appendChild(bar);
+      initAssetTerms(bar);
       document.getElementById('bn-dl-all').addEventListener('click',downloadAll);
+    }
+
+    /* 蝦皮資產使用條款：必須完整閱讀至底部才可同意並解鎖下載。 */
+    var BN_ASSET_TERMS_VERSION = '2026-11-19-v1';
+    var BN_ASSET_TERMS_KEY = 'bn-asset-terms-consent-v1';
+    var BN_ASSET_TERMS_TEXT = [
+      '一、工具功能與使用方式',
+      'JBP Banner 編輯器為前端網頁工具。使用者可選擇既有版型、上傳圖片、裁切與排版，並輸出 Banner 圖檔。圖片與編輯內容原則上僅在使用者瀏覽器本機處理，無自建後端或資料庫。',
+      '二、預計使用者',
+      '第一階段供 Shopee 內部行銷與 BD 團隊使用；未來可能開放合作廠商使用。若對外開放，將採法務及資訊安全確認後的權限與使用規則。',
+      '三、技術與外部連線',
+      '工具以 iframe 或靜態網頁方式部署，規劃使用 BODA 或 GitLab Pages。現行測試版本位於 GitHub Pages。前端使用 CropperJS、SheetJS、html2canvas 及 JSZip，並可能透過 jsDelivr、cdnjs、gstatic、Google Fonts 與 GitHub raw 載入資源。意見回饋使用 Google Form，僅保存使用者主動填寫的內容。',
+      '四、素材與規則',
+      '工具包含約 340 張團隊內部製作的背景素材、Shopee Logo、ShopeeNotoSans 字型及測試圖片。ShopeeNotoSans 預計僅用於 Shopee 站內素材。另以 banwords.xlsx 維護禁用或高風險用語規則。',
+      '五、擬於工具中提供下列聲明與使用限制，請法務確認權利歸屬、限制範圍、違約責任及文字表述是否適當',
+      '1. 智慧財產權聲明與使用限制',
+      '本工具內提供之 Shopee Logo、ShopeeNotoSans 字型、內部背景素材及版位模板（以下合稱「蝦皮素材」），其著作權、商標權及其他智慧財產權均屬蝦皮所有。',
+      '廠商僅得於本工具內，為製作並投放於蝦皮平台之素材使用蝦皮素材。未經蝦皮書面同意，不得將蝦皮素材另行下載、複製、轉載、散布，或移作其他平台及其他用途使用；不得修改、拆解或重製，或用於商業販售及授權第三方使用；不得以任何方式暗示廠商與蝦皮具有合作、背書或其他官方關係。違反規定所生之侵權責任及損害賠償概由廠商自行負責；蝦皮得終止使用權限並保留法律追訴權利。',
+      '另請法務確認「均屬蝦皮所有」是否適用於全部素材；如部分素材或第三方套件係經授權使用，是否應調整為「蝦皮或相關權利人所有」，並補充不得下載或修改的例外範圍。',
+      '2. 禁用語規範與廣告文案合規責任',
+      '本工具提供之禁用語檢查係依據蝦皮內部素材規範建置，僅作為輔助提醒，不代表素材內容已符合所有法令規定。廠商應自行確認文案內容符合《公平交易法》、《消費者保護法》、《化粧品衛生安全管理法》、《食品安全衛生管理法》、《藥事法》等相關法規，以及蝦皮平台之廣告素材規範，不得使用不實、誇大、易生誤解或涉及療效之宣稱。廠商如未依規定製作素材，致生違反法令、遭主管機關裁罰或第三人求償，相關法律責任均由廠商自行承擔，與蝦皮無涉。',
+      '另請法務確認「相關法律責任均由廠商自行承擔，與蝦皮無涉」之文字是否需調整，以及工具上線後是否仍須保留人工審核、法規提示或廠商確認勾選機制。',
+      '3. 外部連線與資料安全',
+      '請確認透過外部 CDN、Google Form、Google Fonts 或 GitHub Pages 載入資源，是否涉及個人資料、公司資料或機密資訊對外傳輸，以及是否需另循 External Data Sharing、資訊安全或其他內部審查流程。',
+      '4. 其他必要審查與上線條件',
+      '請確認本案是否尚需同步進行 Corp Risk、品牌、智慧財產權或其他審查，以及對外開放合作廠商前應完成之權限控管、使用者同意及留存紀錄要求。'
+    ].join('\n');
+
+    function readAssetTermsConsent(){
+      try { var raw=localStorage.getItem(BN_ASSET_TERMS_KEY); var data=raw?JSON.parse(raw):null; return !!(data&&data.version===BN_ASSET_TERMS_VERSION&&data.agreedAt); } catch(_){ return false; }
+    }
+    function assetTermsSetDownloadState(accepted){
+      var check=document.getElementById('bn-terms-check'), btn=document.getElementById('bn-dl-all');
+      if(check) check.checked=!!accepted;
+      if(btn) btn.disabled=!accepted;
+    }
+    function assetTermsAccepted(){ return readAssetTermsConsent(); }
+    function assetTermsOpen(){ var m=document.getElementById('bn-terms-modal'); if(m) m.classList.add('show'); }
+    window.bnTermsAccepted=assetTermsAccepted;
+    window.bnTermsOpenModal=assetTermsOpen;
+    function initAssetTerms(bar){
+      var modal=document.createElement('div'); modal.id='bn-terms-modal';
+      var paragraphs=BN_ASSET_TERMS_TEXT.split('\n').map(function(line){ return '<p>'+line.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')+'</p>'; }).join('');
+      modal.innerHTML='<div class="bn-terms-box" role="dialog" aria-modal="true" aria-labelledby="bn-terms-title"><div class="bn-terms-head"><h3 id="bn-terms-title">蝦皮資產使用條款</h3><button type="button" class="bn-terms-close" aria-label="關閉">×</button></div><div class="bn-terms-body" id="bn-terms-body">'+paragraphs+'</div><div class="bn-terms-foot"><button type="button" class="bn-terms-scroll" id="bn-terms-scroll">↓ 滑到條款底部</button><span id="bn-terms-hint" style="font-size:10px;color:#8b949e">請閱讀至最底部</span><button type="button" class="bn-terms-agree" id="bn-terms-agree" disabled>我已同意條款</button></div></div>';
+      document.body.appendChild(modal);
+      var body=modal.querySelector('#bn-terms-body'), agree=modal.querySelector('#bn-terms-agree');
+      function update(){ var reached=body.scrollTop+body.clientHeight>=body.scrollHeight-4; agree.disabled=!reached; modal.querySelector('#bn-terms-hint').textContent=reached?'已閱讀至條款底部':'請閱讀至最底部'; }
+      body.addEventListener('scroll',update);
+      modal.querySelector('#bn-terms-scroll').addEventListener('click',function(){ body.scrollTo({top:body.scrollHeight,behavior:'smooth'}); });
+      modal.querySelector('.bn-terms-close').addEventListener('click',function(){ modal.classList.remove('show'); });
+      modal.addEventListener('click',function(e){ if(e.target===modal) modal.classList.remove('show'); });
+      agree.addEventListener('click',function(){ try{ localStorage.setItem(BN_ASSET_TERMS_KEY,JSON.stringify({version:BN_ASSET_TERMS_VERSION,agreedAt:new Date().toISOString(),source:'download-all'})); }catch(_){} assetTermsSetDownloadState(true); modal.classList.remove('show'); });
+      var check=bar.querySelector('#bn-terms-check'), link=bar.querySelector('#bn-terms-link');
+      check.addEventListener('click',function(e){ if(!assetTermsAccepted()){ e.preventDefault(); assetTermsOpen(); } });
+      check.addEventListener('change',function(){
+        if(!check.checked){ try{ localStorage.removeItem(BN_ASSET_TERMS_KEY); }catch(_){} assetTermsSetDownloadState(false); }
+        else if(!assetTermsAccepted()){ check.checked=false; assetTermsOpen(); }
+      });
+      link.addEventListener('click',function(e){ e.preventDefault(); assetTermsOpen(); });
+      assetTermsSetDownloadState(readAssetTermsConsent()); update();
     }
 
     function _bnClone(obj){
@@ -4108,12 +4186,17 @@
 
     function downloadAll(_layoutSynced){
       if(_layoutSynced!==true&&window._bnDownloadBusy)return;
+      if(typeof window.bnTermsAccepted === 'function' && !window.bnTermsAccepted()){
+        if(typeof window.bnTermsOpenModal === 'function') window.bnTermsOpenModal();
+        _bnSettleCollect(new Error('尚未同意蝦皮資產使用條款'));
+        return;
+      }
       /* 字數硬擋／內容警語未確認：直接擋在 modal，不呼叫 setProgress，
          避免 setProgress 內的 bnUpdateDownloadOverlay 通知外層 BOD A
          顯示「LOADING · 曝光資源下載」浮層。 */
       if(typeof window.bnCanDownload === 'function' && !window.bnCanDownload()){
         var _el=document.getElementById('bn-dl-progress');
-        if(_el){ _el.textContent='文字超出字數上限或內容提醒尚未確認，請修改後再下載'; setTimeout(function(){ if(_el) _el.textContent=''; }, 4000); }
+        if(_el){ _el.textContent=(typeof window.bnTermsAccepted === 'function' && !window.bnTermsAccepted())?'請先閱讀並同意蝦皮資產使用條款':'文字超出字數上限或內容提醒尚未確認，請修改後再下載'; setTimeout(function(){ if(_el) _el.textContent=''; }, 4000); }
         _bnSettleCollect(new Error('曝光資源文字超出字數上限或內容提醒尚未確認'));
         return;
       }

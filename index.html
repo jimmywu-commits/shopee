@@ -1971,6 +1971,10 @@ function bnShowContentWarningBlockModal(messages){
 }
 /* 給下載流程呼叫：回傳 true 才允許下載 */
 function bnCanDownload(){
+  if(typeof window.bnTermsAccepted === 'function' && !window.bnTermsAccepted()){
+    if(typeof window.bnTermsOpenModal === 'function') window.bnTermsOpenModal();
+    return false;
+  }
   bnRefreshLimitAlert();
   var list=bnGetOverLimitFields();
   if(list.length){ bnShowLimitBlockModal(list); return false; }
