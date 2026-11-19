@@ -128,7 +128,18 @@ html, body { height: 100%; background: var(--bg0); color: var(--text);
 /* ════════════════════════════════
    ── 前台 ──
 ════════════════════════════════ */
-#frontend { flex-direction: row; }
+#frontend { flex-direction: column; }
+#frontend-workspace { display:flex; flex:1; min-height:0; min-width:0; }
+.bn-rights-notice{flex:0 0 auto;margin:8px 12px 0;padding:6px 10px;border:1px solid #3b4b68;border-radius:5px;background:rgba(31,111,235,.08);color:var(--text3);font-size:10px;line-height:1.55}
+.bn-rights-notice a{color:#60a5fa;text-decoration:underline;cursor:pointer;white-space:nowrap}
+#bn-rights-modal{display:none;position:fixed;inset:0;z-index:100002;background:rgba(0,0,0,.78);align-items:center;justify-content:center;backdrop-filter:blur(4px)}
+#bn-rights-modal.show{display:flex}
+.bn-rights-box{width:min(680px,92vw);max-height:82vh;background:#13161f;border:1px solid #30384d;border-radius:12px;box-shadow:0 24px 70px rgba(0,0,0,.65);display:flex;flex-direction:column;overflow:hidden}
+.bn-rights-head{display:flex;align-items:center;justify-content:space-between;padding:13px 16px;border-bottom:1px solid #252b3d}
+.bn-rights-head h3{font-size:14px;color:var(--text);margin:0}.bn-rights-close{background:none;border:0;color:var(--text2);font-size:21px;cursor:pointer}
+.bn-rights-body{overflow:auto;padding:17px 18px;color:#c9d1d9;font-size:12px;line-height:1.85}
+.bn-rights-body p{margin:0 0 11px}.bn-rights-foot{padding:11px 16px;border-top:1px solid #252b3d;text-align:right}
+.bn-rights-ok{background:#f97316;color:#fff;border:0;border-radius:6px;padding:7px 18px;font-size:12px;font-weight:700;cursor:pointer}
 
 /* 左側工具列 */
 #sidebar {
@@ -781,6 +792,10 @@ html.boda-hosted #shopee-tour-launch{display:none!important;}
   ══════════════════════════════ -->
   <div id="frontend" class="page active">
 
+    <div class="bn-rights-notice">您自行上傳或使用之圖片、文字、Logo、商標及其他素材，應確認已取得合法權利或授權，且不得侵害第三人之著作權、商標權、肖像權或其他權利。本編輯器提供之平台素材，僅得於指定用途、範圍及期間內使用。因素材上傳、編輯、下載、發布或使用所生之爭議及法律責任，由使用者自行負責。 <a href="#bn-rights-modal" id="bn-rights-link">了解更多</a></div>
+
+    <div id="frontend-workspace">
+
     <!-- 左側工具列 -->
     <div id="sidebar">
       <div id="sidebar-head">🎛 工具列</div>
@@ -881,8 +896,38 @@ html.boda-hosted #shopee-tour-launch{display:none!important;}
       </div>
     </div>
 
+    </div>
+
   </div>
 </div>
+
+<div id="bn-rights-modal" role="dialog" aria-modal="true" aria-labelledby="bn-rights-title">
+  <div class="bn-rights-box">
+    <div class="bn-rights-head"><h3 id="bn-rights-title">素材使用權利與責任說明</h3><button type="button" class="bn-rights-close" aria-label="關閉">×</button></div>
+    <div class="bn-rights-body">
+      <p>本編輯器所提供之平台 Logo、背景圖片及其他素材，僅得於本公司指定或授權之用途、範圍及期間內使用。</p>
+      <p>您自行上傳、匯入或使用之圖片、文字、商標、Logo、人物肖像及其他素材，應自行確認已取得合法權利或完整授權，並確保其使用不侵害任何第三人之著作權、商標權、肖像權、個人資料或其他權利，亦不得違反相關法令及平台規範。</p>
+      <p>因您上傳、編輯、下載、發布或使用相關內容所生之爭議、損害或法律責任，應由您自行負責；如因此致本公司或第三人受有損害，您並應負相關賠償責任。</p>
+    </div>
+    <div class="bn-rights-foot"><button type="button" class="bn-rights-ok" id="bn-rights-ok">我確定</button></div>
+  </div>
+</div>
+
+<script>
+(function(){
+  function initRightsNotice(){
+    var modal=document.getElementById('bn-rights-modal'), link=document.getElementById('bn-rights-link');
+    if(!modal||!link) return;
+    function close(){ modal.classList.remove('show'); }
+    link.addEventListener('click',function(e){ e.preventDefault(); modal.classList.add('show'); });
+    modal.querySelector('.bn-rights-close').addEventListener('click',close);
+    modal.querySelector('#bn-rights-ok').addEventListener('click',close);
+    modal.addEventListener('click',function(e){ if(e.target===modal) close(); });
+    document.addEventListener('keydown',function(e){ if(e.key==='Escape'&&modal.classList.contains('show')) close(); });
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',initRightsNotice); else initRightsNotice();
+})();
+</script>
 
 <!-- 預覽載入中：等待所有 iframe 的 CSS 與字體完成後自動關閉 -->
 <div id="bn-loading-overlay" aria-live="polite">
