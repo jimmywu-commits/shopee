@@ -532,8 +532,17 @@
     }, 10);
   }
 
-  /* ── banwords.xlsx 載入（含 fallback 手動選取，同 sba.html） ── */
-  function ensureExcelPicker(){
+  /* ── 禁用詞規則載入 ──
+     規則來源原本是 banwords.xlsx，TP 不收 xlsx，改讀轉好的 banwords.json
+     （xlsx「禁用語」分頁，第一列當欄名、每列一個物件），再交給引擎的 convertExcelRowsToRules。
+     這是自動改字的來源，讀不到時要明顯提示，否則文案規則會整個失效。 */
+  function applyBanwordRows(rows){
+    if(!Array.isArray(rows)) throw new Error('banwords.json 格式不對（應為陣列）');
+    var engine = global.banwordEngine;
+    return engine.setRules(engine.convertExcelRowsToRules(rows));
+  }
+
+  function ensureBanwordsPicker(){
     var wrap = document.getElementById('_bn_excelManualLoader');
     if(wrap) return wrap;
     wrap = document.createElement('div');
@@ -546,10 +555,10 @@
       'font-size:13px;line-height:1.5;max-width:320px;display:none;',
     ].join('');
     wrap.innerHTML=[
-      '<div style="font-weight:700;margin-bottom:6px;">讀取 banwords.xlsx 失敗</div>',
-      '<div style="margin-bottom:8px;">請手動選取同層的「banwords.xlsx」</div>',
-      '<button id="_bn_excelManualBtn" style="border:0;background:#fff;color:#111;padding:6px 10px;border-radius:8px;cursor:pointer;">手動選取 banwords.xlsx</button>',
-      '<input type="file" id="_bn_excelManualInput" accept=".xlsx" style="display:none">',
+      '<div style="font-weight:700;margin-bottom:6px;">讀取 banwords.json 失敗</div>',
+      '<div style="margin-bottom:8px;">禁用詞與自動改字目前沒有作用。請手動選取「banwords.json」</div>',
+      '<button id="_bn_excelManualBtn" style="border:0;background:#fff;color:#111;padding:6px 10px;border-radius:8px;cursor:pointer;">手動選取 banwords.json</button>',
+      '<input type="file" id="_bn_excelManualInput" accept=".json,application/json" style="display:none">',
     ].join('');
     document.body.appendChild(wrap);
 
@@ -559,9 +568,9 @@
     wrap.querySelector('#_bn_excelManualInput').addEventListener('change', function(e){
       var file = e.target.files && e.target.files[0];
       if(!file) return;
-      ensureXLSX().then(function(){return file.arrayBuffer();}).then(function(buf){
-        var rules = global.banwordEngine.loadRulesFromExcelArrayBuffer(buf);
-        showToast('已手動載入 banwords.xlsx（'+( Array.isArray(rules)?rules.length:0 )+'條）','ok',2200);
+      file.text().then(function(text){
+        var rules = applyBanwordRows(JSON.parse(text));
+        showToast('已手動載入 banwords.json（'+( Array.isArray(rules)?rules.length:0 )+'條）','ok',2200);
         wrap.style.display = 'none';
         bridgeInputs();
       }).catch(function(err){
@@ -571,35 +580,23 @@
     return wrap;
   }
 
-  function ensureXLSX(){
-    if(!global.BodaVendor) return Promise.reject(new Error('試算表載入元件未載入，請確認 js/vendor/browser-loader.js 已一起更新。'));
-    return global.BodaVendor.ensure('sheet');
-  }
-
   function loadBanwordsExcel(){
     if(!global.banwordEngine) return;
-    /* 先確保 SheetJS (XLSX) 已載入 */
-    function doFetch(){
-      fetch('banwords.xlsx', {cache:'no-store'})
-      .then(function(r){
-        if(!r.ok) throw new Error('HTTP '+r.status);
-        return r.arrayBuffer();
-      })
-      .then(function(buf){
-        var rules = global.banwordEngine.loadRulesFromExcelArrayBuffer(buf);
-        console.log('[BNState] banwords loaded:', Array.isArray(rules)?rules.length:0, '條');
-        bridgeInputs();
-      })
-      .catch(function(err){
-        console.warn('[BNState] banwords.xlsx 載入失敗', err);
-        ensureExcelPicker().style.display = 'block';
-        bridgeInputs();
-      });
-    }
-    ensureXLSX().then(doFetch).catch(function(error){
-      console.warn('[BNState] 試算表元件載入失敗',error);
-      ensureExcelPicker().style.display='block';
-      showToast('禁用詞規則無法載入：'+error.message,'err',5000);
+    fetch('banwords.json', {cache:'no-store'})
+    .then(function(r){
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      return r.json();
+    })
+    .then(function(rows){
+      var rules = applyBanwordRows(rows);
+      console.log('[BNState] banwords loaded:', Array.isArray(rules)?rules.length:0, '條');
+      bridgeInputs();
+    })
+    .catch(function(err){
+      console.warn('[BNState] banwords.json 載入失敗', err);
+      ensureBanwordsPicker().style.display = 'block';
+      showToast('禁用詞規則無法載入：'+err.message,'err',5000);
+      bridgeInputs();
     });
   }
 
