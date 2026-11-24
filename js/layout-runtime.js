@@ -490,27 +490,39 @@
         var cacheKey = _bnTagCacheKey(color);
         var cached = null;
         try { cached = window.sessionStorage.getItem(cacheKey); } catch(_) {}
-        if(cached !== null){
-          // 曾經探測過的結果（找到的網址，或空字串代表確認找不到），直接沿用，不用再打一輪請求。
+        /* 只沿用「找到的網址」。找不到（空字串）不能當成確定結果存起來：
+           sessionStorage 整個分頁共用、重新整理也不會清掉，只要某次探測剛好失敗
+           （網路中斷、iframe 被暫停而中斷載入…），之後這個版位的掛標就一直不出現。
+           以前 #ddcard 的方logo／橫logo 掛標消失、無logo 還在，就是這樣造成的。 */
+        if(cached){
           if(seq !== _bnTagSeq) return;
-          _bnTagSrcs[color] = cached || '';
+          _bnTagSrcs[color] = cached;
           var cimg = _bnTagImgs[color];
-          if(cached && cimg){
+          if(cimg){
             cimg.onload = function(){ _bnRefreshTagVisibility(); };
-            cimg.onerror = function(){ _bnTagSrcs[color] = ''; _bnRefreshTagVisibility(); };
+            cimg.onerror = function(){
+              try { window.sessionStorage.removeItem(cacheKey); } catch(_) {}
+              _bnTagSrcs[color] = ''; _bnRefreshTagVisibility();
+            };
             cimg.src = cached;
           }
           _bnRefreshTagVisibility();
           return;
         }
         _bnFindFirstImage(_bnBuildTagCandidates(color), function(src){
-          try { window.sessionStorage.setItem(cacheKey, src || ''); } catch(_) {}
+          try {
+            if(src) window.sessionStorage.setItem(cacheKey, src);
+            else window.sessionStorage.removeItem(cacheKey);
+          } catch(_) {}
           if(seq !== _bnTagSeq) return;
           _bnTagSrcs[color] = src || '';
           var img = _bnTagImgs[color];
           if(src && img){
             img.onload = function(){ _bnRefreshTagVisibility(); };
-            img.onerror = function(){ _bnTagSrcs[color] = ''; _bnRefreshTagVisibility(); };
+            img.onerror = function(){
+              try { window.sessionStorage.removeItem(cacheKey); } catch(_) {}
+              _bnTagSrcs[color] = ''; _bnRefreshTagVisibility();
+            };
             img.src = src;
           }
           _bnRefreshTagVisibility();
@@ -5439,10 +5451,19 @@
        html-to-image 由瀏覽器自己畫（SVG foreignObject），calc() 背景位置、object-fit
        都能正確處理，不再需要 html2canvas 時代的背景像素換算。 */
     var HIDE_SELECTOR='[data-corner],[data-rotate-handle],[data-rotate-badge],.bn-content-warning-tip,#_bn_bg_overlay';
+    /* 沒有 src 的 <img>（沒選底圖時的 #底圖、找不到掛標的疊圖）html-to-image 仍會
+       去抓空網址，結果抓回版位本身的 HTML 當圖片解碼而失敗，整張截圖就壞掉。
+       不顯示的 <img> 本來就畫不出來，也一起略過，避免藏起來的壞圖拖垮下載。 */
+    function isSkippableImage(node){
+      if(node.tagName!=='IMG')return false;
+      if(!node.getAttribute('src'))return true;
+      return window.getComputedStyle(node).display==='none';
+    }
     function captureFilter(layer){
       return function(node){
         if(node.nodeType!==1)return true;
         if(node.matches&&node.matches(HIDE_SELECTOR))return false;
+        if(isSkippableImage(node))return false;
         if(layer!=='main'&&node.parentElement===cv){
           return layer==='background'?isBg(node):!isBg(node);
         }
